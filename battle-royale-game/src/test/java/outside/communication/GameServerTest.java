@@ -237,4 +237,51 @@ class GameServerTest implements IConfig {
 			assertTrue(s.isConnected());
 		}
 	}
+
+	@Test
+	void poigneeDeMainAuCompteGouttesFermeeApres5s() throws Exception {
+		start(38205);
+		try (Socket s = connect(38205)) {
+			DataOutputStream out = new DataOutputStream(s.getOutputStream());
+			long begin = System.nanoTime();
+			s.setSoTimeout(10_000);
+			Thread sender = new Thread(() -> {
+				try {
+					out.writeInt(0);
+					out.writeInt(1);
+					out.writeByte(1);
+					out.flush();
+					for (byte octet : new byte[] { 0, 5, 'A', 'l', 'i', 'c', 'e' }) {
+						Thread.sleep(1000);
+						out.writeByte(octet);
+						out.flush();
+					}
+				} catch (IOException | InterruptedException e) {
+					// Connexion fermée par le jeu
+				}
+			});
+			sender.setDaemon(true);
+			sender.start();
+
+			assertEquals(-1, s.getInputStream().read(), "connexion fermée par le jeu");
+			long elapsed = (System.nanoTime() - begin) / 1_000_000;
+			assertTrue(elapsed >= GameServer.HANDSHAKE_TIMEOUT_MS - 200 && elapsed < GameServer.HANDSHAKE_TIMEOUT_MS + 1500,
+				"fermée après " + elapsed + " ms");
+			sender.join(3000);
+		}
+		assertNull(board.get());
+		assertTrue(statuses.stream().anyMatch(m -> m.startsWith("Poignée de main non terminée")), statuses.toString());
+
+		// Une poignée de main normale reste possible ensuite et la boucle n'est plus limitée dans le temps
+		try (Socket s = connect(38205)) {
+			DataOutputStream out = new DataOutputStream(s.getOutputStream());
+			DataInputStream in = new DataInputStream(new BufferedInputStream(s.getInputStream()));
+			handshake(out, 1, "A", 2, "B");
+			assertTrue(in.readBoolean());
+			Thread.sleep(GameServer.HANDSHAKE_TIMEOUT_MS + 500);
+			boolean[] running = new boolean[1];
+			exchange(out, in, new byte[0], running);
+			assertTrue(running[0]);
+		}
+	}
 }
