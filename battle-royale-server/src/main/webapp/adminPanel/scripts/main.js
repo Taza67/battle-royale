@@ -120,6 +120,13 @@ function revenirConnexion(raison) {
 	session.souhaitee = false;
 	session.admise = false;
 	session.automatique = false;
+	// L'état de la partie rejetée est oublié : il serait incohérent avec la
+	// liste reçue à la prochaine connexion.
+	session.partie = null;
+	session.joueurs = [];
+	session.listeRecue = false;
+	session.finRecue = false;
+	terminerCommande();
 	ecrireSession(null);
 
 	element("erreur-connexion").textContent = raison;
@@ -148,7 +155,9 @@ connexion.sur("admin-welcome", message => {
 
 	session.admise = true;
 	session.automatique = true;
-	ecrireSession({ motDePasse: session.motDePasse });
+	// Seul le souvenir d'une session admise est persisté : le mot de passe
+	// est redemandé après un rechargement plutôt que stocké en clair.
+	ecrireSession({ connue: true });
 
 	changerPartie(normaliserEtat(message.state) ?? "lobby", false);
 	if (premiere)
@@ -380,9 +389,10 @@ function actualiser() {
 
 const memorisee = lireSession();
 if (memorisee !== null) {
-	session.souhaitee = true;
-	session.automatique = true;
-	session.motDePasse = typeof memorisee.motDePasse === "string" ? memorisee.motDePasse : "";
+	// Une session était admise : la reconnexion demande à nouveau le mot de
+	// passe. Un ancien stockage l'ayant conservé est effacé.
+	ecrireSession({ connue: true });
+	element("erreur-connexion").textContent = "Session précédente : saisissez à nouveau le mot de passe.";
 }
 
 // En démonstration, la manette ouverte depuis le lien reste elle aussi en démonstration
