@@ -6,6 +6,7 @@ import java.util.Map;
 import java.util.Random;
 
 import inside.geometry.Rectangle;
+import inside.geometry.Vertice;
 
 /**
  * Classe pilotant les joueurs contrôlés par l'ordinateur.
@@ -199,12 +200,8 @@ public class BotController {
 
 		// 2. Fuite quand le robot est affaibli
 		if (bot.getLifePoints() < FLEE_LIFE && enemy.getLifePoints() >= bot.getLifePoints() && distance < VISION_RANGE * 0.6f) {
-			float fx = bot.getX() - dx, fy = bot.getY() - dy;
-			if (!safe.expand(-ZONE_MARGIN).contains(fx, fy)) {
-				fx = safe.getCenterX();
-				fy = safe.getCenterY();
-			}
-			goTo(bot, m, fx, fy, 4);
+			Vertice fallback = fallBackInside(safe, bot.getX() - dx, bot.getY() - dy);
+			goTo(bot, m, fallback.getX(), fallback.getY(), 4);
 			tryShoot(bot, dx, dy, distance);
 			return;
 		}
@@ -253,11 +250,19 @@ public class BotController {
 			tx = bot.getX() + dx;
 			ty = bot.getY();
 		}
-		if (!safe.expand(-ZONE_MARGIN).contains(tx, ty)) {
-			tx = safe.getCenterX();
-			ty = safe.getCenterY();
-		}
-		goTo(bot, m, tx, ty, 3);
+		Vertice target = fallBackInside(safe, tx, ty);
+		goTo(bot, m, target.getX(), target.getY(), 3);
+	}
+
+	/**
+	 * Ramène un point à l'intérieur de la zone sûre : s'il est dehors, vise le centre de la zone
+	 * @param safe Zone sûre visée
+	 * @param x Abscisse du point
+	 * @param y Ordonnée du point
+	 * @return Point garanti dans la zone sûre
+	 */
+	private static Vertice fallBackInside(Rectangle safe, float x, float y) {
+		return safe.expand(-ZONE_MARGIN).contains(x, y) ? new Vertice(x, y) : safe.getCenter();
 	}
 
 	/**
