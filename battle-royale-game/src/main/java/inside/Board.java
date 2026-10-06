@@ -62,14 +62,6 @@ public class Board {
 	 */
 	private static final long LAVA_KILL_CREDIT_TICKS = 10L * TICKS_PER_SECOND;
 	/**
-	 * Profondeur de chevauchement en dessous de laquelle deux éléments sont considérés en contact (arrondis)
-	 */
-	private static final float OVERLAP_TOLERANCE = 0.01f;
-	/**
-	 * Nombre maximal d'itérations de résolution d'un contact par axe (glissement le long des obstacles)
-	 */
-	private static final int MAX_SLIDE_STEPS = 4;
-	/**
 	 * Écart minimal entre le joueur et le départ d'un projectile, en pixels
 	 */
 	private static final float BULLET_SPAWN_GAP = 1;
@@ -96,6 +88,11 @@ public class Board {
 	 * @see SafeZone
 	 */
 	private final SafeZone safeZone;
+	/**
+	 * Résolveur des déplacements et collisions de mouvement
+	 * @see MovementResolver
+	 */
+	private final MovementResolver movement;
 	/**
 	 * Joueurs indexés par identifiant (triés)
 	 */
@@ -183,6 +180,7 @@ public class Board {
 		this.map = map != null ? map : GameMap.generate(random, settings.getObstaclesNumber());
 		safeZone = new SafeZone(this.map.getBounds(), settings.getWaves(), random,
 			c -> this.map.isFree(Rectangle.centered(c.getX(), c.getY(), PLAYER_RADIUS_X * 2, PLAYER_RADIUS_Y * 2)));
+		movement = new MovementResolver(this.map);
 		this.players = new TreeMap<>();
 		bullets = new ArrayList<>();
 		commands = new ConcurrentLinkedQueue<>();
@@ -341,7 +339,7 @@ public class Board {
 				startBattle();
 
 			for (Player p : players.values())
-				if (p.isAlive()) movePlayer(p);
+				if (p.isAlive()) movement.move(p, tick);
 
 			resolveMelee();
 			updateBullets();
@@ -465,91 +463,6 @@ public class Board {
 		bullets.clear();
 		safeZone.start();
 		addEvent(GameEvent.global(GameEvent.Type.BATTLE_STARTED, tick, 0));
-	}
-
-	/**
-	 * Déplace un joueur selon son intention, axe par axe, en glissant le long des obstacles
-	 * @param p Joueur
-	 */
-	private void movePlayer(Player p) {
-		float speed = p.currentSpeed(tick);
-		if (speed <= 0) {
-			p.setMoving(false);
-			return;
-		}
-
-		int d = p.getMoveDirection();
-		float step = speed * TICK_DURATION;
-		float ox = p.getX(), oy = p.getY();
-		float vx = Direction.dx(d), vy = Direction.dy(d);
-
-		float nx = vx == 0 ? ox : resolveAxis(p, ox + vx * step, oy, true, vx);
-		float ny = vy == 0 ? oy : resolveAxis(p, nx, oy + vy * step, false, vy);
-
-		p.setPosition(nx, ny);
-		p.setMoving(nx != ox || ny != oy);
-		map.updatePlayerArea(p);
-	}
-
-	/**
-	 * Calcule la position atteignable sur un axe en s'arrêtant au contact du premier obstacle.
-	 * Les éléments que le joueur chevauche déjà au départ ne le bloquent pas, pour que deux joueurs
-	 * superposés puissent se séparer ; seuls les nouveaux contacts l'arrêtent.
-	 * @param p Joueur
-	 * @param cx Abscisse visée
-	 * @param cy Ordonnée visée
-	 * @param horizontal true pour l'axe horizontal
-	 * @param sign Sens du déplacement sur l'axe
-	 * @return Coordonnée atteinte sur l'axe
-	 */
-	private float resolveAxis(Player p, float cx, float cy, boolean horizontal, float sign) {
-		float rx = p.getRadiusX(), ry = p.getRadiusY();
-		float origin = horizontal ? p.getX() : p.getY();
-		Rectangle start = (horizontal ? p.getRepresentationAt(origin, cy) : p.getRepresentationAt(cx, origin))
-			.expand(-OVERLAP_TOLERANCE);
-
-		if (horizontal) cx = clamp(cx, rx, MAP_WIDTH - rx);
-		else cy = clamp(cy, ry, MAP_HEIGHT - ry);
-
-		for (int attempt = 0; attempt < MAX_SLIDE_STEPS; attempt++) {
-			Rectangle blocker = findBlocker(p, p.getRepresentationAt(cx, cy), start);
-			if (blocker == null) return horizontal ? cx : cy;
-
-			float contact;
-			if (horizontal) contact = sign > 0 ? blocker.getX1() - rx : blocker.getX2() + rx;
-			else contact = sign > 0 ? blocker.getY1() - ry : blocker.getY2() + ry;
-
-			// Contact déjà atteint (arrondis) : le joueur ne bouge pas sur cet axe
-			if ((sign > 0 && contact < origin) || (sign < 0 && contact > origin)) return origin;
-
-			if (horizontal) cx = contact;
-			else cy = contact;
-		}
-
-		return origin;
-	}
-
-	/**
-	 * Cherche un obstacle ou un joueur vivant chevauchant un rectangle, sans chevaucher la position de départ
-	 * @param self Joueur qui se déplace (ignoré)
-	 * @param r Rectangle testé
-	 * @param start Position de départ du joueur (les éléments qui la chevauchent sont ignorés)
-	 * @return Rectangle de l'élément bloquant, ou null
-	 */
-	private Rectangle findBlocker(Player self, Rectangle r, Rectangle start) {
-		for (GridCell cell : map.areasOverlapping(r))
-			for (Obstacle o : cell.getObstacles()) {
-				Rectangle or = o.getRepresentation();
-				if (or.intersect(r) && !or.intersect(start)) return or;
-			}
-
-		for (Player other : map.playersNear(r.expand(Math.max(PLAYER_RADIUS_X, PLAYER_RADIUS_Y)))) {
-			if (other == self || !other.isAlive()) continue;
-			Rectangle or = other.getRepresentation();
-			if (or.intersect(r) && !or.intersect(start)) return or;
-		}
-
-		return null;
 	}
 
 	/**
