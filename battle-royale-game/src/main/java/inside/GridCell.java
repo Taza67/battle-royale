@@ -13,7 +13,7 @@ import inside.geometry.Rectangle;
  *
  * @see GameMap
  */
-public class Zone implements IConfig {
+public class GridCell implements IConfig {
 	/**
 	 * Position de la zone dans la grille (colonne, ligne)
 	 */
@@ -33,11 +33,11 @@ public class Zone implements IConfig {
 
 
 	/**
-	 * Construit une zone de la grille
+	 * Construit une case de la grille
 	 * @param x Colonne
 	 * @param y Ligne
 	 */
-	public Zone(int x, int y) {
+	public GridCell(int x, int y) {
 		X = x;
 		Y = y;
 		REPRESENTATION = new Rectangle(x * ONE_ZONE_WIDTH, y * ONE_ZONE_HEIGHT,

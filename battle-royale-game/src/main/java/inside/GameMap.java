@@ -14,7 +14,7 @@ import inside.geometry.Vertice;
  * qui accélère la recherche des éléments proches
  * @author mourtaza
  *
- * @see Zone
+ * @see GridCell
  * @see Obstacle
  */
 public class GameMap implements IConfig {
@@ -38,7 +38,7 @@ public class GameMap implements IConfig {
 	/**
 	 * Grille de zones, indexée par [ligne][colonne]
 	 */
-	private final Zone[][] AREAS;
+	private final GridCell[][] AREAS;
 
 
 	/**
@@ -48,14 +48,14 @@ public class GameMap implements IConfig {
 	public GameMap(List<Obstacle> obstacles) {
 		BOUNDS = new Rectangle(0, 0, MAP_WIDTH, MAP_HEIGHT);
 		OBSTACLES = new ArrayList<>(obstacles);
-		AREAS = new Zone[AREAS_HEIGHT][AREAS_WIDTH];
+		AREAS = new GridCell[AREAS_HEIGHT][AREAS_WIDTH];
 
 		for (int i = 0; i < AREAS_HEIGHT; i++)
 			for (int j = 0; j < AREAS_WIDTH; j++)
-				AREAS[i][j] = new Zone(j, i);
+				AREAS[i][j] = new GridCell(j, i);
 
 		for (Obstacle o : OBSTACLES)
-			for (Zone z : areasOverlapping(o.getRepresentation()))
+			for (GridCell z : areasOverlapping(o.getRepresentation()))
 				z.addObstacle(o);
 	}
 
@@ -121,12 +121,12 @@ public class GameMap implements IConfig {
 	public List<Obstacle> getOBSTACLES() { return Collections.unmodifiableList(OBSTACLES); }
 
 	/**
-	 * Retourne une zone de la grille ; les indices hors limites sont ramenés sur le bord
+	 * Retourne une case de la grille ; les indices hors limites sont ramenés sur le bord
 	 * @param i Ligne
 	 * @param j Colonne
-	 * @return Zone
+	 * @return GridCell
 	 */
-	public Zone getArea(int i, int j) {
+	public GridCell getArea(int i, int j) {
 		return AREAS[clamp(i, AREAS_HEIGHT)][clamp(j, AREAS_WIDTH)];
 	}
 
@@ -134,9 +134,9 @@ public class GameMap implements IConfig {
 	 * Retourne la zone contenant un point (les points hors de la carte donnent la zone du bord la plus proche)
 	 * @param x Abscisse
 	 * @param y Ordonnée
-	 * @return Zone
+	 * @return GridCell
 	 */
-	public Zone getAreaAt(float x, float y) {
+	public GridCell getAreaAt(float x, float y) {
 		return getArea(rowOf(y), columnOf(x));
 	}
 
@@ -173,8 +173,8 @@ public class GameMap implements IConfig {
 	 * @param r Rectangle
 	 * @return Liste des zones
 	 */
-	public List<Zone> areasOverlapping(Rectangle r) {
-		List<Zone> zones = new ArrayList<>();
+	public List<GridCell> areasOverlapping(Rectangle r) {
+		List<GridCell> zones = new ArrayList<>();
 		int c1 = columnOf(r.getX1()), c2 = columnOf(r.getX2()),
 			r1 = rowOf(r.getY1()), r2 = rowOf(r.getY2());
 
@@ -192,7 +192,7 @@ public class GameMap implements IConfig {
 	 * @return Obstacle trouvé ou null
 	 */
 	public Obstacle obstacleIntersecting(Rectangle r, boolean bulletBlockersOnly) {
-		for (Zone z : areasOverlapping(r))
+		for (GridCell z : areasOverlapping(r))
 			for (Obstacle o : z.getOBSTACLES())
 				if ((!bulletBlockersOnly || o.getTYPE().blocksBullets()) && o.getRepresentation().intersect(r))
 					return o;
@@ -239,7 +239,7 @@ public class GameMap implements IConfig {
 	 */
 	public List<Player> playersNear(Rectangle r) {
 		List<Player> players = new ArrayList<>();
-		for (Zone z : areasOverlapping(r))
+		for (GridCell z : areasOverlapping(r))
 			players.addAll(z.getPLAYERS());
 		return players;
 	}
@@ -249,8 +249,8 @@ public class GameMap implements IConfig {
 	 * @param p Joueur
 	 */
 	void updatePlayerArea(Player p) {
-		Zone target = getAreaAt(p.getX(), p.getY());
-		Zone current = p.getZone();
+		GridCell target = getAreaAt(p.getX(), p.getY());
+		GridCell current = p.getZone();
 
 		if (current == target) return;
 		if (current != null) current.deletePlayer(p);

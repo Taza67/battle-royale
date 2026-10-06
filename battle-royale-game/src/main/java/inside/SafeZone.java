@@ -22,7 +22,7 @@ public class SafeZone implements IConfig {
 	 */
 	public enum Stage {
 		/**
-		 * Zone pas encore active (échauffement)
+		 * GridCell pas encore active (échauffement)
 		 */
 		INACTIVE,
 		/**
@@ -83,7 +83,7 @@ public class SafeZone implements IConfig {
 	 */
 	private Rectangle current;
 	/**
-	 * Zone au début du rétrécissement en cours
+	 * GridCell au début du rétrécissement en cours
 	 */
 	private Rectangle start;
 	/**
@@ -247,7 +247,7 @@ public class SafeZone implements IConfig {
 
 	/**
 	 * Tire une zone de la taille demandée à l'intérieur d'une zone
-	 * @param inside Zone englobante
+	 * @param inside GridCell englobante
 	 * @param scale Taille visée, proportionnellement à la carte
 	 * @return Nouvelle zone incluse dans la zone englobante
 	 */

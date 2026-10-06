@@ -97,9 +97,9 @@ public class Player extends Element {
 	 */
 	private long eliminationTick = -1;
 	/**
-	 * Zone de la grille dans laquelle est référencé le joueur
+	 * Case de la grille dans laquelle est référencé le joueur
 	 */
-	private Zone zone;
+	private GridCell zone;
 
 
 	/**
@@ -229,16 +229,16 @@ public class Player extends Element {
 	 */
 	public long getEliminationTick() { return eliminationTick; }
 	/**
-	 * Retourne la zone de la grille du joueur
-	 * @return Zone
+	 * Retourne la case de la grille du joueur
+	 * @return GridCell
 	 */
-	public Zone getZone() { return zone; }
+	public GridCell getZone() { return zone; }
 
 	/**
-	 * Change la zone de la grille du joueur
+	 * Change la case de la grille du joueur
 	 * @param z Nouvelle zone
 	 */
-	void setZone(Zone z) { zone = z; }
+	void setZone(GridCell z) { zone = z; }
 	/**
 	 * Change le classement final
 	 * @param r Classement

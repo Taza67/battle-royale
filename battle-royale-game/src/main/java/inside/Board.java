@@ -522,7 +522,7 @@ public class Board implements IConfig {
 	 * @return Rectangle de l'élément bloquant, ou null
 	 */
 	private Rectangle findBlocker(Player self, Rectangle r, Rectangle start) {
-		for (Zone z : MAP.areasOverlapping(r))
+		for (GridCell z : MAP.areasOverlapping(r))
 			for (Obstacle o : z.getOBSTACLES()) {
 				Rectangle or = o.getRepresentation();
 				if (or.intersect(r) && !or.intersect(start)) return or;
