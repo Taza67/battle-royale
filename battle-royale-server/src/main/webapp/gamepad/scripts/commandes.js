@@ -264,8 +264,11 @@ export class Commandes {
 
 	// Clavier ////////////////////////////////////////////////////////////////
 
+	// Les touches sont enregistrées même inactif (pause, reconnexion) : leur
+	// effet est suspendu par `#appliquer` et repris dès la réactivation,
+	// comme les boutons du pointeur.
 	#toucheEnfoncee(evenement) {
-		if (!this.#active || evenement.ctrlKey || evenement.metaKey || evenement.altKey)
+		if (evenement.ctrlKey || evenement.metaKey || evenement.altKey)
 			return;
 		const cible = evenement.target;
 		if (cible instanceof HTMLInputElement || (cible instanceof HTMLButtonElement && !cible.classList.contains("bouton-jeu")))
