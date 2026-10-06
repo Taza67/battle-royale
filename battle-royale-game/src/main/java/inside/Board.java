@@ -82,6 +82,10 @@ public class Board implements IConfig {
 	 */
 	private final Queue<Command> COMMANDS;
 	/**
+	 * Commandes de jeu reçues pendant une pause, réappliquées à la reprise
+	 */
+	private final Deque<Command> SUSPENDED;
+	/**
 	 * Événements produits et pas encore lus
 	 */
 	private final List<GameEvent> EVENTS;
@@ -151,6 +155,7 @@ public class Board implements IConfig {
 		PLAYERS = new TreeMap<>();
 		BULLETS = new ArrayList<>();
 		COMMANDS = new ConcurrentLinkedQueue<>();
+		SUSPENDED = new ArrayDeque<>();
 		EVENTS = new ArrayList<>();
 		KILL_FEED = new ArrayDeque<>();
 
@@ -324,7 +329,8 @@ public class Board implements IConfig {
 		Command c;
 		while ((c = COMMANDS.poll()) != null) {
 			if (c instanceof Command.Control control) applyControl(control.type());
-			else if (phase == Phase.ENDED || paused) continue;
+			else if (phase == Phase.ENDED) continue;
+			else if (paused) SUSPENDED.addLast(c);
 			else if (c instanceof Command.Move move) applyMove(move);
 			else if (c instanceof Command.Attack attack) applyAttack(attack);
 		}
@@ -347,12 +353,16 @@ public class Board implements IConfig {
 		case RESUME:
 			if (paused) {
 				paused = false;
+				// Les commandes déposées pendant la pause reprennent leur place dans la file
+				Command s;
+				while ((s = SUSPENDED.pollFirst()) != null) COMMANDS.offer(s);
 				addEvent(GameEvent.global(GameEvent.Type.RESUMED, tick, 0));
 			}
 			break;
 		case STOP:
 			stopped = true;
 			paused = false;
+			SUSPENDED.clear();
 			endGame();
 			break;
 		}
