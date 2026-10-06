@@ -5,10 +5,12 @@ import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -105,6 +107,10 @@ public final class GameSession implements AutoCloseable {
 	private PendingActions actions;
 	private GameSnapshot lastSnapshot;
 	private String lastEndJson;
+	/**
+	 * Vrai entre l'arrêt d'une manche et la réception de son état final
+	 */
+	private boolean awaitingFinalState;
 	private String lastPlayersJson;
 	private long lastPlayersMillis;
 	private boolean playersFlushScheduled;
@@ -242,7 +248,7 @@ public final class GameSession implements AutoCloseable {
 			LOG.info(() -> "Administrateur connecté (" + c.id() + ")");
 			c.send(Json.write(new ServerMessage.AdminWelcome(state.wireName())));
 			sendPlayers(true);
-			if (state == GameState.OVER && lastEndJson != null)
+			if (hasResult())
 				c.send(lastEndJson);
 			return true;
 		}
@@ -392,7 +398,7 @@ public final class GameSession implements AutoCloseable {
 		if (previous == null)
 			return;
 		try {
-			previous.awaitTermination(2000);
+			previous.awaitTermination(GameLink.STOP_TIMEOUT_MILLIS + 1000);
 		} catch (InterruptedException e) {
 			Thread.currentThread().interrupt();
 		}
@@ -490,6 +496,7 @@ public final class GameSession implements AutoCloseable {
 			return NOTHING_TO_STOP;
 		link.stop();
 		actions.clear();
+		awaitingFinalState = true;
 		LOG.info("Manche arrêtée par l'administrateur");
 		changeState(GameState.STOPPED);
 		sendPlayers(false);
@@ -533,9 +540,17 @@ public final class GameSession implements AutoCloseable {
 				c.sendLatest(json);
 				player.stateSent(json, now());
 			}
-		} else if (state == GameState.OVER && lastEndJson != null) {
+		} else if (hasResult()) {
 			c.send(lastEndJson);
 		}
+	}
+
+	/**
+	 * Indique si le résultat de la dernière manche terminée ou arrêtée est disponible
+	 * @return true si `end` doit être renvoyé aux sessions qui se reconnectent
+	 */
+	private boolean hasResult() {
+		return (state == GameState.OVER || state == GameState.STOPPED) && lastEndJson != null;
 	}
 
 	/**
@@ -594,26 +609,56 @@ public final class GameSession implements AutoCloseable {
 	}
 
 	/**
-	 * Construit le message de fin de partie
+	 * Termine la manche : applique l'état final, construit `end`, le mémorise, l'envoie
+	 * aux joueurs et à l'administrateur puis envoie à ce dernier la liste des joueurs à jour
+	 * @param finalSnapshot État final, ou null pour reprendre le dernier état reçu
+	 * @param stopped true si la manche a été arrêtée avant son terme (l'état est déjà diffusé)
+	 */
+	private void endRound(GameSnapshot finalSnapshot, boolean stopped) {
+		awaitingFinalState = false;
+		actions = null;
+		if (finalSnapshot != null) {
+			lastSnapshot = finalSnapshot;
+			applySnapshot(finalSnapshot, true);
+		}
+		ServerMessage.End end = endMessage(lastSnapshot, stopped);
+		lastEndJson = Json.write(end);
+		LOG.info(() -> (stopped ? "Manche arrêtée" : "Fin de manche") + ", vainqueur : "
+			+ (end.winner() == null ? "aucun" : end.winner().pseudo()));
+		if (!stopped)
+			changeState(GameState.OVER);
+		broadcast(lastEndJson);
+		sendPlayers(true);
+	}
+
+	/**
+	 * Construit le message de fin de partie pour les joueurs de la manche
 	 * @param snapshot État final, éventuellement null
+	 * @param stopped true si la manche a été arrêtée avant son terme
 	 * @return Message `end`
 	 */
-	private ServerMessage.End endMessage(GameSnapshot snapshot) {
+	private ServerMessage.End endMessage(GameSnapshot snapshot, boolean stopped) {
+		Set<Integer> ids = new HashSet<>();
+		for (Participant p : link.roster())
+			ids.add(p.id());
 		Player winner = null;
-		if (snapshot != null && snapshot.winnerId() >= 0)
+		if (snapshot != null && snapshot.winnerId() >= 0 && ids.contains(snapshot.winnerId()))
 			winner = playersById.get(snapshot.winnerId());
 		if (winner == null)
 			winner = playersById.values().stream()
-				.filter(p -> p.status() == PlayerSnapshot.Status.WINNER)
+				.filter(p -> ids.contains(p.getId()) && p.status() == PlayerSnapshot.Status.WINNER)
 				.findFirst().orElse(null);
 
 		List<ServerMessage.RankingEntry> ranking = playersById.values().stream()
+			.filter(p -> ids.contains(p.getId()))
 			.sorted(Comparator.<Player>comparingInt(p -> p.rank() > 0 ? p.rank() : Integer.MAX_VALUE)
 				.thenComparing(Comparator.comparingInt(Player::kills).reversed())
 				.thenComparingInt(Player::getId))
 			.map(Player::toRankingEntry)
 			.toList();
-		return new ServerMessage.End(winner == null ? null : new ServerMessage.PlayerRef(winner.getId(), winner.getPseudo()), ranking);
+		int total = snapshot != null ? snapshot.total() : ids.size();
+		return new ServerMessage.End(winner == null ? null : new ServerMessage.PlayerRef(winner.getId(), winner.getPseudo()),
+			ranking, total, stopped);
 	}
 
 	/**
@@ -729,36 +774,38 @@ public final class GameSession implements AutoCloseable {
 		@Override
 		public void onFinished(GameLink l, GameSnapshot finalSnapshot) {
 			synchronized (lock) {
-				if (l != link || !state.isInProgress())
+				if (l != link)
 					return;
-				if (finalSnapshot != null) {
-					lastSnapshot = finalSnapshot;
-					applySnapshot(finalSnapshot, true);
-				}
-				actions = null;
-				ServerMessage.End end = endMessage(finalSnapshot);
-				lastEndJson = Json.write(end);
-				LOG.info(() -> "Fin de manche, vainqueur : " + (end.winner() == null ? "aucun" : end.winner().pseudo()));
-				changeState(GameState.OVER);
-				broadcast(lastEndJson);
-				sendPlayers(false);
+				if (state.isInProgress())
+					endRound(finalSnapshot, false);
+				else if (awaitingFinalState)
+					endRound(finalSnapshot, true);
 			}
 		}
 
 		@Override
-		public void onStopped(GameLink l, GameSnapshot lastSnapshot) {
-			LOG.fine("Lien avec le jeu arrêté");
+		public void onStopped(GameLink l, GameSnapshot finalSnapshot) {
+			synchronized (lock) {
+				if (l != link || !awaitingFinalState)
+					return;
+				if (finalSnapshot == null)
+					LOG.warning("Aucun état final reçu après l'arrêt, classement établi sur le dernier état connu");
+				endRound(finalSnapshot, true);
+			}
 		}
 
 		@Override
 		public void onLinkLost(GameLink l, String reason) {
 			synchronized (lock) {
-				if (l != link || !state.isInProgress())
+				if (l != link)
 					return;
-				LOG.severe(() -> "Manche interrompue : " + reason);
-				actions = null;
-				changeState(GameState.STOPPED);
-				sendPlayers(false);
+				if (state.isInProgress()) {
+					LOG.severe(() -> "Manche interrompue : " + reason);
+					changeState(GameState.STOPPED);
+					endRound(null, true);
+				} else if (awaitingFinalState) {
+					endRound(null, true);
+				}
 			}
 		}
 	}

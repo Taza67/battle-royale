@@ -138,15 +138,21 @@ public sealed interface ServerMessage {
 	 * Fin de partie
 	 * @param type Toujours "end"
 	 * @param winner Vainqueur, ou null
-	 * @param ranking Classement final
+	 * @param ranking Classement final des joueurs humains
+	 * @param total Nombre de participants, robots compris
+	 * @param stopped true si la manche a été arrêtée avant son terme
 	 */
-	record End(String type, PlayerRef winner, List<RankingEntry> ranking) implements ServerMessage {
+	record End(String type, PlayerRef winner, List<RankingEntry> ranking, int total, boolean stopped) implements ServerMessage {
 		/**
 		 * Construit le message
 		 * @param winner Vainqueur, ou null
-		 * @param ranking Classement final
+		 * @param ranking Classement final des joueurs humains
+		 * @param total Nombre de participants, robots compris
+		 * @param stopped true si la manche a été arrêtée avant son terme
 		 */
-		public End(PlayerRef winner, List<RankingEntry> ranking) { this("end", winner, List.copyOf(ranking)); }
+		public End(PlayerRef winner, List<RankingEntry> ranking, int total, boolean stopped) {
+			this("end", winner, List.copyOf(ranking), total, stopped);
+		}
 	}
 
 	/**

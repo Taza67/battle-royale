@@ -81,6 +81,10 @@ class GameSessionTest {
 
 	private static int[] action(int... bytes) { return bytes; }
 
+	private static List<String> states(FakeConnection c) {
+		return c.ofType("game").stream().map(m -> m.get("state").getAsString()).toList();
+	}
+
 	private void startRound() throws InterruptedException {
 		session.command(admin, Command.START);
 		ack(admin, "start", true, null);
@@ -280,7 +284,14 @@ class GameSessionTest {
 		assertEquals(1, ranking.get(0).getAsJsonObject().get("rank").getAsInt());
 		assertEquals("Taza", ranking.get(1).getAsJsonObject().get("pseudo").getAsString());
 		assertEquals(2, ranking.get(1).getAsJsonObject().get("kills").getAsInt());
+		assertEquals(2, end.get("total").getAsInt());
+		assertFalse(end.get("stopped").getAsBoolean());
+		assertEquals("over", admin.next("game").get("state").getAsString());
 		assertEquals(end, admin.next("end"));
+		JsonArray finalPlayers = admin.next("players").getAsJsonArray("players");
+		assertEquals(2, finalPlayers.get(0).getAsJsonObject().get("rank").getAsInt());
+		assertEquals("winner", finalPlayers.get(1).getAsJsonObject().get("status").getAsString());
+		assertEquals(30, finalPlayers.get(1).getAsJsonObject().get("life").getAsInt());
 		assertEquals(GameState.OVER, session.state());
 
 		List<JsonObject> states = taza.ofType("state");
@@ -346,22 +357,88 @@ class GameSessionTest {
 	@Test
 	void stopsTheRoundAndAllowsANewOne() throws Exception {
 		session.claimAdmin(admin, "");
-		session.join(taza, "Taza");
+		Player p0 = session.join(taza, "Taza");
+		game.state(SnapshotBytes.battle().counts(3, 3).player(0, 1, 90, 10, 10, 0, 0).build());
 		startRound();
 		assertEquals("running", taza.next("game").get("state").getAsString());
 		game.await(FakeGameServer.Actions.class, 2000);
+		game.stopState(SnapshotBytes.battle().phase(2).counts(1, 3).winner(-1)
+			.player(0, 0, 0, 10, 10, 1, 2)
+			.build());
 
 		session.command(admin, Command.STOP);
 		ack(admin, "stop", true, null);
 		assertEquals(GameLink.CODE_STOP, game.awaitControl(2000).code());
 		assertEquals("stopped", taza.next("game").get("state").getAsString());
 		assertEquals(GameState.STOPPED, session.state());
+
+		JsonObject end = taza.next("end");
+		assertTrue(end.get("stopped").getAsBoolean());
+		assertEquals(3, end.get("total").getAsInt(), "robots compris");
+		assertTrue(end.get("winner").isJsonNull());
+		JsonObject first = end.getAsJsonArray("ranking").get(0).getAsJsonObject();
+		assertEquals(2, first.get("rank").getAsInt());
+		assertEquals(1, first.get("kills").getAsInt());
+		assertEquals(end, admin.next("end"));
+		assertEquals(List.of("running", "stopped"), states(admin));
+		JsonObject entry = admin.next("players").getAsJsonArray("players").get(0).getAsJsonObject();
+		assertEquals("eliminated", entry.get("status").getAsString());
+		assertEquals(0, entry.get("life").getAsInt());
+		assertEquals(2, entry.get("rank").getAsInt());
+		assertEquals(1, entry.get("kills").getAsInt());
 		game.await(FakeGameServer.Closed.class, 2000);
+
+		FakeConnection phone = new FakeConnection("phone");
+		taza.drop();
+		session.disconnect(taza, p0);
+		assertSame(p0, session.join(phone, "Taza"));
+		assertEquals("stopped", phone.next("welcome").get("state").getAsString());
+		assertEquals(end, phone.next("end"));
+		FakeConnection admin2 = new FakeConnection("admin-2");
+		session.releaseAdmin(admin);
+		assertTrue(session.claimAdmin(admin2, ""));
+		assertEquals("stopped", admin2.next("admin-welcome").get("state").getAsString());
+		assertEquals(end, admin2.next("end"));
 
 		Player newcomer = session.join(emile, "Émile");
 		assertEquals(1, newcomer.getId());
-		startRound();
+		session.command(admin2, Command.START);
+		ack(admin2, "start", true, null);
 		assertEquals(2, game.await(FakeGameServer.Handshake.class, 2000).participants().size());
+	}
+
+	@Test
+	void endsTheStoppedRoundWithTheLastStateWhenTheGameNeverFinishes() throws Exception {
+		game.onStop(FakeGameServer.StopBehavior.IGNORE);
+		session.claimAdmin(admin, "");
+		session.join(taza, "Taza");
+		game.state(SnapshotBytes.battle().counts(4, 4).player(0, 1, 70, 10, 10, 3, 0).build());
+		startRound();
+		assertEquals(70, taza.next("state").get("life").getAsInt());
+
+		session.command(admin, Command.STOP);
+		ack(admin, "stop", true, null);
+		JsonObject end = admin.next("end", GameLink.STOP_TIMEOUT_MILLIS + 2000);
+		assertEquals(List.of("running", "stopped"), states(admin));
+		assertTrue(end.get("stopped").getAsBoolean());
+		assertEquals(4, end.get("total").getAsInt());
+		assertEquals(3, end.getAsJsonArray("ranking").get(0).getAsJsonObject().get("kills").getAsInt());
+		assertEquals(end, taza.next("end"));
+		game.await(FakeGameServer.Closed.class, 2000);
+	}
+
+	@Test
+	void stopsAPausedRoundWithAResult() throws Exception {
+		session.claimAdmin(admin, "");
+		session.join(taza, "Taza");
+		startRound();
+		session.command(admin, Command.PAUSE);
+		ack(admin, "pause", true, null);
+		assertEquals(GameLink.CODE_PAUSE, game.awaitControl(2000).code());
+		session.command(admin, Command.STOP);
+		ack(admin, "stop", true, null);
+		assertTrue(taza.next("end").get("stopped").getAsBoolean());
+		assertEquals(GameState.STOPPED, session.state());
 	}
 
 	@Test
@@ -387,6 +464,10 @@ class GameSessionTest {
 		game.dropNext();
 		assertEquals("stopped", taza.next("game").get("state").getAsString());
 		assertEquals(GameState.STOPPED, session.state());
+		assertTrue(taza.next("end").get("stopped").getAsBoolean());
+		admin.next("end");
+		assertEquals(List.of("running", "stopped"), states(admin));
+		admin.next("players");
 	}
 
 	@Test

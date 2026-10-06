@@ -23,8 +23,8 @@ class ServerMessageTest {
 			Json.write(ServerMessage.Ack.success("start")));
 		assertEquals("{\"type\":\"ack\",\"command\":\"start\",\"ok\":false,\"error\":\"Jeu injoignable\"}",
 			Json.write(ServerMessage.Ack.failure("start", "Jeu injoignable")));
-		assertEquals("{\"type\":\"end\",\"winner\":null,\"ranking\":[]}",
-			Json.write(new ServerMessage.End(null, List.of())));
+		assertEquals("{\"type\":\"end\",\"winner\":null,\"ranking\":[],\"total\":4,\"stopped\":true}",
+			Json.write(new ServerMessage.End(null, List.of(), 4, true)));
 	}
 
 	@Test
@@ -41,9 +41,9 @@ class ServerMessageTest {
 	@Test
 	void serializesEndAndPlayers() {
 		assertEquals("{\"type\":\"end\",\"winner\":{\"id\":3,\"pseudo\":\"Taza\"},"
-			+ "\"ranking\":[{\"id\":3,\"pseudo\":\"Taza\",\"kills\":2,\"rank\":1}]}",
+			+ "\"ranking\":[{\"id\":3,\"pseudo\":\"Taza\",\"kills\":2,\"rank\":1}],\"total\":5,\"stopped\":false}",
 			Json.write(new ServerMessage.End(new ServerMessage.PlayerRef(3, "Taza"),
-				List.of(new ServerMessage.RankingEntry(3, "Taza", 2, 1)))));
+				List.of(new ServerMessage.RankingEntry(3, "Taza", 2, 1)), 5, false)));
 		assertEquals("{\"type\":\"players\",\"players\":[{\"id\":3,\"pseudo\":\"Taza\",\"connected\":true,"
 			+ "\"status\":\"alive\",\"life\":87,\"kills\":2,\"rank\":0}]}",
 			Json.write(new ServerMessage.Players(List.of(
