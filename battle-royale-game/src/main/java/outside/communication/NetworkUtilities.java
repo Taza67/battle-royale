@@ -26,7 +26,8 @@ public final class NetworkUtilities {
 				boolean virtual = name.startsWith("docker") || name.startsWith("br-") || name.startsWith("veth") || name.startsWith("virbr");
 				for (InetAddress a : Collections.list(ni.getInetAddresses())) {
 					if (!(a instanceof Inet4Address) || a.isLoopbackAddress() || a.isLinkLocalAddress()) continue;
-					if (a.isSiteLocalAddress() && !virtual) return a.getHostAddress();
+					if (virtual) continue;
+					if (a.isSiteLocalAddress()) return a.getHostAddress();
 					if (fallback == null) fallback = a.getHostAddress();
 				}
 			}
