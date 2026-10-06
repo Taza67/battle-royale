@@ -119,6 +119,8 @@ public final class ClientMessageParser {
 			return element.getAsJsonObject();
 		} catch (IOException | JsonParseException | IllegalStateException e) {
 			throw new InvalidMessageException("JSON invalide", e);
+		} catch (StackOverflowError e) {
+			throw new InvalidMessageException("JSON trop profond", e);
 		}
 	}
 
