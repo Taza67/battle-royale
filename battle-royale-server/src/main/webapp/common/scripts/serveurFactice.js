@@ -2,11 +2,8 @@
 // Il implémente le côté serveur du protocole WebSocket décrit dans
 // docs/PROTOCOLE.md et simule une manche complète avec des joueurs robots.
 
-import { CODES_REFUS, pseudoValide } from "./protocole.js";
+import { CARTE, CODES_REFUS, VIE_MAXIMALE, pseudoValide } from "./protocole.js";
 
-const LARGEUR_CARTE = 1280;
-const HAUTEUR_CARTE = 720;
-const VIE_MAXIMALE = 100;
 const JOUEURS_MAXIMUM = 50;
 const ESSAIS_MOT_DE_PASSE = 5;
 
@@ -513,7 +510,7 @@ export class ServeurFactice {
 			connecte: robot,
 			statut: STATUTS.alive,
 			vie: VIE_MAXIMALE,
-			x: LARGEUR_CARTE / 2, y: HAUTEUR_CARTE / 2,
+			x: CARTE.width / 2, y: CARTE.height / 2,
 			kills: 0, rang: 0,
 			deplacement: null,
 			recharge: 0,
@@ -572,14 +569,14 @@ export class ServeurFactice {
 			joueur.vie = VIE_MAXIMALE;
 			joueur.kills = 0;
 			joueur.rang = 0;
-			joueur.x = Math.round(LARGEUR_CARTE / 2 + Math.cos(angle) * LARGEUR_CARTE * 0.35);
-			joueur.y = Math.round(HAUTEUR_CARTE / 2 + Math.sin(angle) * HAUTEUR_CARTE * 0.35);
+			joueur.x = Math.round(CARTE.width / 2 + Math.cos(angle) * CARTE.width * 0.35);
+			joueur.y = Math.round(CARTE.height / 2 + Math.sin(angle) * CARTE.height * 0.35);
 			joueur.deplacement = null;
 			joueur.cible = null;
 			joueur.recharge = 0;
 		});
 
-		const zone = { x1: 0, y1: 0, x2: LARGEUR_CARTE, y2: HAUTEUR_CARTE };
+		const zone = { x1: 0, y1: 0, x2: CARTE.width, y2: CARTE.height };
 		this.#manche = {
 			phase: "warmup",
 			total,
@@ -761,8 +758,8 @@ export class ServeurFactice {
 			if (deplacement !== null && (joueur.robot || this.#horloge <= deplacement.expiration)) {
 				const vecteur = DIRECTIONS[deplacement.direction];
 				const longueur = deplacement.vitesse * PIXELS_PAR_VITESSE * this.#options.vitesse;
-				joueur.x = borner(joueur.x + vecteur.x * longueur, 0, LARGEUR_CARTE);
-				joueur.y = borner(joueur.y + vecteur.y * longueur, 0, HAUTEUR_CARTE);
+				joueur.x = borner(joueur.x + vecteur.x * longueur, 0, CARTE.width);
+				joueur.y = borner(joueur.y + vecteur.y * longueur, 0, CARTE.height);
 			} else if (deplacement !== null) {
 				joueur.deplacement = null;
 			}
@@ -855,7 +852,7 @@ export class ServeurFactice {
 			secondsLeft: manche.phase === "over" ? 0 : Math.max(0, Math.ceil((manche.finEtape - this.#horloge) / 1000)),
 			zone: arrondirZone(manche.zone),
 			nextZone: arrondirZone(manche.prochaineZone),
-			map: { width: LARGEUR_CARTE, height: HAUTEUR_CARTE }
+			map: { width: CARTE.width, height: CARTE.height }
 		};
 	}
 

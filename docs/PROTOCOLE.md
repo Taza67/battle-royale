@@ -16,6 +16,11 @@ Constantes partagées : carte de `1280 × 720` pixels, `100` points de vie maxim
 directions numérotées dans le sens trigonométrique avec l'axe Y vers le bas :
 `0` est, `1` nord-est, `2` nord, `3` nord-ouest, `4` ouest, `5` sud-ouest, `6` sud, `7` sud-est.
 
+Le jeu accepte jusqu'à `100` joueurs par manche (`MAX_PLAYERS` de
+`battle-royale-game`) ; le serveur web n'en inscrit que `50`
+(`GameSession.MAX_PLAYERS`), un identifiant par image du panneau
+d'administration : la limite effective d'une partie en ligne est donc `50`.
+
 ## Jeu ⇄ serveur web (TCP)
 
 Le jeu écoute sur `127.0.0.1:8000` (options `--port` et `--bind`, par exemple
