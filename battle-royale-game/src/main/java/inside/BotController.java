@@ -51,6 +51,26 @@ public class BotController implements IConfig {
 	private static final float ZONE_MARGIN = 24;
 
 	/**
+	 * Prénoms des robots
+	 */
+	private static final String[] NAMES = {
+		"Astrid", "Bastien", "Chloé", "Dorian", "Elsa", "Félix", "Gaïa", "Hugo", "Inès", "Jules",
+		"Kenza", "Léon", "Maëlle", "Nino", "Océane", "Paco", "Quentin", "Rose", "Sacha", "Timéo",
+		"Ulysse", "Victor", "Wendy", "Xavier", "Yanis", "Zoé"
+	};
+
+	/**
+	 * Retourne le pseudo d'un robot
+	 * @param index Numéro du robot (à partir de 0)
+	 * @return Pseudo (au plus 16 caractères)
+	 */
+	public static String botName(int index) {
+		String name = NAMES[Math.floorMod(index, NAMES.length)];
+		int round = Math.floorDiv(index, NAMES.length);
+		return round == 0 ? name : name + " " + (round + 1);
+	}
+
+	/**
 	 * Mémoire d'un robot
 	 */
 	private static final class Memory {
