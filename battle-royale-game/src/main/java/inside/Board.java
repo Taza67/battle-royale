@@ -45,14 +45,6 @@ public class Board {
 	private static final Logger LOGGER = Logger.getLogger(Board.class.getName());
 
 	/**
-	 * Nombre d'éliminations conservées dans le fil des éliminations
-	 */
-	private static final int KILL_FEED_SIZE = 6;
-	/**
-	 * Nombre maximal d'événements conservés en attente de lecture
-	 */
-	private static final int MAX_PENDING_EVENTS = 2048;
-	/**
 	 * Nombre maximal de commandes en attente (les plus anciennes sont abandonnées au-delà)
 	 */
 	private static final int MAX_PENDING_COMMANDS = 4096;
@@ -110,17 +102,10 @@ public class Board {
 	 */
 	private final Deque<Command> suspended;
 	/**
-	 * Événements produits et pas encore lus
+	 * Journal des événements produits et des dernières éliminations
+	 * @see EventLog
 	 */
-	private final Deque<GameEvent> events;
-	/**
-	 * Événements abandonnés par saturation de la file depuis la dernière lecture
-	 */
-	private int droppedEvents;
-	/**
-	 * Dernières éliminations
-	 */
-	private final Deque<KillFeedEntry> killFeed;
+	private final EventLog eventLog;
 
 	/**
 	 * Dernière image publiée
@@ -185,8 +170,7 @@ public class Board {
 		bullets = new ArrayList<>();
 		commands = new ConcurrentLinkedQueue<>();
 		suspended = new ArrayDeque<>();
-		events = new ArrayDeque<>();
-		killFeed = new ArrayDeque<>();
+		eventLog = new EventLog();
 
 		for (PlayerSpec spec : players) {
 			if (this.players.containsKey(spec.id()))
@@ -242,13 +226,10 @@ public class Board {
 	 * @return Événements
 	 */
 	public List<GameEvent> drainEvents() {
-		if (droppedEvents > 0) {
-			LOGGER.warning(droppedEvents + " événement(s) abandonné(s) : file d'événements saturée");
-			droppedEvents = 0;
-		}
-		List<GameEvent> drained = new ArrayList<>(events);
-		events.clear();
-		return drained;
+		int dropped = eventLog.takeDropped();
+		if (dropped > 0)
+			LOGGER.warning(dropped + " événement(s) abandonné(s) : file d'événements saturée");
+		return eventLog.drain();
 	}
 
 	/**
@@ -598,8 +579,7 @@ public class Board {
 			p.kill(++eliminations, rank, tick);
 			map.removePlayer(p);
 
-			killFeed.addLast(new KillFeedEntry(tick, killer, p.getId(), p.getLastDamageCause()));
-			while (killFeed.size() > KILL_FEED_SIZE) killFeed.removeFirst();
+			eventLog.addKill(new KillFeedEntry(tick, killer, p.getId(), p.getLastDamageCause()));
 			addEvent(new GameEvent(GameEvent.Type.ELIMINATION, tick, killer, p.getId(), rank, p.getX(), p.getY(), p.getLastDamageCause()));
 		}
 	}
@@ -648,11 +628,7 @@ public class Board {
 	 * @param e Événement
 	 */
 	private void addEvent(GameEvent e) {
-		if (events.size() >= MAX_PENDING_EVENTS) {
-			events.pollFirst();
-			droppedEvents++;
-		}
-		events.addLast(e);
+		eventLog.add(e);
 	}
 
 	/**
@@ -680,7 +656,7 @@ public class Board {
 		snapshot = new BoardSnapshot(tick, phase, paused, stopped, getAliveCount(), players.size(), winnerId,
 			safeZone.getCurrent(), safeZone.getNext(), safeZone.getStage(), secondsLeft,
 			safeZone.getWaveIndex() + 1, safeZone.getWaveCount(), safeZone.getLavaDamagePerSecond(),
-			playerStates, bulletStates, new ArrayList<>(killFeed));
+			playerStates, bulletStates, eventLog.killFeed());
 	}
 
 	/**
