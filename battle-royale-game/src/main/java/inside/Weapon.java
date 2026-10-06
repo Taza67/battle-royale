@@ -27,7 +27,7 @@ public class Weapon {
 	/**
 	 * Identifiants des joueurs déjà touchés par le coup d'épée en cours
 	 */
-	private final Set<Integer> HIT_THIS_SWING = new HashSet<>();
+	private final Set<Integer> hitThisSwing = new HashSet<>();
 
 
 	/**
@@ -72,7 +72,7 @@ public class Weapon {
 		if (!canSwing()) return false;
 		activeTicksLeft = MELEE_ACTIVE_TICKS;
 		meleeCooldownLeft = MELEE_COOLDOWN_TICKS;
-		HIT_THIS_SWING.clear();
+		hitThisSwing.clear();
 		return true;
 	}
 
@@ -92,7 +92,7 @@ public class Weapon {
 	 * @return true si la cible n'avait pas encore été touchée par ce coup
 	 */
 	public boolean registerHit(int targetId) {
-		return isSwinging() && HIT_THIS_SWING.add(targetId);
+		return isSwinging() && hitThisSwing.add(targetId);
 	}
 
 	/**
@@ -109,7 +109,7 @@ public class Weapon {
 	 */
 	public void cancelSwing() {
 		activeTicksLeft = 0;
-		HIT_THIS_SWING.clear();
+		hitThisSwing.clear();
 	}
 
 	/**

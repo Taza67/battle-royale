@@ -11,15 +11,15 @@ public class Bullet extends Element {
 	/**
 	 * Identifiant du projectile
 	 */
-	private final int ID;
+	private final int id;
 	/**
 	 * Identifiant du joueur ayant tiré le projectile
 	 */
-	private final int OWNER_ID;
+	private final int ownerId;
 	/**
 	 * Composantes du vecteur unitaire de déplacement
 	 */
-	private final float DX, DY;
+	private final float dx, dy;
 	/**
 	 * Distance parcourue
 	 */
@@ -40,10 +40,10 @@ public class Bullet extends Element {
 	 */
 	public Bullet(int id, int ownerId, float x, float y, int direction) {
 		super(x, y, BULLET_RADIUS, BULLET_RADIUS);
-		ID = id;
-		OWNER_ID = ownerId;
-		DX = Direction.dx(direction);
-		DY = Direction.dy(direction);
+		this.id = id;
+		this.ownerId = ownerId;
+		dx = Direction.dx(direction);
+		dy = Direction.dy(direction);
 	}
 
 
@@ -51,22 +51,22 @@ public class Bullet extends Element {
 	 * Retourne l'identifiant du projectile
 	 * @return Identifiant
 	 */
-	public int getID() { return ID; }
+	public int getID() { return id; }
 	/**
 	 * Retourne l'identifiant du tireur
 	 * @return Identifiant du tireur
 	 */
-	public int getOwnerId() { return OWNER_ID; }
+	public int getOwnerId() { return ownerId; }
 	/**
 	 * Retourne la composante horizontale de la direction
 	 * @return Composante horizontale
 	 */
-	public float getDx() { return DX; }
+	public float getDx() { return dx; }
 	/**
 	 * Retourne la composante verticale de la direction
 	 * @return Composante verticale
 	 */
-	public float getDy() { return DY; }
+	public float getDy() { return dy; }
 	/**
 	 * Retourne la distance parcourue
 	 * @return Distance
@@ -84,8 +84,8 @@ public class Bullet extends Element {
 	 * @param distance Distance à parcourir
 	 */
 	void advance(float distance) {
-		x += DX * distance;
-		y += DY * distance;
+		x += dx * distance;
+		y += dy * distance;
 		traveled += distance;
 	}
 
