@@ -57,8 +57,10 @@ public class Vertice implements IConfig {
 
 	// Applique une rotation au point
 	public void rotate(float angle) {
-		x = (float)(x * Math.cos(angle) - y * Math.sin(angle));
-        y = (float)(x * Math.sin(angle) + y * Math.cos(angle));
+		float cos = (float)Math.cos(angle), sin = (float)Math.sin(angle);
+		float newX = x * cos - y * sin;
+		y = x * sin + y * cos;
+		x = newX;
 	}
 
 	// Applique une translation au point dans une certaine direction
