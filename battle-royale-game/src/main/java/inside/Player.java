@@ -195,9 +195,11 @@ public class Player extends Element implements IConfig {
 		
 		lifePoints -= r;
 		finalAttacker = lastAttacker;
-		if (lifePoints <= 0 && finalAttacker > -1 && BOARD.getPLAYERS()[lastAttacker] != null)
-        	BOARD.getPLAYERS()[lastAttacker].addVictim(ID);
-        	kill();
+		if (lifePoints <= 0) {
+			if (finalAttacker > -1 && BOARD.getPLAYERS()[lastAttacker] != null)
+				BOARD.getPLAYERS()[lastAttacker].addVictim(ID);
+			kill();
+		}
 	}
 
 	// Tue le joueur et l'ajoute aux joueurs décédés du jeu
