@@ -303,12 +303,7 @@ public class WorldRenderer {
 		float px = x + (float)Math.cos(a) * r, py = y + (float)Math.sin(a) * r;
 		float lx = x + (float)Math.cos(a + 0.35f) * (r - 5), ly = y + (float)Math.sin(a + 0.35f) * (r - 5);
 		float rx = x + (float)Math.cos(a - 0.35f) * (r - 5), ry = y + (float)Math.sin(a - 0.35f) * (r - 5);
-		color(ring);
-		org.lwjgl.opengl.GL11.glBegin(org.lwjgl.opengl.GL11.GL_TRIANGLES);
-		org.lwjgl.opengl.GL11.glVertex2f(px, py);
-		org.lwjgl.opengl.GL11.glVertex2f(lx, ly);
-		org.lwjgl.opengl.GL11.glVertex2f(rx, ry);
-		org.lwjgl.opengl.GL11.glEnd();
+		triangle(px, py, lx, ly, rx, ry, ring);
 
 		// Barre de vie
 		float ratio = p.life() / (float)MAX_LIFE_POINTS, bw = 30, by = y - h - 9;

@@ -324,6 +324,47 @@ public final class GraphicUtilities {
 	}
 
 	/**
+	 * Dessine un triangle plein
+	 * @param x1 Abscisse du premier sommet
+	 * @param y1 Ordonnée du premier sommet
+	 * @param x2 Abscisse du deuxième sommet
+	 * @param y2 Ordonnée du deuxième sommet
+	 * @param x3 Abscisse du troisième sommet
+	 * @param y3 Ordonnée du troisième sommet
+	 * @param c Couleur
+	 */
+	public static void triangle(float x1, float y1, float x2, float y2, float x3, float y3, Color c) {
+		color(c);
+		glBegin(GL_TRIANGLES);
+		glVertex2f(x1, y1);
+		glVertex2f(x2, y2);
+		glVertex2f(x3, y3);
+		glEnd();
+	}
+
+	/**
+	 * Dessine un quadrilatère plein
+	 * @param x1 Abscisse du premier sommet
+	 * @param y1 Ordonnée du premier sommet
+	 * @param x2 Abscisse du deuxième sommet
+	 * @param y2 Ordonnée du deuxième sommet
+	 * @param x3 Abscisse du troisième sommet
+	 * @param y3 Ordonnée du troisième sommet
+	 * @param x4 Abscisse du quatrième sommet
+	 * @param y4 Ordonnée du quatrième sommet
+	 * @param c Couleur
+	 */
+	public static void quad(float x1, float y1, float x2, float y2, float x3, float y3, float x4, float y4, Color c) {
+		color(c);
+		glBegin(GL_QUADS);
+		glVertex2f(x1, y1);
+		glVertex2f(x2, y2);
+		glVertex2f(x3, y3);
+		glVertex2f(x4, y4);
+		glEnd();
+	}
+
+	/**
 	 * Dessine un halo radial centré
 	 * @param glow Texture de halo
 	 * @param cx Abscisse du centre

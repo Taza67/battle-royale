@@ -254,15 +254,10 @@ public class Effects {
 				float size = p.size * (additive ? 0.6f + 0.6f * t : 1.2f - 0.4f * t);
 				Color c = p.color.withAlpha(p.color.a() * t);
 				if (p.square) {
-					GraphicUtilities.color(c);
 					float a = p.phase + (float)now * 6;
 					float ca = (float)Math.cos(a) * size, sa = (float)Math.sin(a) * size;
-					org.lwjgl.opengl.GL11.glBegin(org.lwjgl.opengl.GL11.GL_QUADS);
-					org.lwjgl.opengl.GL11.glVertex2f(p.x - ca - sa, p.y - sa + ca);
-					org.lwjgl.opengl.GL11.glVertex2f(p.x + ca - sa, p.y + sa + ca);
-					org.lwjgl.opengl.GL11.glVertex2f(p.x + ca + sa, p.y + sa - ca);
-					org.lwjgl.opengl.GL11.glVertex2f(p.x - ca + sa, p.y - sa - ca);
-					org.lwjgl.opengl.GL11.glEnd();
+					GraphicUtilities.quad(p.x - ca - sa, p.y - sa + ca, p.x + ca - sa, p.y + sa + ca,
+						p.x + ca + sa, p.y + sa - ca, p.x - ca + sa, p.y - sa - ca, c);
 				} else {
 					GraphicUtilities.glow(glow, p.x, p.y, size * 2, size * 2, c);
 				}
