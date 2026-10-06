@@ -25,7 +25,6 @@ import inside.GameEvent;
 import inside.IConfig;
 import outside.audio.AudioUtilities;
 import outside.communication.GameServer;
-import outside.communication.NetworkUtilities;
 import outside.graphic.Effects;
 import outside.graphic.Fonts;
 import outside.graphic.GraphicUtilities;
@@ -85,7 +84,7 @@ public class Game implements IConfig {
 	 */
 	public Game(LaunchOptions options) {
 		OPTIONS = options;
-		GAMEPAD_URL = NetworkUtilities.gamepadUrl(NetworkUtilities.lanIPv4());
+		GAMEPAD_URL = options.effectiveGamepadUrl();
 	}
 
 	/**

@@ -139,4 +139,21 @@ class LaunchOptionsTest implements IConfig {
 		assertTrue(ip.equals("localhost") || ip.matches("\\d+\\.\\d+\\.\\d+\\.\\d+"), ip);
 		assertFalse(ip.startsWith("127."));
 	}
+
+	@Test
+	void adresseDeLaManetteImposee() {
+		String url = "https://jeu.example.org/battle-royale-server/gamepad/";
+		LaunchOptions o = LaunchOptions.parse("--mode", "multi", "--gamepad-url", url);
+		assertEquals(url, o.gamepadUrl());
+		assertEquals(url, o.effectiveGamepadUrl());
+
+		LaunchOptions d = LaunchOptions.parse("--mode", "multi");
+		assertNull(d.gamepadUrl());
+		assertEquals(NetworkUtilities.gamepadUrl(NetworkUtilities.lanIPv4()), d.effectiveGamepadUrl(), "adresse déduite par défaut");
+		assertTrue(LaunchOptions.USAGE.contains("--gamepad-url URL"));
+
+		for (String bad : new String[] { "", "ftp://x/", "http://", "jeu.example.org", "http://a b/" })
+			assertThrows(IllegalArgumentException.class, () -> LaunchOptions.parse("--gamepad-url", bad), bad);
+		assertThrows(IllegalArgumentException.class, () -> LaunchOptions.parse("--gamepad-url"));
+	}
 }
