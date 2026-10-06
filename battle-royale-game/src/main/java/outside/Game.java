@@ -311,8 +311,10 @@ public class Game implements IConfig {
 		} else {
 			// Mémorise la position et la taille fenêtrée pour les restaurer à la sortie
 			try (MemoryStack stack = MemoryStack.stackPush()) {
-				var x = stack.mallocInt(1), y = stack.mallocInt(1);
-				var w = stack.mallocInt(1), h = stack.mallocInt(1);
+				var x = stack.mallocInt(1);
+				var y = stack.mallocInt(1);
+				var w = stack.mallocInt(1);
+				var h = stack.mallocInt(1);
 				glfwGetWindowPos(window, x, y);
 				glfwGetWindowSize(window, w, h);
 				windowedX = x.get(0); windowedY = y.get(0);

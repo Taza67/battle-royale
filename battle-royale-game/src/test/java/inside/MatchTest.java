@@ -23,7 +23,7 @@ class MatchTest implements IConfig {
 
 	@Test
 	void pauseFigeLaSimulationEtRepriseLaRelance() {
-		Board b = empty(1, 0);
+		Board b = empty(1, NO_BATTLE);
 		b.teleport(0, 300, 360);
 		b.enqueue(new Command.Control(Command.ControlType.PAUSE));
 		long tick = b.getTick();
