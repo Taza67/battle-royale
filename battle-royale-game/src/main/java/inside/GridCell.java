@@ -18,33 +18,33 @@ public class GridCell {
 	/**
 	 * Position de la zone dans la grille (colonne, ligne)
 	 */
-	private final int X, Y;
+	private final int column, row;
 	/**
 	 * Rectangle occupé par la zone
 	 */
-	private final Rectangle REPRESENTATION;
+	private final Rectangle representation;
 	/**
 	 * Obstacles chevauchant la zone
 	 */
-	private final List<Obstacle> OBSTACLES;
+	private final List<Obstacle> obstacles;
 	/**
 	 * Joueurs vivants présents dans la zone
 	 */
-	private final List<Player> PLAYERS;
+	private final List<Player> players;
 
 
 	/**
 	 * Construit une case de la grille
-	 * @param x Colonne
-	 * @param y Ligne
+	 * @param column Colonne
+	 * @param row Ligne
 	 */
-	public GridCell(int x, int y) {
-		X = x;
-		Y = y;
-		REPRESENTATION = new Rectangle(x * ONE_ZONE_WIDTH, y * ONE_ZONE_HEIGHT,
-			(x + 1) * ONE_ZONE_WIDTH, (y + 1) * ONE_ZONE_HEIGHT);
-		OBSTACLES = new ArrayList<>();
-		PLAYERS = new ArrayList<>();
+	public GridCell(int column, int row) {
+		this.column = column;
+		this.row = row;
+		representation = new Rectangle(column * ONE_ZONE_WIDTH, row * ONE_ZONE_HEIGHT,
+			(column + 1) * ONE_ZONE_WIDTH, (row + 1) * ONE_ZONE_HEIGHT);
+		obstacles = new ArrayList<>();
+		players = new ArrayList<>();
 	}
 
 
@@ -52,27 +52,27 @@ public class GridCell {
 	 * Retourne la colonne de la zone
 	 * @return Colonne
 	 */
-	public int getX() { return X; }
+	public int getX() { return column; }
 	/**
 	 * Retourne la ligne de la zone
 	 * @return Ligne
 	 */
-	public int getY() { return Y; }
+	public int getY() { return row; }
 	/**
 	 * Retourne le rectangle occupé par la zone
 	 * @return Rectangle
 	 */
-	public Rectangle getRepresentation() { return REPRESENTATION; }
+	public Rectangle getRepresentation() { return representation; }
 	/**
 	 * Retourne les obstacles chevauchant la zone
 	 * @return Liste non modifiable
 	 */
-	public List<Obstacle> getOBSTACLES() { return Collections.unmodifiableList(OBSTACLES); }
+	public List<Obstacle> getOBSTACLES() { return Collections.unmodifiableList(obstacles); }
 	/**
 	 * Retourne les joueurs présents dans la zone
 	 * @return Liste non modifiable
 	 */
-	public List<Player> getPLAYERS() { return Collections.unmodifiableList(PLAYERS); }
+	public List<Player> getPLAYERS() { return Collections.unmodifiableList(players); }
 
 
 	/**
@@ -80,7 +80,7 @@ public class GridCell {
 	 * @param o Obstacle
 	 */
 	void addObstacle(Obstacle o) {
-		OBSTACLES.add(o);
+		obstacles.add(o);
 	}
 
 	/**
@@ -88,7 +88,7 @@ public class GridCell {
 	 * @param p Joueur
 	 */
 	void addPlayer(Player p) {
-		if (!PLAYERS.contains(p)) PLAYERS.add(p);
+		if (!players.contains(p)) players.add(p);
 	}
 
 	/**
@@ -96,11 +96,11 @@ public class GridCell {
 	 * @param p Joueur
 	 */
 	void deletePlayer(Player p) {
-		PLAYERS.remove(p);
+		players.remove(p);
 	}
 
 	@Override
 	public String toString() {
-		return "(" + X + ", " + Y + ") - Nombre de joueurs dans la zone = " + PLAYERS.size();
+		return "(" + column + ", " + row + ") - Nombre de joueurs dans la zone = " + players.size();
 	}
 }

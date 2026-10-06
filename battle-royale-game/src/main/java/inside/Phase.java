@@ -22,17 +22,17 @@ public enum Phase {
 	/**
 	 * Code de la phase dans le protocole
 	 */
-	private final int CODE;
+	private final int code;
 
 	/**
 	 * Construit une phase
 	 * @param code Code de la phase dans le protocole
 	 */
-	Phase(int code) { CODE = code; }
+	Phase(int code) { this.code = code; }
 
 	/**
 	 * Retourne le code de la phase dans le protocole
 	 * @return Code (0 échauffement, 1 combat, 2 terminé)
 	 */
-	public int getCode() { return CODE; }
+	public int getCode() { return code; }
 }

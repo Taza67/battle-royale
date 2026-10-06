@@ -31,15 +31,15 @@ public class GameMap {
 	/**
 	 * Rectangle représentant les limites de la carte
 	 */
-	private final Rectangle BOUNDS;
+	private final Rectangle bounds;
 	/**
 	 * Obstacles de la carte
 	 */
-	private final List<Obstacle> OBSTACLES;
+	private final List<Obstacle> obstacles;
 	/**
 	 * Grille de zones, indexée par [ligne][colonne]
 	 */
-	private final GridCell[][] AREAS;
+	private final GridCell[][] cells;
 
 
 	/**
@@ -47,15 +47,15 @@ public class GameMap {
 	 * @param obstacles Obstacles de la carte
 	 */
 	public GameMap(List<Obstacle> obstacles) {
-		BOUNDS = new Rectangle(0, 0, MAP_WIDTH, MAP_HEIGHT);
-		OBSTACLES = new ArrayList<>(obstacles);
-		AREAS = new GridCell[AREAS_HEIGHT][AREAS_WIDTH];
+		bounds = new Rectangle(0, 0, MAP_WIDTH, MAP_HEIGHT);
+		this.obstacles = new ArrayList<>(obstacles);
+		cells = new GridCell[AREAS_HEIGHT][AREAS_WIDTH];
 
 		for (int i = 0; i < AREAS_HEIGHT; i++)
 			for (int j = 0; j < AREAS_WIDTH; j++)
-				AREAS[i][j] = new GridCell(j, i);
+				cells[i][j] = new GridCell(j, i);
 
-		for (Obstacle o : OBSTACLES)
+		for (Obstacle o : obstacles)
 			for (GridCell z : areasOverlapping(o.getRepresentation()))
 				z.addObstacle(o);
 	}
@@ -114,12 +114,12 @@ public class GameMap {
 	 * Retourne les limites de la carte
 	 * @return Rectangle de la carte
 	 */
-	public Rectangle getBounds() { return BOUNDS; }
+	public Rectangle getBounds() { return bounds; }
 	/**
 	 * Retourne les obstacles de la carte
 	 * @return Liste non modifiable
 	 */
-	public List<Obstacle> getOBSTACLES() { return Collections.unmodifiableList(OBSTACLES); }
+	public List<Obstacle> getOBSTACLES() { return Collections.unmodifiableList(obstacles); }
 
 	/**
 	 * Retourne une case de la grille ; les indices hors limites sont ramenés sur le bord
@@ -128,7 +128,7 @@ public class GameMap {
 	 * @return GridCell
 	 */
 	public GridCell getArea(int i, int j) {
-		return AREAS[clamp(i, AREAS_HEIGHT)][clamp(j, AREAS_WIDTH)];
+		return cells[clamp(i, AREAS_HEIGHT)][clamp(j, AREAS_WIDTH)];
 	}
 
 	/**
@@ -181,7 +181,7 @@ public class GameMap {
 
 		for (int i = r1; i <= r2; i++)
 			for (int j = c1; j <= c2; j++)
-				zones.add(AREAS[i][j]);
+				zones.add(cells[i][j]);
 
 		return zones;
 	}
@@ -207,7 +207,7 @@ public class GameMap {
 	 * @return true si l'emplacement est libre
 	 */
 	public boolean isFree(Rectangle r) {
-		return BOUNDS.contain(r) && obstacleIntersecting(r, false) == null;
+		return bounds.contain(r) && obstacleIntersecting(r, false) == null;
 	}
 
 	/**
