@@ -32,9 +32,32 @@ public class KeyboardInput implements IConfig {
 	public static final int WALK_SPEED = 2;
 
 	/**
-	 * Indique si le joueur se déplaçait à l'image précédente
+	 * Nombre d'images entre deux renvois d'une commande maintenue : l'intention de
+	 * déplacement expire après ~250 ms sans commande, un renvoi toutes les ~10 images
+	 * suffit à la garder vivante sans remplir la file d'instances identiques
 	 */
-	private boolean moving;
+	private static final int RESEND_FRAMES = 10;
+
+	/**
+	 * Dernière direction envoyée (-1 si le joueur est à l'arrêt)
+	 */
+	private int lastDirection = -1;
+	/**
+	 * Dernière vitesse envoyée
+	 */
+	private int lastSpeed;
+	/**
+	 * Épée enfoncée à l'image précédente
+	 */
+	private boolean melee;
+	/**
+	 * Tir enfoncé à l'image précédente
+	 */
+	private boolean shoot;
+	/**
+	 * Images écoulées depuis le dernier renvoi
+	 */
+	private int frames;
 
 	/**
 	 * Calcule la direction correspondant aux flèches enfoncées
@@ -57,23 +80,35 @@ public class KeyboardInput implements IConfig {
 	 * @param keys État des touches
 	 */
 	public void apply(Board board, int playerId, Keys keys) {
-		int d = direction(keys.up(), keys.down(), keys.left(), keys.right());
-		if (d >= 0) {
-			board.enqueue(new Command.Move(playerId, d, keys.slow() ? WALK_SPEED : RUN_SPEED));
-			moving = true;
-		} else if (moving) {
-			board.enqueue(new Command.Move(playerId, 0, 0));
-			moving = false;
-		}
+		boolean resend = ++frames >= RESEND_FRAMES;
+		if (resend) frames = 0;
 
-		if (keys.melee()) board.enqueue(new Command.Attack(playerId, ATTACK_MELEE));
-		if (keys.shoot()) board.enqueue(new Command.Attack(playerId, ATTACK_SHOOT));
+		int d = direction(keys.up(), keys.down(), keys.left(), keys.right());
+		int speed = d >= 0 ? (keys.slow() ? WALK_SPEED : RUN_SPEED) : 0;
+		if (d >= 0) {
+			// Renfile quand la commande change ou périodiquement pour rafraîchir l'intention
+			if (d != lastDirection || speed != lastSpeed || resend)
+				board.enqueue(new Command.Move(playerId, d, speed));
+		} else if (lastDirection >= 0) {
+			board.enqueue(new Command.Move(playerId, 0, 0));
+		}
+		lastDirection = d;
+		lastSpeed = speed;
+
+		if (keys.melee() && (!melee || resend)) board.enqueue(new Command.Attack(playerId, ATTACK_MELEE));
+		if (keys.shoot() && (!shoot || resend)) board.enqueue(new Command.Attack(playerId, ATTACK_SHOOT));
+		melee = keys.melee();
+		shoot = keys.shoot();
 	}
 
 	/**
 	 * Oublie l'état précédent (nouvelle partie)
 	 */
 	public void reset() {
-		moving = false;
+		lastDirection = -1;
+		lastSpeed = 0;
+		melee = false;
+		shoot = false;
+		frames = 0;
 	}
 }
