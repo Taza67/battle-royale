@@ -55,12 +55,12 @@ public interface IConfig {
 	/**
 	 * Distance minimale entre deux joueurs à l'apparition
 	 */
-	float SPAWN_MIN_DISTANCE = 70;
+	float SPAWN_MIN_DISTANCE = 110;
 
 	/**
 	 * Dégâts d'un coup d'épée
 	 */
-	int MELEE_DAMAGE = 20;
+	int MELEE_DAMAGE = 12;
 	/**
 	 * Durée pendant laquelle un coup d'épée peut toucher, en pas de simulation (150 ms)
 	 */
@@ -81,7 +81,7 @@ public interface IConfig {
 	/**
 	 * Dégâts d'une balle
 	 */
-	int BULLET_DAMAGE = 10;
+	int BULLET_DAMAGE = 9;
 	/**
 	 * Temps de recharge entre deux tirs, en pas de simulation (500 ms)
 	 */
