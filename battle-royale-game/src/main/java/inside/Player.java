@@ -137,7 +137,7 @@ public class Player extends Element {
 	 * Retourne l'identifiant du joueur
 	 * @return Identifiant
 	 */
-	public int getID() { return id; }
+	public int getId() { return id; }
 	/**
 	 * Retourne le pseudo du joueur
 	 * @return Pseudo
@@ -162,7 +162,7 @@ public class Player extends Element {
 	 * Indique si le joueur est en vie
 	 * @return true si le joueur est en vie
 	 */
-	public boolean getIsAlive() { return isAlive; }
+	public boolean isAlive() { return isAlive; }
 	/**
 	 * Retourne la direction du regard
 	 * @return Direction (0 à 7)

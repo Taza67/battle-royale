@@ -151,8 +151,8 @@ public class BotController {
 
 		long now = board.getTick();
 		for (Player bot : board.getPlayers()) {
-			if (!bot.isBot() || !bot.getIsAlive()) continue;
-			if ((now + bot.getID()) % DECISION_TICKS != 0) continue;
+			if (!bot.isBot() || !bot.isAlive()) continue;
+			if ((now + bot.getId()) % DECISION_TICKS != 0) continue;
 			decide(bot, now);
 		}
 	}
@@ -163,7 +163,7 @@ public class BotController {
 	 * @param now Pas courant
 	 */
 	private void decide(Player bot, long now) {
-		Memory m = memories.computeIfAbsent(bot.getID(), id -> {
+		Memory m = memories.computeIfAbsent(bot.getId(), id -> {
 			Memory mem = new Memory();
 			mem.turn = random.nextBoolean() ? 1 : -1;
 			mem.aggression = 0.2f + 0.8f * random.nextFloat();
@@ -223,7 +223,7 @@ public class BotController {
 			int d = Direction.fromVector(dx, dy);
 			m.stuck = 0;
 			move(bot, d, 1);
-			if (bot.getWeapon().canSwing()) board.enqueue(new Command.Attack(bot.getID(), ATTACK_MELEE));
+			if (bot.getWeapon().canSwing()) board.enqueue(new Command.Attack(bot.getId(), ATTACK_MELEE));
 			return;
 		}
 
@@ -277,7 +277,7 @@ public class BotController {
 		if (!board.getMap().hasLineOfSight(bot.getX(), bot.getY(), bot.getX() + dx, bot.getY() + dy)) return false;
 
 		move(bot, d, 1);
-		board.enqueue(new Command.Attack(bot.getID(), ATTACK_SHOOT));
+		board.enqueue(new Command.Attack(bot.getId(), ATTACK_SHOOT));
 		return true;
 	}
 
@@ -311,7 +311,7 @@ public class BotController {
 	private void goTo(Player bot, Memory m, float tx, float ty, int speed) {
 		int wanted = Direction.fromVector(tx - bot.getX(), ty - bot.getY());
 		if (wanted < 0) {
-			board.enqueue(new Command.Move(bot.getID(), 0, 0));
+			board.enqueue(new Command.Move(bot.getId(), 0, 0));
 			return;
 		}
 
@@ -393,7 +393,7 @@ public class BotController {
 	private Player target(Player bot, Memory m, long now) {
 		if (now - bot.getLastHitTick() < RETALIATION_TICKS && bot.getLastAttacker() >= 0) {
 			Player attacker = board.getPlayer(bot.getLastAttacker());
-			if (attacker != null && attacker.getIsAlive()) return attacker;
+			if (attacker != null && attacker.isAlive()) return attacker;
 		}
 		// Les robots sont d'abord prudents, puis de plus en plus agressifs à mesure que la zone se resserre
 		float pressure = Math.min(1, 0.15f + 0.2f * board.getSafeZone().getWaveIndex());
@@ -414,7 +414,7 @@ public class BotController {
 		Iterable<Player> candidates = hunt ? board.getPlayers()
 			: board.getMap().playersNear(Rectangle.centered(bot.getX(), bot.getY(), range, range));
 		for (Player p : candidates) {
-			if (p == bot || !p.getIsAlive()) continue;
+			if (p == bot || !p.isAlive()) continue;
 			float dx = p.getX() - bot.getX(), dy = p.getY() - bot.getY();
 			float d = dx * dx + dy * dy;
 			if (d < bestDistance) {
@@ -432,6 +432,6 @@ public class BotController {
 	 * @param speed Niveau de vitesse
 	 */
 	private void move(Player bot, int d, int speed) {
-		if (d >= 0) board.enqueue(new Command.Move(bot.getID(), d, speed));
+		if (d >= 0) board.enqueue(new Command.Move(bot.getId(), d, speed));
 	}
 }

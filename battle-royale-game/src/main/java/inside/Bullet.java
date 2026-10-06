@@ -51,7 +51,7 @@ public class Bullet extends Element {
 	 * Retourne l'identifiant du projectile
 	 * @return Identifiant
 	 */
-	public int getID() { return id; }
+	public int getId() { return id; }
 	/**
 	 * Retourne l'identifiant du tireur
 	 * @return Identifiant du tireur

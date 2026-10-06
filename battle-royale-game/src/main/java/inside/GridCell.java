@@ -67,12 +67,12 @@ public class GridCell {
 	 * Retourne les obstacles chevauchant la zone
 	 * @return Liste non modifiable
 	 */
-	public List<Obstacle> getOBSTACLES() { return Collections.unmodifiableList(obstacles); }
+	public List<Obstacle> getObstacles() { return Collections.unmodifiableList(obstacles); }
 	/**
 	 * Retourne les joueurs présents dans la zone
 	 * @return Liste non modifiable
 	 */
-	public List<Player> getPLAYERS() { return Collections.unmodifiableList(players); }
+	public List<Player> getPlayers() { return Collections.unmodifiableList(players); }
 
 
 	/**

@@ -144,7 +144,7 @@ class MovementTest {
 					assertTrue(b.getMap().isFree(p.getRepresentation()), "joueur dans un obstacle (graine " + seed + ")");
 					for (Player q : players)
 						if (p != q) assertFalse(p.getRepresentation().intersect(q.getRepresentation()),
-							n + " joueurs, graine " + seed + " : " + p.getID() + " chevauche " + q.getID());
+							n + " joueurs, graine " + seed + " : " + p.getId() + " chevauche " + q.getId());
 				}
 			}
 		}
@@ -158,10 +158,10 @@ class MovementTest {
 				float x = p.getX(), y = p.getY();
 				boolean moved = false;
 				for (int d = 0; d < 8 && !moved; d += 2) {
-					hold(b, p.getID(), d, MAX_SPEED_LEVEL, 3);
+					hold(b, p.getId(), d, MAX_SPEED_LEVEL, 3);
 					moved = p.getX() != x || p.getY() != y;
 				}
-				assertTrue(moved, "joueur " + p.getID() + " bloqué dans toutes les directions (graine " + seed + ")");
+				assertTrue(moved, "joueur " + p.getId() + " bloqué dans toutes les directions (graine " + seed + ")");
 			}
 		}
 	}

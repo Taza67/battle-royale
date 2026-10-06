@@ -302,7 +302,7 @@ public class Board {
 	public int getAliveCount() {
 		int n = 0;
 		for (Player p : players.values())
-			if (p.getIsAlive()) n++;
+			if (p.isAlive()) n++;
 		return n;
 	}
 	/**
@@ -327,7 +327,7 @@ public class Board {
 				startBattle();
 
 			for (Player p : players.values())
-				if (p.getIsAlive()) movePlayer(p);
+				if (p.isAlive()) movePlayer(p);
 
 			resolveMelee();
 			updateBullets();
@@ -400,7 +400,7 @@ public class Board {
 	 */
 	private void applyMove(Command.Move move) {
 		Player p = players.get(move.playerId());
-		if (p == null || !p.getIsAlive()) return;
+		if (p == null || !p.isAlive()) return;
 
 		if (move.speed() <= 0) p.stop();
 		else if (Direction.isValid(move.direction())) p.setMoveIntent(move.direction(), move.speed(), tick);
@@ -412,11 +412,11 @@ public class Board {
 	 */
 	private void applyAttack(Command.Attack attack) {
 		Player p = players.get(attack.playerId());
-		if (p == null || !p.getIsAlive()) return;
+		if (p == null || !p.isAlive()) return;
 
 		if (attack.form() == ATTACK_MELEE) {
 			if (p.getWeapon().startSwing())
-				addEvent(new GameEvent(GameEvent.Type.SWING, tick, p.getID(), -1, 0, p.getX(), p.getY(), DamageCause.MELEE));
+				addEvent(new GameEvent(GameEvent.Type.SWING, tick, p.getId(), -1, 0, p.getX(), p.getY(), DamageCause.MELEE));
 		} else if (attack.form() == ATTACK_SHOOT) {
 			if (p.getWeapon().tryShoot())
 				shoot(p);
@@ -431,12 +431,12 @@ public class Board {
 		int d = p.getViewDirection();
 		float offset = Math.max(p.getRadiusX(), p.getRadiusY()) + BULLET_RADIUS + 1;
 		float bx = p.getX() + Direction.dx(d) * offset, by = p.getY() + Direction.dy(d) * offset;
-		Bullet b = new Bullet(nextBulletId++, p.getID(), bx, by, d);
+		Bullet b = new Bullet(nextBulletId++, p.getId(), bx, by, d);
 
-		addEvent(new GameEvent(GameEvent.Type.SHOT, tick, p.getID(), -1, 0, bx, by, DamageCause.BULLET));
+		addEvent(new GameEvent(GameEvent.Type.SHOT, tick, p.getId(), -1, 0, bx, by, DamageCause.BULLET));
 
 		if (!map.getBounds().contains(bx, by) || map.obstacleIntersecting(b.getRepresentation(), true) != null) {
-			addEvent(new GameEvent(GameEvent.Type.BULLET_BLOCKED, tick, p.getID(), -1, 0, bx, by, DamageCause.BULLET));
+			addEvent(new GameEvent(GameEvent.Type.BULLET_BLOCKED, tick, p.getId(), -1, 0, bx, by, DamageCause.BULLET));
 			return;
 		}
 
@@ -524,13 +524,13 @@ public class Board {
 	 */
 	private Rectangle findBlocker(Player self, Rectangle r, Rectangle start) {
 		for (GridCell z : map.areasOverlapping(r))
-			for (Obstacle o : z.getOBSTACLES()) {
+			for (Obstacle o : z.getObstacles()) {
 				Rectangle or = o.getRepresentation();
 				if (or.intersect(r) && !or.intersect(start)) return or;
 			}
 
 		for (Player other : map.playersNear(r.expand(Math.max(PLAYER_RADIUS_X, PLAYER_RADIUS_Y)))) {
-			if (other == self || !other.getIsAlive()) continue;
+			if (other == self || !other.isAlive()) continue;
 			Rectangle or = other.getRepresentation();
 			if (or.intersect(r) && !or.intersect(start)) return or;
 		}
@@ -543,15 +543,15 @@ public class Board {
 	 */
 	private void resolveMelee() {
 		for (Player p : players.values()) {
-			if (!p.getIsAlive() || !p.getWeapon().isSwinging()) continue;
+			if (!p.isAlive() || !p.getWeapon().isSwinging()) continue;
 
 			Rectangle reach = Rectangle.centered(p.getX(), p.getY(), MELEE_RANGE, MELEE_RANGE);
 			for (Player target : map.playersNear(reach.expand(PLAYER_RADIUS_X))) {
-				if (target == p || !target.getIsAlive() || !Weapon.isInReach(p, target)) continue;
-				if (!p.getWeapon().registerHit(target.getID())) continue;
+				if (target == p || !target.isAlive() || !Weapon.isInReach(p, target)) continue;
+				if (!p.getWeapon().registerHit(target.getId())) continue;
 
-				int damage = phase == Phase.BATTLE ? target.reduceLifePoints(MELEE_DAMAGE, p.getID(), DamageCause.MELEE, tick) : 0;
-				addEvent(new GameEvent(GameEvent.Type.HIT, tick, p.getID(), target.getID(), damage,
+				int damage = phase == Phase.BATTLE ? target.reduceLifePoints(MELEE_DAMAGE, p.getId(), DamageCause.MELEE, tick) : 0;
+				addEvent(new GameEvent(GameEvent.Type.HIT, tick, p.getId(), target.getId(), damage,
 					target.getX(), target.getY(), DamageCause.MELEE));
 			}
 		}
@@ -604,10 +604,10 @@ public class Board {
 		}
 
 		for (Player target : map.playersNear(r.expand(PLAYER_RADIUS_X))) {
-			if (target.getID() == b.getOwnerId() || !target.getIsAlive() || !target.getRepresentation().intersect(r)) continue;
+			if (target.getId() == b.getOwnerId() || !target.isAlive() || !target.getRepresentation().intersect(r)) continue;
 
 			int damage = phase == Phase.BATTLE ? target.reduceLifePoints(BULLET_DAMAGE, b.getOwnerId(), DamageCause.BULLET, tick) : 0;
-			addEvent(new GameEvent(GameEvent.Type.HIT, tick, b.getOwnerId(), target.getID(), damage,
+			addEvent(new GameEvent(GameEvent.Type.HIT, tick, b.getOwnerId(), target.getId(), damage,
 				b.getX(), b.getY(), DamageCause.BULLET));
 			b.destroy();
 			return;
@@ -637,7 +637,7 @@ public class Board {
 		float damage = safeZone.getLavaDamagePerSecond() * TICK_DURATION;
 
 		for (Player p : players.values()) {
-			if (!p.getIsAlive()) continue;
+			if (!p.isAlive()) continue;
 
 			boolean outside = !safeZone.getCurrent().contain(p.getRepresentation());
 			p.setInLava(outside);
@@ -671,9 +671,9 @@ public class Board {
 			p.kill(++eliminations, rank, tick);
 			map.removePlayer(p);
 
-			killFeed.addLast(new KillFeedEntry(tick, killer, p.getID(), p.getLastDamageCause()));
+			killFeed.addLast(new KillFeedEntry(tick, killer, p.getId(), p.getLastDamageCause()));
 			while (killFeed.size() > KILL_FEED_SIZE) killFeed.removeFirst();
-			addEvent(new GameEvent(GameEvent.Type.ELIMINATION, tick, killer, p.getID(), rank, p.getX(), p.getY(), p.getLastDamageCause()));
+			addEvent(new GameEvent(GameEvent.Type.ELIMINATION, tick, killer, p.getId(), rank, p.getX(), p.getY(), p.getLastDamageCause()));
 		}
 	}
 
@@ -697,12 +697,12 @@ public class Board {
 
 		List<Player> survivors = new ArrayList<>();
 		for (Player p : players.values())
-			if (p.getIsAlive()) survivors.add(p);
+			if (p.isAlive()) survivors.add(p);
 		survivors.sort(Comparator.comparingInt(Player::getKills).reversed()
 			.thenComparing(Comparator.comparingInt(Player::getLifePoints).reversed())
-			.thenComparingInt(Player::getID));
+			.thenComparingInt(Player::getId));
 
-		winnerId = survivors.size() == 1 ? survivors.get(0).getID() : -1;
+		winnerId = survivors.size() == 1 ? survivors.get(0).getId() : -1;
 		for (int i = 0; i < survivors.size(); i++) {
 			Player p = survivors.get(i);
 			p.setRank(i + 1);
@@ -735,15 +735,15 @@ public class Board {
 		List<PlayerState> playerStates = new ArrayList<>(players.size());
 		for (Player p : players.values()) {
 			Weapon w = p.getWeapon();
-			playerStates.add(new PlayerState(p.getID(), p.getPseudo(), p.isBot(), p.getX(), p.getY(), p.getLifePoints(),
-				p.getIsAlive(), p.getID() == winnerId, p.getKills(), p.getRank(), p.getViewDirection(), p.isMoving(),
+			playerStates.add(new PlayerState(p.getId(), p.getPseudo(), p.isBot(), p.getX(), p.getY(), p.getLifePoints(),
+				p.isAlive(), p.getId() == winnerId, p.getKills(), p.getRank(), p.getViewDirection(), p.isMoving(),
 				w.getSwingProgress(), p.getLastHitTick(), p.isInLava(), w.getMeleeCooldownLeft(), w.getShootCooldownLeft(),
 				p.getLastAttacker(), p.getEliminationOrder()));
 		}
 
 		List<BulletState> bulletStates = new ArrayList<>(bullets.size());
 		for (Bullet b : bullets)
-			bulletStates.add(new BulletState(b.getID(), b.getOwnerId(), b.getX(), b.getY(), b.getDx(), b.getDy()));
+			bulletStates.add(new BulletState(b.getId(), b.getOwnerId(), b.getX(), b.getY(), b.getDx(), b.getDy()));
 
 		int secondsLeft;
 		if (phase == Phase.WARMUP) secondsLeft = (int)((getWarmupTicksLeft() + TICKS_PER_SECOND - 1) / TICKS_PER_SECOND);
@@ -766,7 +766,7 @@ public class Board {
 		Player p = players.get(id);
 		if (p == null) return;
 		p.setPosition(x, y);
-		if (p.getIsAlive()) map.updatePlayerArea(p);
+		if (p.isAlive()) map.updatePlayerArea(p);
 		publishSnapshot();
 	}
 

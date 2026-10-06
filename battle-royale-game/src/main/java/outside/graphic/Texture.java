@@ -100,7 +100,7 @@ public class Texture {
 	 * Retourne l'identifiant OpenGL
 	 * @return Identifiant
 	 */
-	public int getID() { return ID; }
+	public int getId() { return ID; }
 	/**
 	 * Retourne la largeur
 	 * @return Largeur en pixels

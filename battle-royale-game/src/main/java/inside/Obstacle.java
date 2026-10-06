@@ -47,7 +47,7 @@ public class Obstacle extends Element {
 		 * Retourne le numéro de texture
 		 * @return Numéro de texture
 		 */
-		public int getTEXTURE_NUMBER() { return textureNumber; }
+		public int getTextureNumber() { return textureNumber; }
 
 		/**
 		 * Indique si l'obstacle arrête les balles
@@ -139,11 +139,11 @@ public class Obstacle extends Element {
 	 * Retourne le type de l'obstacle
 	 * @return Type de l'obstacle
 	 */
-	public TypeObstacle getTYPE() { return type; }
+	public TypeObstacle getType() { return type; }
 
 	/**
 	 * Retourne le numéro de texture de l'obstacle
 	 * @return Numéro de texture
 	 */
-	public int getTextureNumber() { return type.getTEXTURE_NUMBER(); }
+	public int getTextureNumber() { return type.getTextureNumber(); }
 }

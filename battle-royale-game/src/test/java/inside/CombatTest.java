@@ -34,7 +34,7 @@ class CombatTest {
 		run(b, MELEE_ACTIVE_TICKS + 2);
 
 		assertEquals(MAX_LIFE_POINTS - MELEE_DAMAGE, b.getPlayer(1).getLifePoints());
-		assertTrue(b.getPlayer(1).getIsAlive());
+		assertTrue(b.getPlayer(1).isAlive());
 		assertEquals(0, b.getPlayer(1).getLastAttacker());
 	}
 
@@ -166,7 +166,7 @@ class CombatTest {
 
 		assertTrue(b.isOver());
 		Player loser = b.getPlayer(1), winner = b.getPlayer(0);
-		assertFalse(loser.getIsAlive());
+		assertFalse(loser.isAlive());
 		assertEquals(0, loser.getLifePoints());
 		assertEquals(2, loser.getRank());
 		assertEquals(1, loser.getEliminationOrder());
@@ -218,7 +218,7 @@ class CombatTest {
 		b.tick();
 		b.getPlayer(2).reduceLifePoints(MAX_LIFE_POINTS, 0, DamageCause.BULLET, b.getTick());
 		b.tick();
-		assertFalse(b.getPlayer(2).getIsAlive());
+		assertFalse(b.getPlayer(2).isAlive());
 
 		float x = b.getPlayer(2).getX();
 		b.enqueue(new Command.Move(2, EAST, 4));

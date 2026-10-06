@@ -119,7 +119,7 @@ public class GameMap {
 	 * Retourne les obstacles de la carte
 	 * @return Liste non modifiable
 	 */
-	public List<Obstacle> getOBSTACLES() { return Collections.unmodifiableList(obstacles); }
+	public List<Obstacle> getObstacles() { return Collections.unmodifiableList(obstacles); }
 
 	/**
 	 * Retourne une case de la grille ; les indices hors limites sont ramenés sur le bord
@@ -194,8 +194,8 @@ public class GameMap {
 	 */
 	public Obstacle obstacleIntersecting(Rectangle r, boolean bulletBlockersOnly) {
 		for (GridCell z : areasOverlapping(r))
-			for (Obstacle o : z.getOBSTACLES())
-				if ((!bulletBlockersOnly || o.getTYPE().blocksBullets()) && o.getRepresentation().intersect(r))
+			for (Obstacle o : z.getObstacles())
+				if ((!bulletBlockersOnly || o.getType().blocksBullets()) && o.getRepresentation().intersect(r))
 					return o;
 
 		return null;
@@ -241,7 +241,7 @@ public class GameMap {
 	public List<Player> playersNear(Rectangle r) {
 		List<Player> players = new ArrayList<>();
 		for (GridCell z : areasOverlapping(r))
-			players.addAll(z.getPLAYERS());
+			players.addAll(z.getPlayers());
 		return players;
 	}
 
