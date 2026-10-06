@@ -3,6 +3,24 @@
 
 const CLE_IGNORE = "battle-royale.sans-plein-ecran";
 
+// sessionStorage peut être inaccessible (cookies bloqués, navigation privée) :
+// l'invitation est alors simplement proposée à chaque chargement.
+function invitationIgnoree() {
+	try {
+		return sessionStorage.getItem(CLE_IGNORE) !== null;
+	} catch (erreur) {
+		return false;
+	}
+}
+
+function ignorerInvitation() {
+	try {
+		sessionStorage.setItem(CLE_IGNORE, "1");
+	} catch (erreur) {
+		// Choix non mémorisé : sans conséquence.
+	}
+}
+
 /**
  * Indique si la page est affichée en plein écran.
  */
@@ -76,7 +94,7 @@ export function initialiserPleinEcran({ invitation, boutonEntrer, boutonIgnorer,
 
 	boutonIgnorer.addEventListener("click", () => {
 		invitation.hidden = true;
-		sessionStorage.setItem(CLE_IGNORE, "1");
+		ignorerInvitation();
 	});
 
 	for (const bouton of boutonsDiscrets)
@@ -84,7 +102,7 @@ export function initialiserPleinEcran({ invitation, boutonEntrer, boutonIgnorer,
 	document.addEventListener("fullscreenchange", actualiser);
 	document.addEventListener("webkitfullscreenchange", actualiser);
 
-	invitation.hidden = !(disponible && estAppareilTactile() && !estPleinEcran() && sessionStorage.getItem(CLE_IGNORE) === null);
+	invitation.hidden = !(disponible && estAppareilTactile() && !estPleinEcran() && !invitationIgnoree());
 	actualiser();
 
 	if (!invitation.hidden)

@@ -398,15 +398,20 @@ element("pseudo").addEventListener("input", () => {
 	element("erreur-inscription").textContent = "";
 });
 
-initialiserPleinEcran({
-	invitation: element("invitation-plein-ecran"),
-	boutonEntrer: element("bouton-plein-ecran"),
-	boutonIgnorer: element("bouton-sans-plein-ecran"),
-	boutonsDiscrets: [element("bouton-plein-ecran-flottant"), element("bouton-plein-ecran-manette")]
-});
-
 lierIndicateurConnexion(element("connexion"), connexion, estModeDemo());
 lierIndicateurConnexion(element("connexion-manette"), connexion, estModeDemo());
 reinitialiserEtat(VIE_MAXIMALE);
 actualiser();
 connexion.ouvrir();
+
+// Le plein écran est un confort : son échec ne doit pas empêcher de jouer.
+try {
+	initialiserPleinEcran({
+		invitation: element("invitation-plein-ecran"),
+		boutonEntrer: element("bouton-plein-ecran"),
+		boutonIgnorer: element("bouton-sans-plein-ecran"),
+		boutonsDiscrets: [element("bouton-plein-ecran-flottant"), element("bouton-plein-ecran-manette")]
+	});
+} catch (erreur) {
+	console.warn("Plein écran indisponible :", erreur);
+}
