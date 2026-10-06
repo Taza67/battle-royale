@@ -48,14 +48,27 @@ public sealed interface ServerMessage {
 	/**
 	 * Inscription (joueur ou administrateur) refusée
 	 * @param type Toujours "rejected"
-	 * @param reason Raison du refus
+	 * @param code Code stable du refus, comparé par les clients
+	 * @param reason Raison du refus, en français, destinée à l'affichage
 	 */
-	record Rejected(String type, String reason) implements ServerMessage {
+	record Rejected(String type, String code, String reason) implements ServerMessage {
+		/**
+		 * Code du refus générique, quand aucun code plus précis ne s'applique
+		 */
+		public static final String GAME_REFUSED = "game-refused";
+
 		/**
 		 * Construit le message
-		 * @param reason Raison du refus
+		 * @param code Code stable du refus
+		 * @param reason Raison du refus, destinée à l'affichage
 		 */
-		public Rejected(String reason) { this("rejected", reason); }
+		public Rejected(String code, String reason) { this("rejected", code, reason); }
+
+		/**
+		 * Construit le message avec le code générique
+		 * @param reason Raison du refus, destinée à l'affichage
+		 */
+		public Rejected(String reason) { this(GAME_REFUSED, reason); }
 	}
 
 	/**

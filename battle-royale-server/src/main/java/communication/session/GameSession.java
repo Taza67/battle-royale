@@ -61,6 +61,8 @@ public final class GameSession implements AutoCloseable {
 
 	/** Refus : pseudo associé à une session ouverte */
 	public static final String PSEUDO_TAKEN = "Pseudo déjà utilisé";
+	/** Code stable du refus PSEUDO_TAKEN */
+	public static final String CODE_PSEUDO_TAKEN = "pseudo-taken";
 	/** Refus : inscription pendant une manche */
 	public static final String REGISTRATION_CLOSED = "Inscriptions fermées : la partie a déjà commencé";
 	/** Refus : nombre maximal de joueurs atteint */
@@ -69,6 +71,8 @@ public final class GameSession implements AutoCloseable {
 	public static final String WRONG_PASSWORD = "Mot de passe administrateur incorrect";
 	/** Refus envoyé à l'ancienne session d'un joueur reprise grâce au jeton */
 	public static final String SESSION_TAKEN_OVER = "Session reprise par une autre connexion";
+	/** Code stable du refus SESSION_TAKEN_OVER */
+	public static final String CODE_SESSION_TAKEN_OVER = "session-taken-over";
 	/** Raison de fermeture après trop de mots de passe administrateur erronés */
 	public static final String TOO_MANY_WRONG_PASSWORDS = "Trop de mots de passe administrateur incorrects";
 	/** Nombre de mots de passe administrateur erronés au bout duquel la session est fermée */
@@ -77,6 +81,8 @@ public final class GameSession implements AutoCloseable {
 	public static final String ADMIN_TAKEN = "Un administrateur est déjà connecté";
 	/** Refus envoyé à l'ancienne session administrateur remplacée */
 	public static final String ADMIN_REPLACED = "Session administrateur reprise par une autre connexion";
+	/** Code stable du refus ADMIN_REPLACED */
+	public static final String CODE_ADMIN_REPLACED = "admin-replaced";
 	/** Erreur : aucun joueur */
 	public static final String NO_PLAYER = "Aucun joueur inscrit";
 	/** Erreur : aucun joueur connecté au lancement */
@@ -230,11 +236,11 @@ public final class GameSession implements AutoCloseable {
 				if (current != null && current != c && current.isOpen()) {
 					if (!tokenMatches(pseudo, token)) {
 						LOG.info(() -> "Pseudo " + pseudo + " refusé pour " + c.id() + " : session " + current.id() + " ouverte");
-						reject(c, PSEUDO_TAKEN);
+						reject(c, CODE_PSEUDO_TAKEN, PSEUDO_TAKEN);
 						return null;
 					}
 					LOG.info(() -> "Session " + current.id() + " de " + existing + " reprise par " + c.id());
-					reject(current, SESSION_TAKEN_OVER);
+					reject(current, CODE_SESSION_TAKEN_OVER, SESSION_TAKEN_OVER);
 					current.close(SESSION_TAKEN_OVER);
 				}
 				existing.attach(c);
@@ -294,7 +300,7 @@ public final class GameSession implements AutoCloseable {
 				ClientConnection previous = admin;
 				if (previous != null && previous != c) {
 					LOG.info(() -> "Session administrateur " + previous.id() + " remplacée par " + c.id());
-					previous.send(Json.write(new ServerMessage.Rejected(ADMIN_REPLACED)));
+					previous.send(Json.write(new ServerMessage.Rejected(CODE_ADMIN_REPLACED, ADMIN_REPLACED)));
 					previous.close(ADMIN_REPLACED);
 				}
 			} else if (admin != null && admin != c && admin.isOpen()) {
@@ -824,7 +830,11 @@ public final class GameSession implements AutoCloseable {
 	}
 
 	private static void reject(ClientConnection c, String reason) {
-		c.send(Json.write(new ServerMessage.Rejected(reason)));
+		reject(c, ServerMessage.Rejected.GAME_REFUSED, reason);
+	}
+
+	private static void reject(ClientConnection c, String code, String reason) {
+		c.send(Json.write(new ServerMessage.Rejected(code, reason)));
 	}
 
 	private static String key(String pseudo) {

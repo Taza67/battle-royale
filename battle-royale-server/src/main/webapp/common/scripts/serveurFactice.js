@@ -2,7 +2,7 @@
 // Il implémente le côté serveur du protocole WebSocket décrit dans
 // docs/PROTOCOLE.md et simule une manche complète avec des joueurs robots.
 
-import { pseudoValide } from "./protocole.js";
+import { CODES_REFUS, pseudoValide } from "./protocole.js";
 
 const LARGEUR_CARTE = 1280;
 const HAUTEUR_CARTE = 720;
@@ -11,15 +11,15 @@ const JOUEURS_MAXIMUM = 50;
 const ESSAIS_MOT_DE_PASSE = 5;
 
 const REFUS = Object.freeze({
-	pseudoInvalide: "Pseudo invalide : 1 à 16 caractères",
-	pseudoPris: "Pseudo déjà utilisé",
-	inscriptionsFermees: "Inscriptions fermées : la partie a déjà commencé",
-	complet: "Partie complète",
-	sessionReprise: "Session reprise par une autre connexion",
-	dejaInscrite: "Session déjà inscrite",
-	motDePasse: "Mot de passe administrateur incorrect",
-	adminPris: "Un administrateur est déjà connecté",
-	adminRemplace: "Session administrateur reprise par une autre connexion"
+	pseudoInvalide: { code: CODES_REFUS.refusPartie, reason: "Pseudo invalide : 1 à 16 caractères" },
+	pseudoPris: { code: CODES_REFUS.pseudoPris, reason: "Pseudo déjà utilisé" },
+	inscriptionsFermees: { code: CODES_REFUS.refusPartie, reason: "Inscriptions fermées : la partie a déjà commencé" },
+	complet: { code: CODES_REFUS.refusPartie, reason: "Partie complète" },
+	sessionReprise: { code: CODES_REFUS.sessionReprise, reason: "Session reprise par une autre connexion" },
+	dejaInscrite: { code: CODES_REFUS.refusPartie, reason: "Session déjà inscrite" },
+	motDePasse: { code: CODES_REFUS.refusPartie, reason: "Mot de passe administrateur incorrect" },
+	adminPris: { code: CODES_REFUS.refusPartie, reason: "Un administrateur est déjà connecté" },
+	adminRemplace: { code: CODES_REFUS.adminRemplace, reason: "Session administrateur reprise par une autre connexion" }
 });
 
 const DUREE_TICK = 50;
@@ -374,12 +374,12 @@ export class ServeurFactice {
 		const pseudo = typeof pseudoRecu === "string" ? pseudoRecu.trim() : "";
 
 		if (socket === this.#admin || this.#joueurDeSession(socket) !== null) {
-			socket.livrer({ type: "rejected", reason: REFUS.dejaInscrite });
+			socket.livrer({ type: "rejected", ...REFUS.dejaInscrite });
 			return;
 		}
 
 		if (!pseudoValide(pseudo)) {
-			socket.livrer({ type: "rejected", reason: REFUS.pseudoInvalide });
+			socket.livrer({ type: "rejected", ...REFUS.pseudoInvalide });
 			return;
 		}
 
@@ -388,20 +388,20 @@ export class ServeurFactice {
 		if (joueur !== undefined) {
 			const ancienne = joueur.session;
 			if (joueur.robot || (ancienne !== null && jeton !== joueur.jeton)) {
-				socket.livrer({ type: "rejected", reason: REFUS.pseudoPris });
+				socket.livrer({ type: "rejected", ...REFUS.pseudoPris });
 				return;
 			}
 			if (ancienne !== null) {
 				joueur.session = null;
-				ancienne.congedier({ type: "rejected", reason: REFUS.sessionReprise });
+				ancienne.congedier({ type: "rejected", ...REFUS.sessionReprise });
 			}
 		} else {
 			if (this.#etat !== "lobby") {
-				socket.livrer({ type: "rejected", reason: REFUS.inscriptionsFermees });
+				socket.livrer({ type: "rejected", ...REFUS.inscriptionsFermees });
 				return;
 			}
 			if (this.#joueurs.size >= JOUEURS_MAXIMUM) {
-				socket.livrer({ type: "rejected", reason: REFUS.complet });
+				socket.livrer({ type: "rejected", ...REFUS.complet });
 				return;
 			}
 
@@ -423,7 +423,7 @@ export class ServeurFactice {
 
 	#connecterAdmin(socket, motDePasse) {
 		if (socket === this.#admin || this.#joueurDeSession(socket) !== null) {
-			socket.livrer({ type: "rejected", reason: REFUS.dejaInscrite });
+			socket.livrer({ type: "rejected", ...REFUS.dejaInscrite });
 			return;
 		}
 
@@ -432,18 +432,18 @@ export class ServeurFactice {
 				const echecs = (this.#echecsMotDePasse.get(socket) ?? 0) + 1;
 				this.#echecsMotDePasse.set(socket, echecs);
 				if (echecs >= ESSAIS_MOT_DE_PASSE)
-					socket.congedier({ type: "rejected", reason: REFUS.motDePasse });
+					socket.congedier({ type: "rejected", ...REFUS.motDePasse });
 				else
-					socket.livrer({ type: "rejected", reason: REFUS.motDePasse });
+					socket.livrer({ type: "rejected", ...REFUS.motDePasse });
 				return;
 			}
 			if (this.#admin !== null) {
 				const ancienne = this.#admin;
 				this.#admin = null;
-				ancienne.congedier({ type: "rejected", reason: REFUS.adminRemplace });
+				ancienne.congedier({ type: "rejected", ...REFUS.adminRemplace });
 			}
 		} else if (this.#admin !== null) {
-			socket.livrer({ type: "rejected", reason: REFUS.adminPris });
+			socket.livrer({ type: "rejected", ...REFUS.adminPris });
 			return;
 		}
 

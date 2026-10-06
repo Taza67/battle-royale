@@ -23,6 +23,25 @@ export function pseudoValide(pseudo) {
 	return longueur >= 1 && longueur <= LONGUEUR_PSEUDO_MAXIMALE && !CARACTERES_PSEUDO_INTERDITS.test(pseudo);
 }
 
+/** Codes stables des messages `rejected` (`code`), comparés par les clients. */
+export const CODES_REFUS = Object.freeze({
+	refusPartie: "game-refused",
+	pseudoPris: "pseudo-taken",
+	sessionReprise: "session-taken-over",
+	adminRemplace: "admin-replaced"
+});
+
+/**
+ * Indique si un message `rejected` porte le code donné ; la raison textuelle
+ * sert de repli pour les émetteurs qui n'envoient pas encore `code`.
+ */
+export function refusAvecCode(message, code, raison) {
+	if (typeof message?.code === "string")
+		return message.code === code;
+
+	return message?.reason === raison;
+}
+
 /** Formes d'attaque. */
 export const ATTAQUE = Object.freeze({ corpsACorps: 1, tir: 2 });
 

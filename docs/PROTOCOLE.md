@@ -109,7 +109,7 @@ Point d'accès : `ws(s)://<hôte>/battle-royale-server/websocketserver`, constru
 | Message | Rôle |
 | --- | --- |
 | `{"type":"welcome","id":3,"pseudo":"Taza","state":"lobby","token":"…"}` | inscription acceptée, `state` vaut `lobby`, `running`, `paused`, `over` ou `stopped` ; `token` est le jeton de reprise du joueur |
-| `{"type":"rejected","reason":"…"}` | inscription refusée |
+| `{"type":"rejected","code":"…","reason":"…"}` | inscription refusée |
 | `{"type":"game","state":"running"}` | changement d'état de la partie |
 | `{"type":"state", …}` | état du joueur, voir ci-dessous |
 | `{"type":"end","winner":{"id":3,"pseudo":"Taza"},"ranking":[…]}` | fin de partie, `winner` peut valoir `null` |
@@ -141,7 +141,7 @@ arrêté la manche. `winner` vaut `null` en cas d'égalité ou si un robot gagne
 | Message | Rôle |
 | --- | --- |
 | `{"type":"admin-welcome","state":"lobby"}` | connexion acceptée |
-| `{"type":"rejected","reason":"…"}` | connexion refusée |
+| `{"type":"rejected","code":"…","reason":"…"}` | connexion refusée |
 | `{"type":"players","players":[…]}` | liste des joueurs à chaque changement (au plus 2 fois par seconde en partie) |
 | `{"type":"ack","command":"start","ok":true,"error":null}` | résultat d'une commande |
 | `{"type":"game","state":"running"}` | changement d'état de la partie |
@@ -149,6 +149,13 @@ arrêté la manche. `winner` vaut `null` en cas d'égalité ou si un robot gagne
 
 Éléments de `players` :
 `{"id":3,"pseudo":"Taza","connected":true,"status":"alive","life":87,"kills":2,"rank":0}`.
+
+Message `rejected` : `code` est un identifiant stable destiné aux comparaisons
+par les clients (`reason` reste le texte affiché, en français). Codes envoyés :
+`pseudo-taken` (pseudo associé à une session ouverte), `session-taken-over`
+(ancienne connexion d'un joueur remplacée par une reprise), `admin-replaced`
+(ancienne session administrateur remplacée) et `game-refused` pour tout autre
+refus.
 
 ### Règles
 

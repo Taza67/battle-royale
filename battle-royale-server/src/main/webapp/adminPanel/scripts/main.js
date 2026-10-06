@@ -5,7 +5,7 @@ import { creerConnexion, estModeDemo, urlManette } from "../../common/scripts/co
 import {
 	afficherEcran, creerElement, lierIndicateurConnexion, notifier, poserAvatar, remplirClassement, resumerFin
 } from "../../common/scripts/interface.js";
-import { LIBELLES_ETAT, entier, normaliserEtat } from "../../common/scripts/protocole.js";
+import { CODES_REFUS, LIBELLES_ETAT, entier, normaliserEtat, refusAvecCode } from "../../common/scripts/protocole.js";
 import { TableauJoueurs, evenementsEntre, normaliserJoueur } from "./joueurs.js";
 
 const CLE_SESSION = "battle-royale.admin";
@@ -171,7 +171,7 @@ connexion.sur("rejected", message => {
 	const raison = typeof message.reason === "string" && message.reason !== "" ? message.reason : "Connexion refusée.";
 
 	// Une session déjà admise qui reçoit un autre refus reste administrateur.
-	if (session.admise && raison !== RAISON_REMPLACEE)
+	if (session.admise && !refusAvecCode(message, CODES_REFUS.adminRemplace, RAISON_REMPLACEE))
 		return;
 
 	revenirConnexion(raison);
