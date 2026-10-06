@@ -413,4 +413,19 @@ class GameServerTest implements IConfig {
 		}
 		assertTrue(statuses.contains("Connexion avec le serveur web perdue"));
 	}
+
+	@Test
+	void poigneeDeMainRefuseeAvecUnPseudoInvalide() throws Exception {
+		start(38210);
+		for (String pseudo : new String[] { " ", "x".repeat(PSEUDO_MAX_LENGTH + 1), "a\u0007b" }) {
+			try (Socket s = connect(38210)) {
+				DataOutputStream out = new DataOutputStream(s.getOutputStream());
+				DataInputStream in = new DataInputStream(s.getInputStream());
+				handshake(out, 1, "A", 2, pseudo);
+				assertFalse(in.readBoolean(), "pseudo « " + pseudo + " » refusé");
+			}
+		}
+		assertNull(board.get());
+		assertTrue(statuses.stream().anyMatch(m -> m.startsWith("Partie refusée : pseudo")), statuses.toString());
+	}
 }
