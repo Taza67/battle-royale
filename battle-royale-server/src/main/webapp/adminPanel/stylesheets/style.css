@@ -499,6 +499,19 @@
 /*                                                  ADAPTATION                                                        */
 /* ****************************************************************************************************************** */
 
+/* Sur grand écran, les notifications s'empilent en bas à droite pour ne pas masquer l'en-tête. */
+@media screen and (min-width: 721px) {
+    .notifications {
+        top: auto;
+        left: auto;
+        right: 28px;
+        bottom: 28px;
+        transform: none;
+        align-items: stretch;
+        width: min(40vw, 360px);
+    }
+}
+
 @media screen and (max-width: 1100px) {
     .panneau-grille {
         grid-template-columns: minmax(200px, 0.9fr) minmax(0, 2fr);

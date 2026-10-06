@@ -55,6 +55,7 @@ const session = {
 	partie: null,
 	joueurs: [],
 	listeRecue: false,
+	finRecue: false,
 	commande: null
 };
 
@@ -179,8 +180,10 @@ function changerPartie(etat, journal = true) {
 		return;
 
 	session.partie = etat;
-	if (etat === "running" && (precedent === "lobby" || precedent === "over" || precedent === "stopped"))
+	if (etat === "lobby" || (etat === "running" && (precedent === "lobby" || precedent === "over" || precedent === "stopped"))) {
+		session.finRecue = false;
 		element("bloc-resultats").hidden = true;
+	}
 
 	if (journal) {
 		const textes = {
@@ -215,7 +218,35 @@ connexion.sur("players", message => {
 	session.joueurs = joueurs;
 	session.listeRecue = true;
 	afficherJoueurs();
+	deduireResultats();
 });
+
+function afficherResultats(vainqueur, classement) {
+	element("bloc-resultats").hidden = false;
+	element("resultat-vainqueur").hidden = vainqueur === null;
+	if (vainqueur !== null) {
+		element("pseudo-vainqueur").textContent = vainqueur.pseudo;
+		poserAvatar(element("avatar-vainqueur"), entier(vainqueur.id, null));
+	}
+	remplirClassement(element("corps-classement"), classement);
+}
+
+// Si le message `end` a été manqué (panneau ouvert ou reconnecté après la fin),
+// les résultats sont reconstitués à partir des rangs de la liste des joueurs.
+function deduireResultats() {
+	if (session.finRecue || (session.partie !== "over" && session.partie !== "stopped"))
+		return;
+
+	const classes = session.joueurs.filter(joueur => joueur.rang > 0).sort((a, b) => a.rang - b.rang);
+	if (classes.length === 0)
+		return;
+
+	const gagnant = session.joueurs.find(joueur => joueur.statut === "winner");
+	afficherResultats(
+		gagnant === undefined ? null : { id: gagnant.id, pseudo: gagnant.pseudo },
+		classes.map(({ id, pseudo, kills, rang }) => ({ id, pseudo, kills, rank: rang }))
+	);
+}
 
 connexion.sur("end", message => {
 	if (!session.admise)
@@ -224,13 +255,8 @@ connexion.sur("end", message => {
 	const vainqueur = message.winner ?? null;
 	const classement = Array.isArray(message.ranking) ? message.ranking : [];
 
-	element("bloc-resultats").hidden = false;
-	element("resultat-vainqueur").hidden = vainqueur === null;
-	if (vainqueur !== null) {
-		element("pseudo-vainqueur").textContent = vainqueur.pseudo;
-		poserAvatar(element("avatar-vainqueur"), entier(vainqueur.id, null));
-	}
-	remplirClassement(element("corps-classement"), classement);
+	session.finRecue = true;
+	afficherResultats(vainqueur, classement);
 
 	journaliser(vainqueur === null ? "Fin de la manche sans vainqueur." : `Victoire de ${vainqueur.pseudo} !`, "succes");
 });
