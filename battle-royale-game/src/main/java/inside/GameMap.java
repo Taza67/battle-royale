@@ -17,7 +17,7 @@ import inside.geometry.Vertice;
  * @see Zone
  * @see Obstacle
  */
-public class Map implements IConfig {
+public class GameMap implements IConfig {
 	/**
 	 * Marge laissée entre les obstacles générés et le bord de la carte
 	 */
@@ -45,7 +45,7 @@ public class Map implements IConfig {
 	 * Construit une carte avec les obstacles donnés
 	 * @param obstacles Obstacles de la carte
 	 */
-	public Map(List<Obstacle> obstacles) {
+	public GameMap(List<Obstacle> obstacles) {
 		BOUNDS = new Rectangle(0, 0, MAP_WIDTH, MAP_HEIGHT);
 		OBSTACLES = new ArrayList<>(obstacles);
 		AREAS = new Zone[AREAS_HEIGHT][AREAS_WIDTH];
@@ -65,7 +65,7 @@ public class Map implements IConfig {
 	 * @param obstaclesNumber Nombre d'obstacles souhaité
 	 * @return Nouvelle carte
 	 */
-	public static Map generate(Random random, int obstaclesNumber) {
+	public static GameMap generate(Random random, int obstaclesNumber) {
 		List<Obstacle> obstacles = new ArrayList<>();
 
 		for (int i = 0; i < obstaclesNumber; i++) {
@@ -93,7 +93,7 @@ public class Map implements IConfig {
 			}
 		}
 
-		return new Map(obstacles);
+		return new GameMap(obstacles);
 	}
 
 	/**

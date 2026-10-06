@@ -73,7 +73,7 @@ class MatchTest implements IConfig {
 	@Test
 	void partieSoloEstGagneeDesLeDebutDuCombat() {
 		List<ZoneWave> waves = List.of(new ZoneWave(0.5f, 0.5f, 0f, 200));
-		Board b = new Board(new GameSettings(0, 9, 0, waves), new Map(List.of()), specs(1));
+		Board b = new Board(new GameSettings(0, 9, 0, waves), new GameMap(List.of()), specs(1));
 		run(b, 20 * TICKS_PER_SECOND);
 
 		assertTrue(b.isOver());

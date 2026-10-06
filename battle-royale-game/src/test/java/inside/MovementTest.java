@@ -74,7 +74,7 @@ class MovementTest implements IConfig {
 	@Test
 	void glissementLeLongDUnObstacle() {
 		Rectangle rock = new Rectangle(330, 250, 380, 470);
-		Board b = on(new Map(List.of(new Obstacle(TypeObstacle.ROCHER, rock))), 1, NO_BATTLE);
+		Board b = on(new GameMap(List.of(new Obstacle(TypeObstacle.ROCHER, rock))), 1, NO_BATTLE);
 		b.teleport(0, 315, 360);
 		hold(b, 0, NORTH_EAST, MAX_SPEED_LEVEL, 30);
 
@@ -87,7 +87,7 @@ class MovementTest implements IConfig {
 	@Test
 	void lEauBloqueAussiLesJoueurs() {
 		Rectangle water = new Rectangle(330, 250, 380, 470);
-		Board b = on(new Map(List.of(new Obstacle(TypeObstacle.EAU, water))), 1, NO_BATTLE);
+		Board b = on(new GameMap(List.of(new Obstacle(TypeObstacle.EAU, water))), 1, NO_BATTLE);
 		b.teleport(0, 300, 360);
 		hold(b, 0, EAST, MAX_SPEED_LEVEL, 30);
 		assertEquals(water.getX1() - PLAYER_RADIUS_X, b.getPlayer(0).getX(), 1e-3f);

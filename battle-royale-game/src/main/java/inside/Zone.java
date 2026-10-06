@@ -11,7 +11,7 @@ import inside.geometry.Rectangle;
  * Elle référence les obstacles qui la chevauchent et les joueurs vivants dont le centre s'y trouve.
  * @author mourtaza
  *
- * @see Map
+ * @see GameMap
  */
 public class Zone implements IConfig {
 	/**

@@ -1,6 +1,7 @@
 package inside;
 
 import java.util.HashMap;
+import java.util.Map;
 import java.util.Random;
 
 import inside.geometry.Rectangle;
@@ -128,7 +129,7 @@ public class BotController implements IConfig {
 	/**
 	 * Mémoire de chaque robot
 	 */
-	private final java.util.Map<Integer, Memory> MEMORIES = new HashMap<>();
+	private final Map<Integer, Memory> MEMORIES = new HashMap<>();
 
 
 	/**

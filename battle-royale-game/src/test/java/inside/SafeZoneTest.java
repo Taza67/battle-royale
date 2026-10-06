@@ -90,7 +90,7 @@ class SafeZoneTest implements IConfig {
 	@Test
 	void laveInfligeDesDegatsHorsDeLaZone() {
 		List<ZoneWave> waves = List.of(new ZoneWave(0.1f, 0.1f, 0.2f, 30), new ZoneWave(100, 1, 0.1f, 30));
-		Board b = new Board(new GameSettings(0, 5, 0, waves), new Map(List.of()), Boards.specs(2));
+		Board b = new Board(new GameSettings(0, 5, 0, waves), new GameMap(List.of()), Boards.specs(2));
 		Boards.run(b, 30);
 		Rectangle safe = b.getSafeZone().getCurrent();
 

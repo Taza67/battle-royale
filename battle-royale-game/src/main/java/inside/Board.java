@@ -73,9 +73,9 @@ public class Board implements IConfig {
 	private final Random RANDOM;
 	/**
 	 * Carte du jeu
-	 * @see Map
+	 * @see GameMap
 	 */
-	private final Map MAP;
+	private final GameMap MAP;
 	/**
 	 * Zone sûre
 	 * @see SafeZone
@@ -159,13 +159,13 @@ public class Board implements IConfig {
 	 * @param map Carte (null pour en générer une)
 	 * @param players Joueurs à placer aléatoirement
 	 */
-	public Board(GameSettings settings, Map map, List<PlayerSpec> players) {
+	public Board(GameSettings settings, GameMap map, List<PlayerSpec> players) {
 		if (players.size() > MAX_PLAYERS)
 			throw new IllegalArgumentException("Trop de joueurs : " + players.size());
 
 		SETTINGS = settings;
 		RANDOM = new Random(settings.getSeed());
-		MAP = map != null ? map : Map.generate(RANDOM, settings.getObstaclesNumber());
+		MAP = map != null ? map : GameMap.generate(RANDOM, settings.getObstaclesNumber());
 		SAFE_ZONE = new SafeZone(MAP.getBounds(), settings.getWaves(), RANDOM,
 			c -> MAP.isFree(Rectangle.centered(c.getX(), c.getY(), PLAYER_RADIUS_X * 2, PLAYER_RADIUS_Y * 2)));
 		PLAYERS = new TreeMap<>();
@@ -242,7 +242,7 @@ public class Board implements IConfig {
 	 * Retourne la carte
 	 * @return Carte
 	 */
-	public Map getMap() { return MAP; }
+	public GameMap getMap() { return MAP; }
 	/**
 	 * Retourne la zone sûre
 	 * @return Zone sûre

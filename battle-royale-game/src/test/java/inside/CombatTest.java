@@ -15,7 +15,7 @@ class CombatTest implements IConfig {
 	/**
 	 * Deux joueurs face à face, combat commencé
 	 */
-	private static Board duel(Map map, float x0, float x1) {
+	private static Board duel(GameMap map, float x0, float x1) {
 		Board b = map == null ? empty(2, 0) : on(map, 2, 0);
 		b.tick();
 		b.teleport(0, x0, 360);
@@ -115,7 +115,7 @@ class CombatTest implements IConfig {
 	void rochersEtForetsArretentLesProjectilesMaisPasLEau() {
 		Rectangle between = new Rectangle(290, 300, 310, 420);
 		for (TypeObstacle t : TypeObstacle.values()) {
-			Board b = duel(new Map(List.of(new Obstacle(t, between))), 200, 400);
+			Board b = duel(new GameMap(List.of(new Obstacle(t, between))), 200, 400);
 			b.enqueue(new Command.Attack(0, ATTACK_SHOOT));
 			List<GameEvent> events = run(b, TICKS_PER_SECOND);
 

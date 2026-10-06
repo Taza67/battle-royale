@@ -10,7 +10,7 @@ import inside.BoardSnapshot.BulletState;
 import inside.BoardSnapshot.PlayerState;
 import inside.Direction;
 import inside.IConfig;
-import inside.Map;
+import inside.GameMap;
 import inside.Obstacle;
 import inside.SafeZone;
 import inside.geometry.Rectangle;
@@ -57,7 +57,7 @@ public class WorldRenderer implements IConfig {
 	 * @param effects Effets à dessiner au-dessus des joueurs
 	 * @param numberFont Police des nombres de dégâts
 	 */
-	public void render(Map map, BoardSnapshot previous, BoardSnapshot current, float alpha, double time, int localId,
+	public void render(GameMap map, BoardSnapshot previous, BoardSnapshot current, float alpha, double time, int localId,
 			Effects effects, Font numberFont) {
 		PREVIOUS_PLAYERS.clear();
 		PREVIOUS_BULLETS.clear();
