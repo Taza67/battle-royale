@@ -1,7 +1,7 @@
 // Affichage des informations du joueur sur la manette et de l'écran de fin.
 
 import { LIBELLES_PHASE, LIBELLES_STATUT } from "../../common/scripts/protocole.js";
-import { ordinal, poserAvatar, remplirClassement } from "../../common/scripts/interface.js";
+import { ordinal, poserAvatar, remplirClassement, resumerFin } from "../../common/scripts/interface.js";
 
 const SEUIL_ORANGE = 0.5;
 const SEUIL_ROUGE = 0.25;
@@ -91,9 +91,12 @@ export function afficherFin({ etat, fin, id, dernierEtat }) {
 	const rang = moi?.rank || dernierEtat?.rang || 0;
 	const kills = moi?.kills ?? dernierEtat?.kills ?? 0;
 	const gagnant = vainqueur !== null && vainqueur.id === id;
+	const resume = resumerFin(fin, { total: dernierEtat?.total, arretee: etat === "stopped" });
 
-	element("titre-fin").textContent = gagnant ? "Victoire !" : etat === "stopped" ? "Partie arrêtée" : "Partie terminée";
+	element("titre-fin").textContent = gagnant ? "Victoire !" : resume.arretee ? "Partie arrêtée" : "Partie terminée";
 	element("ecran-fin").dataset.victoire = String(gagnant);
+	element("fin-message").hidden = resume.message === null;
+	element("fin-message").textContent = resume.message ?? "";
 
 	element("bloc-vainqueur").hidden = vainqueur === null;
 	if (vainqueur !== null) {
@@ -102,7 +105,7 @@ export function afficherFin({ etat, fin, id, dernierEtat }) {
 	}
 
 	element("fin-rang").textContent = rang > 0 ? ordinal(rang) : "–";
-	element("fin-total").textContent = classement.length > 0 ? `sur ${classement.length}` : dernierEtat?.total ? `sur ${dernierEtat.total}` : "";
+	element("fin-total").textContent = resume.total > 0 ? `sur ${resume.total}` : "";
 	element("fin-kills").textContent = String(kills);
 
 	remplirClassement(element("corps-classement"), classement, id);
