@@ -292,7 +292,7 @@ public class HudRenderer implements IConfig {
 	 */
 	static String of(String name) {
 		if (name.isEmpty()) return "de " + name;
-		String first = Normalizer.normalize(name.substring(0, 1), Normalizer.Form.NFD);
+		String first = Normalizer.normalize(new String(Character.toChars(name.codePointAt(0))), Normalizer.Form.NFD);
 		char c = Character.toLowerCase(first.charAt(0));
 		return ("aeiouy".indexOf(c) >= 0 ? "d'" : "de ") + name;
 	}
