@@ -16,6 +16,10 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
+import java.util.logging.Handler;
+import java.util.logging.Level;
+import java.util.logging.LogRecord;
+import java.util.logging.Logger;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -36,6 +40,8 @@ class GameServerTest implements IConfig {
 	private final AtomicReference<Board> board = new AtomicReference<>();
 	private final List<String> statuses = new CopyOnWriteArrayList<>();
 	private final CountDownLatch lost = new CountDownLatch(1);
+	private static final Logger LOGGER = Logger.getLogger(GameServer.class.getName());
+	private Handler logHandler;
 
 	private GameServer start(int port) {
 		return start(GameServer.DEFAULT_BIND_ADDRESS, port);
@@ -67,6 +73,7 @@ class GameServerTest implements IConfig {
 	@AfterEach
 	void close() {
 		if (server != null) server.close();
+		if (logHandler != null) LOGGER.removeHandler(logHandler);
 	}
 
 	private static Socket connect(int port) throws IOException, InterruptedException {
@@ -283,5 +290,127 @@ class GameServerTest implements IConfig {
 			exchange(out, in, new byte[0], running);
 			assertTrue(running[0]);
 		}
+	}
+
+	/**
+	 * Enregistre les messages du journal du serveur de niveau WARNING ou plus
+	 */
+	private List<LogRecord> captureWarnings() {
+		List<LogRecord> records = new CopyOnWriteArrayList<>();
+		logHandler = new Handler() {
+			@Override
+			public void publish(LogRecord r) {
+				if (r.getLevel().intValue() >= Level.WARNING.intValue()) records.add(r);
+			}
+
+			@Override
+			public void flush() {}
+
+			@Override
+			public void close() {}
+		};
+		LOGGER.addHandler(logHandler);
+		return records;
+	}
+
+	private void awaitStatus(String prefix) throws InterruptedException {
+		long deadline = System.currentTimeMillis() + 5000;
+		while (statuses.stream().noneMatch(m -> m.startsWith(prefix))) {
+			assertTrue(System.currentTimeMillis() < deadline, "statut « " + prefix + " » attendu : " + statuses);
+			Thread.sleep(10);
+		}
+	}
+
+	@Test
+	void echangesApresArretPuisFermetureNormale() throws Exception {
+		List<LogRecord> warnings = captureWarnings();
+		start(38206);
+		Board b;
+		try (Socket s = connect(38206)) {
+			DataOutputStream out = new DataOutputStream(s.getOutputStream());
+			DataInputStream in = new DataInputStream(new BufferedInputStream(s.getInputStream()));
+			handshake(out, 1, "A", 2, "B");
+			assertTrue(in.readBoolean());
+			b = board.get();
+
+			out.writeInt(Protocol.STOP);
+			out.flush();
+			boolean[] running = { true };
+			byte[] state = exchange(out, in, new byte[0], running);
+			assertTrue(running[0], "l'arrêt n'est pas encore appliqué par la simulation");
+
+			for (int i = 0; i < 40 && running[0]; i++) {
+				b.tick();
+				state = exchange(out, in, new byte[0], running);
+			}
+			assertFalse(running[0], "enCours finit par valoir false après l'arrêt");
+			assertEquals(2, state[0], "phase terminée");
+			assertTrue(b.getSnapshot().stopped());
+		}
+
+		awaitStatus("Partie arrêtée");
+		assertEquals(1, lost.getCount(), "pas de perte de connexion signalée");
+		assertFalse(statuses.contains("Connexion avec le serveur web perdue"));
+		assertTrue(warnings.isEmpty(), warnings.toString());
+	}
+
+	@Test
+	void fermetureJusteApresArretSansPause() throws Exception {
+		List<LogRecord> warnings = captureWarnings();
+		start(38207);
+		Board b;
+		try (Socket s = connect(38207)) {
+			DataOutputStream out = new DataOutputStream(s.getOutputStream());
+			DataInputStream in = new DataInputStream(s.getInputStream());
+			handshake(out, 1, "A", 2, "B");
+			assertTrue(in.readBoolean());
+			b = board.get();
+
+			out.writeInt(Protocol.STOP);
+			out.flush();
+		}
+
+		awaitStatus("Partie arrêtée");
+		assertFalse(b.isOver(), "la simulation n'a pas encore appliqué l'arrêt");
+		b.tick();
+		assertTrue(b.isOver());
+		assertFalse(b.isPaused(), "aucune pause déposée");
+		assertEquals(1, lost.getCount(), "pas de perte de connexion signalée");
+		assertFalse(statuses.contains("Connexion avec le serveur web perdue"));
+		assertTrue(warnings.isEmpty(), warnings.toString());
+	}
+
+	@Test
+	void erreurDeProtocoleEnPartieTraiteeCommeUnePerteDeConnexion() throws Exception {
+		start(38208);
+		try (Socket s = connect(38208)) {
+			DataOutputStream out = new DataOutputStream(s.getOutputStream());
+			DataInputStream in = new DataInputStream(new BufferedInputStream(s.getInputStream()));
+			handshake(out, 1, "A", 2, "B");
+			assertTrue(in.readBoolean());
+			exchange(out, in, new byte[0], new boolean[1]);
+
+			out.writeInt(-7);
+			out.flush();
+			assertTrue(lost.await(5, TimeUnit.SECONDS), "perte de connexion signalée");
+			assertEquals(-1, in.read(), "connexion fermée par le jeu");
+		}
+		assertTrue(statuses.contains("Connexion avec le serveur web perdue"));
+	}
+
+	@Test
+	void blocDActionsTropGrandTraiteCommeUnePerteDeConnexion() throws Exception {
+		start(38209);
+		try (Socket s = connect(38209)) {
+			DataOutputStream out = new DataOutputStream(s.getOutputStream());
+			DataInputStream in = new DataInputStream(s.getInputStream());
+			handshake(out, 1, "A", 2, "B");
+			assertTrue(in.readBoolean());
+
+			out.writeInt(Protocol.MAX_ACTIONS_SIZE + 1);
+			out.flush();
+			assertTrue(lost.await(5, TimeUnit.SECONDS), "perte de connexion signalée");
+		}
+		assertTrue(statuses.contains("Connexion avec le serveur web perdue"));
 	}
 }

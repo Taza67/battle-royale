@@ -96,6 +96,10 @@ public class GameServer implements Runnable, AutoCloseable {
 	 * Indique si le serveur doit s'arrêter
 	 */
 	private volatile boolean closed;
+	/**
+	 * Indique si l'arrêt de la partie en cours a été demandé (fil réseau uniquement)
+	 */
+	private boolean stopRequested;
 
 
 	/**
@@ -191,22 +195,29 @@ public class GameServer implements Runnable, AutoCloseable {
 		}
 		LISTENER.onStatus("Partie lancée avec " + players.size() + " joueur(s)", false);
 
+		stopRequested = false;
 		try {
 			loop(in, out, board);
-		} catch (EOFException | SocketException e) {
+		} catch (IOException e) {
 			if (closed) return;
-			LOGGER.log(Level.FINE, "Connexion fermée par le serveur web", e);
-			if (!board.getSnapshot().isOver()) {
+			if (stopRequested) {
+				LOGGER.log(Level.FINE, "Connexion fermée après l'arrêt de la partie", e);
+				LISTENER.onStatus("Partie arrêtée par l'administrateur", false);
+			} else if (board.getSnapshot().isOver()) {
+				LOGGER.log(Level.FINE, "Connexion fermée après la fin de la partie", e);
+				LISTENER.onStatus("Partie terminée, serveur web déconnecté", false);
+			} else {
+				boolean closedByPeer = e instanceof EOFException || e instanceof SocketException;
+				LOGGER.log(closedByPeer ? Level.FINE : Level.WARNING, "Échange interrompu avec le serveur web", e);
 				LISTENER.onConnectionLost(board);
 				LISTENER.onStatus("Connexion avec le serveur web perdue", true);
-			} else {
-				LISTENER.onStatus("Partie terminée, serveur web déconnecté", false);
 			}
 		}
 	}
 
 	/**
-	 * Boucle d'échange : lit un code puis applique les actions ou le contrôle demandé
+	 * Boucle d'échange : lit un code puis applique les actions ou le contrôle demandé.
+	 * Après un arrêt, le jeu continue de répondre par l'état jusqu'à ce que le serveur web ferme la connexion.
 	 * @param in Flux d'entrée
 	 * @param out Flux de sortie
 	 * @param board Plateau de la partie
@@ -229,6 +240,7 @@ public class GameServer implements Runnable, AutoCloseable {
 			} else if (code == Protocol.RESUME) {
 				board.enqueue(new Command.Control(Command.ControlType.RESUME));
 			} else if (code == Protocol.STOP) {
+				stopRequested = true;
 				board.enqueue(new Command.Control(Command.ControlType.STOP));
 			} else {
 				throw new Protocol.ProtocolException("Code inconnu : " + code);
