@@ -613,7 +613,7 @@ public class Board implements IConfig {
 		for (Player p : PLAYERS.values()) {
 			if (!p.getIsAlive()) continue;
 
-			boolean outside = !SAFE_ZONE.isSafe(p.getX(), p.getY());
+			boolean outside = !SAFE_ZONE.getCurrent().contain(p.getRepresentation());
 			p.setInLava(outside);
 			if (outside) {
 				int whole = p.accumulateLava(damage);
