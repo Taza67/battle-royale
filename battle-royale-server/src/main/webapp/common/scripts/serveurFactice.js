@@ -211,15 +211,26 @@ export class ServeurFactice {
 	}
 
 	/**
-	 * Termine immédiatement la manche en éliminant tous les robots sauf un.
+	 * Termine immédiatement la manche : tous les joueurs sont éliminés sauf le
+	 * vainqueur désigné par son pseudo (un robot par défaut).
 	 */
-	accelererFin() {
+	accelererFin(pseudoVainqueur = null) {
 		if (this.#etat !== "running")
 			return;
 
-		const vivants = this.#vivants().filter(joueur => joueur.robot);
-		for (const joueur of vivants.slice(1))
-			this.#infligerDegats(joueur, VIE_MAXIMALE, vivants[0]);
+		const vivants = this.#vivants();
+		const vainqueur = vivants.find(joueur => joueur.pseudo === pseudoVainqueur) ?? vivants.find(joueur => joueur.robot) ?? vivants[0];
+		for (const joueur of vivants)
+			if (joueur !== vainqueur)
+				this.#infligerDegats(joueur, VIE_MAXIMALE, vainqueur);
+	}
+
+	/**
+	 * Retourne une copie de l'état des joueurs (positions comprises).
+	 */
+	instantane() {
+		return [...this.#joueurs.values()].map(({ id, pseudo, robot, connecte, statut, vie, x, y, kills, rang, deplacement }) =>
+			({ id, pseudo, robot, connecte, statut, vie, x, y, kills, rang, deplacement: deplacement && { ...deplacement } }));
 	}
 
 	// Sessions ///////////////////////////////////////////////////////////////

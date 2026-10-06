@@ -35,10 +35,12 @@ export function creerElement(balise, proprietes = {}, enfants = []) {
 
 /**
  * Affiche l'écran demandé et masque les autres éléments de classe `ecran`.
+ * L'identifiant est reporté sur `body[data-ecran]` pour les styles.
  */
 export function afficherEcran(identifiant) {
 	for (const ecran of document.querySelectorAll(".ecran"))
 		ecran.hidden = ecran.id !== identifiant;
+	document.body.dataset.ecran = identifiant;
 }
 
 /**
@@ -73,6 +75,13 @@ export function notifier(message, genre = "info") {
 
 	while (conteneur.children.length > 4)
 		conteneur.firstElementChild.remove();
+}
+
+/**
+ * Retire immédiatement toutes les notifications affichées.
+ */
+export function effacerNotifications() {
+	document.getElementById("notifications")?.replaceChildren();
 }
 
 /**
