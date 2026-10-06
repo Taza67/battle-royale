@@ -1,160 +1,91 @@
 package inside;
 
-import java.util.List;
-
-import inside.geometry.Polygon;
 import inside.geometry.Rectangle;
 import inside.geometry.Vertice;
-import outside.graphic.Color;
-import outside.graphic.GraphicUtilities;
 
 /**
- * Classe représentant un élément sur le plateau de jeu
+ * Classe représentant un élément positionné sur le plateau de jeu
  * @author mourtaza
  *
  * @see IConfig
  */
 public abstract class Element implements IConfig {
 	/**
-	 * Variable contenant la carte du jeu
-	 * @see Map
+	 * Position du centre de l'élément
 	 */
-	protected final Map MAP;
+	protected float x, y;
 	/**
-	 * Variable contenant la position de l'élément sur la carte
-	 * @see Vertice
+	 * Rayons de la représentation de l'élément (horizontal, vertical)
 	 */
-	protected volatile Vertice position;
-	/**
-	 * Variable contenant une représentation de l'élément
-	 * @see Polygon
-	 */
-	protected volatile Polygon representation;
-	/**
-	 * Variable contenant la couleur de la représentation de l'élément
-	 * @see Color
-	 */
-	protected Color color;
-	/**
-	 * Variable contenant le numéro de texture de la représentation de l'élément
-	 * @see Color
-	 */
-	protected int textureNumber;
-	/**
-	 * Variable contenant la zone dans laquelle est l'élément
-	 * @see Zone
-	 */
-	protected volatile Zone zone;
+	protected final float radiusX, radiusY;
 
 
 	/**
-	 * Construit une instance d'élément
-	 * @param map Carte du jeu
-	 * 
-	 * @see Element#MAP
+	 * Construit un élément
+	 * @param x Abscisse du centre
+	 * @param y Ordonnée du centre
+	 * @param radiusX Rayon horizontal
+	 * @param radiusY Rayon vertical
 	 */
-	public Element(Map map) {
-		MAP = map;
+	protected Element(float x, float y, float radiusX, float radiusY) {
+		this.x = x;
+		this.y = y;
+		this.radiusX = radiusX;
+		this.radiusY = radiusY;
 	}
 
 
 	/**
-	 * Retourne la représenation de l'élément
-	 * @return Représentation de l'élément
-	 * 
-	 * @see Element#representation
+	 * Retourne l'abscisse du centre de l'élément
+	 * @return Abscisse
 	 */
-	public Polygon getRepresentation() { return representation; }
+	public float getX() { return x; }
 	/**
-	 * Retourne la zone dans lequel est l'élément
-	 * @return Zone de l'élément
-	 * 
-	 * @see Element#zone
+	 * Retourne l'ordonnée du centre de l'élément
+	 * @return Ordonnée
 	 */
-	public Zone getZone() { return zone; }
+	public float getY() { return y; }
 	/**
-	 * Retourne la position de l'élément
-	 * @return Position de l'élément
-	 * 
-	 * @see Element#position
+	 * Retourne la position du centre de l'élément
+	 * @return Position
 	 */
-	public Vertice getPosition() { return position; }
+	public Vertice getPosition() { return new Vertice(x, y); }
+	/**
+	 * Retourne le rayon horizontal de l'élément
+	 * @return Rayon horizontal
+	 */
+	public float getRadiusX() { return radiusX; }
+	/**
+	 * Retourne le rayon vertical de l'élément
+	 * @return Rayon vertical
+	 */
+	public float getRadiusY() { return radiusY; }
 
 	/**
-	 * Change la zone dans lequel est l'élément
-	 * @param z Nouvelle zone
-	 * 
-	 * @see Element#zone
+	 * Retourne la représentation (boîte englobante) de l'élément
+	 * @return Rectangle centré sur l'élément
 	 */
-	public void setZone(Zone z) { zone = z; }
-
-
-	/**
-	 * Dessine l'élément
-	 * 
-	 * @see GraphicUtilities#drawPolygon(Polygon, Color)
-	 */
-	public void draw() {
-		GraphicUtilities.drawPolygon(representation, color);
+	public Rectangle getRepresentation() {
+		return Rectangle.centered(x, y, radiusX, radiusY);
 	}
 
 	/**
-	 * Renvoie une position de joueur qui ne le superposerai pas sur un autre joueur ou un autre obstacle
-	 * @param obs Liste d'obstacles
-	 * @param playersIds Liste des identifiants de joueurs
-	 * @param players Tableau contenant les joueurs
-	 * @param radiusX Rayon horizontal de la représentation de l'élément
-	 * @param radiusY Rayon Vertical de la représentation de l'élément
-	 * @return Position vide
-	 * 
-	 * @see Rectangle
-	 * @see Rectangle#intersect(Rectangle)
-	 * @see IConfig#MAP_WIDTH
-	 * @see IConfig#MAP_HEIGHT
+	 * Retourne la représentation qu'aurait l'élément à une autre position
+	 * @param px Abscisse du centre
+	 * @param py Ordonnée du centre
+	 * @return Rectangle centré sur la position
 	 */
-	public static Vertice getFreePosition(List<Obstacle> obs, List<Integer> playersIds, Player[] players, float radiusX, float radiusY) {
-		boolean intersecting = false;
-		Vertice randomPosition;
-		float researchXUp = MAP_WIDTH - radiusX,
-			  researchYUp = MAP_HEIGHT - radiusY;
-		float elementWidth = radiusX * 2,
-			  elementHeight = radiusY * 2;
+	public Rectangle getRepresentationAt(float px, float py) {
+		return Rectangle.centered(px, py, radiusX, radiusY);
+	}
 
-
-		freePositionResearch : do {
-			// Position aléatoire
-			randomPosition = Vertice.random(
-				radiusX, researchXUp,
-				radiusY, researchYUp
-			);
-
-			// Rectangle centré sur cette position
-			Rectangle rep = new Rectangle(
-				randomPosition,
-				randomPosition.substract(new Vertice(radiusX, radiusY)),
-				elementWidth, elementHeight
-			);
-
-			// Recherche d'intersection
-			intersecting = false;
-			// // Avec les obstacles
-			for (Element oneObs : obs) {
-				intersecting = ((Rectangle)oneObs.representation)
-				.intersect(rep);
-				// S'il y a intersection, on saute à la prochaine itération
-				if (intersecting)
-					continue freePositionResearch;
-			}
-			// // Avec les autres joueurs
-			for (Integer onePlaId: playersIds) {
-				intersecting = ((Rectangle)players[onePlaId].representation)
-				.intersect(rep);
-				// S'il y a intersection, on saute à la prochaine itération
-				if (intersecting)
-					continue freePositionResearch;
-			}
-		} while(intersecting);
-
-		return randomPosition;
+	/**
+	 * Retourne la distance entre les centres de deux éléments
+	 * @param e Autre élément
+	 * @return Distance
+	 */
+	public float distance(Element e) {
+		float dx = e.x - x, dy = e.y - y;
+		return (float)Math.sqrt(dx * dx + dy * dy);
 	}
 }
