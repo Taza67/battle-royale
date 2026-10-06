@@ -121,7 +121,9 @@ public class SafeZone implements IConfig {
 		PREFERRED_CENTER = preferredCenter;
 		current = bounds;
 		start = bounds;
-		target = bounds;
+		// La première cible est tirée dès la construction pour que getNext() soit
+		// valable pendant l'échauffement ; start() se contente de l'activer
+		target = WAVES.isEmpty() ? bounds : pickTarget(bounds, WAVES.get(0).targetScale());
 	}
 
 
@@ -131,11 +133,12 @@ public class SafeZone implements IConfig {
 	 */
 	public Rectangle getCurrent() { return current; }
 	/**
-	 * Retourne la prochaine zone sûre (la zone actuelle si aucune n'est prévue)
+	 * Retourne la prochaine zone sûre (la cible de la prochaine vague, valable dès
+	 * l'échauffement ; la zone actuelle si aucune n'est prévue)
 	 * @return Rectangle de la prochaine zone
 	 */
 	public Rectangle getNext() {
-		return (stage == Stage.WAITING || stage == Stage.SHRINKING) ? target : current;
+		return stage == Stage.INACTIVE || stage == Stage.WAITING || stage == Stage.SHRINKING ? target : current;
 	}
 	/**
 	 * Retourne l'étape en cours
@@ -189,7 +192,10 @@ public class SafeZone implements IConfig {
 	public void start() {
 		if (stage != Stage.INACTIVE) return;
 		waveIndex = 0;
-		beginWait();
+		stage = Stage.WAITING;
+		stageTicks = 0;
+		stageDuration = Math.max(1, toTicks(WAVES.get(0).waitSeconds()));
+		// La cible de la première vague a déjà été tirée à la construction
 	}
 
 	/**
@@ -207,7 +213,9 @@ public class SafeZone implements IConfig {
 			start = current;
 			stageTicks = 0;
 			stageDuration = toTicks(WAVES.get(waveIndex).shrinkSeconds());
-			if (stageDuration > 0) return Transition.SHRINK_STARTED;
+			// Un rétrécissement instantané (0 s) émet quand même SHRINK_STARTED :
+			// il se terminera au pas suivant, la paire d'événements reste équilibrée
+			return Transition.SHRINK_STARTED;
 		}
 
 		if (stageDuration > 0 && stageTicks < stageDuration) {
