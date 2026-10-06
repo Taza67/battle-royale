@@ -65,7 +65,7 @@ public final class OriginCheck {
 			LOG.warning(() -> "Origine " + origin + " refusée : requête de poignée de main inconnue");
 			return false;
 		}
-		boolean allowed = allows(origin, request.getHeader("Host"), request.getScheme());
+		boolean allowed = allows(origin, request.getHeader("Host"), effectiveScheme(request));
 		if (!allowed)
 			LOG.warning(() -> "Connexion WebSocket refusée : origine " + origin + " différente de l'hôte "
 				+ request.getHeader("Host"));
@@ -76,7 +76,8 @@ public final class OriginCheck {
 	 * Indique si une origine correspond à l'hôte d'une requête
 	 * @param origin Valeur de l'en-tête `Origin`, null s'il est absent
 	 * @param host Valeur de l'en-tête `Host` de la requête
-	 * @param requestScheme Schéma de la requête (http ou https), pour le port par défaut de `Host`
+	 * @param requestScheme Schéma de la requête vu par le client (http ou https),
+	 *                      pour le port par défaut de `Host`
 	 * @return true si l'origine est absente, ou si son hôte et son port sont ceux de `Host`
 	 */
 	static boolean allows(String origin, String host, String requestScheme) {
@@ -95,6 +96,26 @@ public final class OriginCheck {
 	 * @param port Port explicite ou par défaut
 	 */
 	private record Authority(String host, int port) {}
+
+	/**
+	 * Retourne le schéma vu par le client : `Forwarded` puis `X-Forwarded-Proto`
+	 * quand un mandataire termine TLS, sinon le schéma de la requête
+	 * @param request Requête de poignée de main
+	 * @return Schéma effectif (http ou https)
+	 */
+	private static String effectiveScheme(HttpServletRequest request) {
+		String forwarded = request.getHeader("Forwarded");
+		if (forwarded != null)
+			for (String part : forwarded.split(";")) {
+				String[] pair = part.trim().split("=", 2);
+				if (pair.length == 2 && pair[0].equalsIgnoreCase("proto"))
+					return pair[1].replace("\"", "").strip().toLowerCase(Locale.ROOT);
+			}
+		String proto = request.getHeader("X-Forwarded-Proto");
+		if (proto != null && !proto.isBlank())
+			return proto.split(",")[0].strip().toLowerCase(Locale.ROOT);
+		return request.getScheme();
+	}
 
 	private static Authority parseOrigin(String origin) {
 		try {
