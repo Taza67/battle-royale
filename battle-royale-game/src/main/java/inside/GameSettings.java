@@ -26,8 +26,8 @@ public final class GameSettings implements IConfig {
 	 * Vagues par défaut : la zone se resserre jusqu'à une petite zone finale, puis se referme complètement
 	 */
 	public static final List<ZoneWave> DEFAULT_WAVES = List.of(
-		new ZoneWave(25, 15, 0.70f, 3),
-		new ZoneWave(18, 12, 0.48f, 5),
+		new ZoneWave(15, 12, 0.70f, 3),
+		new ZoneWave(15, 12, 0.48f, 5),
 		new ZoneWave(15, 10, 0.32f, 8),
 		new ZoneWave(12, 9, 0.20f, 12),
 		new ZoneWave(10, 8, 0.11f, 16),

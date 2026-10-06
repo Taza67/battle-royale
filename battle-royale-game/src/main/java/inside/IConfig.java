@@ -60,7 +60,7 @@ public interface IConfig {
 	/**
 	 * Dégâts d'un coup d'épée
 	 */
-	int MELEE_DAMAGE = 12;
+	int MELEE_DAMAGE = 8;
 	/**
 	 * Durée pendant laquelle un coup d'épée peut toucher, en pas de simulation (150 ms)
 	 */
@@ -68,7 +68,7 @@ public interface IConfig {
 	/**
 	 * Temps de recharge entre deux coups d'épée, en pas de simulation (450 ms)
 	 */
-	int MELEE_COOLDOWN_TICKS = 27;
+	int MELEE_COOLDOWN_TICKS = 30;
 	/**
 	 * Portée d'un coup d'épée (distance maximale entre les centres des joueurs)
 	 */
