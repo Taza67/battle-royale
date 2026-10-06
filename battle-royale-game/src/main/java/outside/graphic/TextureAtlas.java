@@ -1,8 +1,8 @@
 package outside.graphic;
 
 import java.awt.image.BufferedImage;
-import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 
 import javax.imageio.ImageIO;
 
@@ -14,11 +14,12 @@ public class TextureAtlas {
     
     // Constructeurs
     public TextureAtlas(String path) {
-    	try {
-			atlas = ImageIO.read(new File(path));
+    	try (InputStream in = TextureAtlas.class.getResourceAsStream("/" + path)) {
+    		if (in == null)
+    			throw new IllegalStateException("- Texture introuvable : " + path);
+			atlas = ImageIO.read(in);
 		} catch (IOException e) {
-			e.printStackTrace();
-			System.exit(0);
+			throw new IllegalStateException("- Impossible de lire la texture : " + path, e);
 		}
     }
 
