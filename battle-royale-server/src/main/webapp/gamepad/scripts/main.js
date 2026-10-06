@@ -245,7 +245,10 @@ connexion.sur("rejected", message => {
 	if (session.inscrit)
 		return;
 
-	if (session.automatique && raison === RAISON_PSEUDO_PRIS && planifierEssai())
+	// Le pseudo peut être encore attaché à l'ancienne connexion, que le serveur
+	// n'a pas encore vue se fermer : on réessaie quelques secondes, aussi pour
+	// une inscription manuelle.
+	if (raison === RAISON_PSEUDO_PRIS && planifierEssai())
 		return;
 
 	revenirInscription(raison);
@@ -369,6 +372,10 @@ function actualiser() {
 		afficherEcran("ecran-manette");
 	} else if (!aParticipe()) {
 		afficherAttente("Salle d'attente", "Vous jouerez dès la prochaine manche lancée par l'administrateur.", true);
+	} else if (session.fin === null) {
+		// Le jeu transmet encore son état final (jusqu'à ~2 s après un arrêt) :
+		// on attend le message `end` plutôt que d'afficher un classement vide.
+		afficherAttente("Partie terminée", "Les résultats de la manche arrivent.", true);
 	} else {
 		if (ecranCourant() !== "ecran-fin")
 			effacerNotifications();
