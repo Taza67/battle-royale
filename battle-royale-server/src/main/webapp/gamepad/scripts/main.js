@@ -342,6 +342,14 @@ function afficherAttente(titre, texte, profil) {
 	afficherEcran("ecran-attente");
 }
 
+// Un joueur inscrit après la fin d'une manche n'a pas de résultat à afficher.
+function aParticipe() {
+	if (session.dernierEtat !== null)
+		return true;
+	const classement = Array.isArray(session.fin?.ranking) ? session.fin.ranking : [];
+	return classement.some(ligne => ligne?.id === session.id);
+}
+
 function actualiser() {
 	const connectee = connexion.estConnectee;
 
@@ -359,6 +367,8 @@ function actualiser() {
 			afficherAttente("Reconnexion", "Connexion au serveur perdue, nouvelle tentative en cours.", true);
 	} else if (session.partie === "running" || session.partie === "paused") {
 		afficherEcran("ecran-manette");
+	} else if (!aParticipe()) {
+		afficherAttente("Salle d'attente", "Vous jouerez dès la prochaine manche lancée par l'administrateur.", true);
 	} else {
 		if (ecranCourant() !== "ecran-fin")
 			effacerNotifications();
