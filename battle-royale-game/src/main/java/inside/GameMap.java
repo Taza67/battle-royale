@@ -13,7 +13,7 @@ import inside.geometry.Rectangle;
 import inside.geometry.Vertice;
 
 /**
- * Classe représentant la carte du jeu : ses limites, ses obstacles et la grille de zones
+ * Classe représentant la carte du jeu : ses limites, ses obstacles et la grille de cases
  * qui accélère la recherche des éléments proches
  * @author mourtaza
  *
@@ -55,7 +55,7 @@ public class GameMap {
 	 */
 	private final List<Obstacle> obstacles;
 	/**
-	 * Grille de zones, indexée par [ligne][colonne]
+	 * Grille de cases, indexée par [ligne][colonne]
 	 */
 	private final GridCell[][] cells;
 
@@ -150,7 +150,7 @@ public class GameMap {
 	}
 
 	/**
-	 * Retourne la zone contenant un point (les points hors de la carte donnent la zone du bord la plus proche)
+	 * Retourne la case contenant un point (les points hors de la carte donnent la case du bord la plus proche)
 	 * @param x Abscisse
 	 * @param y Ordonnée
 	 * @return GridCell
