@@ -343,20 +343,14 @@ public class Board {
 	 */
 	private void applyCommands() {
 		Command c;
-		while ((c = commands.poll()) != null) {
-			if (c instanceof Command.Control control) applyControl(control.type());
-			else if (phase == Phase.ENDED) continue;
-			else if (paused) suspended.addLast(c);
-			else if (c instanceof Command.Move move) applyMove(move);
-			else if (c instanceof Command.Attack attack) applyAttack(attack);
-		}
+		while ((c = commands.poll()) != null) c.apply(this);
 	}
 
 	/**
 	 * Applique une commande de contrôle
 	 * @param type Type de contrôle
 	 */
-	private void applyControl(Command.ControlType type) {
+	void applyControl(Command.ControlType type) {
 		if (phase == Phase.ENDED) return;
 
 		switch (type) {
@@ -385,10 +379,23 @@ public class Board {
 	}
 
 	/**
+	 * Applique une commande de jeu (suspendue pendant une pause, ignorée après la fin)
+	 * @param c Commande
+	 * @return true si la commande peut être appliquée maintenant
+	 */
+	private boolean gameplayOpen(Command c) {
+		if (phase == Phase.ENDED) return false;
+		if (paused) suspended.addLast(c);
+		return !paused;
+	}
+
+	/**
 	 * Applique une commande de déplacement
 	 * @param move Commande
 	 */
-	private void applyMove(Command.Move move) {
+	void applyMove(Command.Move move) {
+		if (!gameplayOpen(move)) return;
+
 		Player p = players.get(move.playerId());
 		if (p == null || !p.isAlive()) return;
 
@@ -400,7 +407,9 @@ public class Board {
 	 * Applique une commande d'attaque
 	 * @param attack Commande
 	 */
-	private void applyAttack(Command.Attack attack) {
+	void applyAttack(Command.Attack attack) {
+		if (!gameplayOpen(attack)) return;
+
 		Player p = players.get(attack.playerId());
 		if (p == null || !p.isAlive()) return;
 
