@@ -62,13 +62,14 @@ public class HudRenderer {
 
 	/**
 	 * Dessine le HUD d'une partie en cours ou terminée
-	 * @param s Image du plateau
+	 * @param frame Contexte de l'image
 	 * @param info Informations de la vue
 	 * @param effects Effets (bandeau courant)
-	 * @param time Instant courant (secondes)
 	 * @param endTime Instant de la fin de partie (secondes, négatif si la partie continue)
 	 */
-	public void render(BoardSnapshot s, HudInfo info, Effects effects, double time, double endTime) {
+	public void render(FrameInfo frame, HudInfo info, Effects effects, double endTime) {
+		BoardSnapshot s = frame.current();
+		double time = frame.time();
 		renderStatusPanel(s);
 		renderKillFeed(s);
 

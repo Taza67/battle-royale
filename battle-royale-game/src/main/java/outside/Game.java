@@ -29,6 +29,7 @@ import outside.audio.AudioUtilities;
 import outside.communication.GameServer;
 import outside.graphic.Effects;
 import outside.graphic.Fonts;
+import outside.graphic.FrameInfo;
 import outside.graphic.GraphicUtilities;
 import outside.graphic.HudRenderer;
 import outside.graphic.HudRenderer.HudInfo;
@@ -261,16 +262,15 @@ public class Game {
 			return;
 		}
 
-		BoardSnapshot current = frame.current();
+		FrameInfo view = new FrameInfo(frame.previous(), frame.current(), frame.alpha(System.nanoTime()), now, localId);
 
 		// Tremblement de caméra : le monde est translaté, l'interface reste fixe
 		GL11.glMatrixMode(GL11.GL_MODELVIEW);
 		GL11.glPushMatrix();
 		GL11.glTranslatef(effects.shakeX(), effects.shakeY(), 0);
-		world.render(shown.board().getMap(), frame.previous(), current, frame.alpha(System.nanoTime()), now, localId,
-			effects, fonts.MEDIUM);
+		world.render(shown.board().getMap(), view, effects, fonts.MEDIUM);
 		GL11.glPopMatrix();
-		hud.render(current, info, effects, now, endTime);
+		hud.render(view, info, effects, endTime);
 	}
 
 	/**

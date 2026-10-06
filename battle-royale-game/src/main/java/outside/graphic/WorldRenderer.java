@@ -49,16 +49,15 @@ public class WorldRenderer {
 	/**
 	 * Dessine le monde
 	 * @param map Carte (obstacles immuables)
-	 * @param previous Image précédente (peut être null)
-	 * @param current Image courante
-	 * @param alpha Avancement entre les deux images (0 à 1)
-	 * @param time Instant courant (secondes, pour les animations)
-	 * @param localId Identifiant du joueur local (-1 si aucun)
+	 * @param frame Contexte de l'image
 	 * @param effects Effets à dessiner au-dessus des joueurs
 	 * @param numberFont Police des nombres de dégâts
 	 */
-	public void render(GameMap map, BoardSnapshot previous, BoardSnapshot current, float alpha, double time, int localId,
-			Effects effects, Font numberFont) {
+	public void render(GameMap map, FrameInfo frame, Effects effects, Font numberFont) {
+		BoardSnapshot previous = frame.previous(), current = frame.current();
+		float alpha = frame.alpha();
+		double time = frame.time();
+
 		PREVIOUS_PLAYERS.clear();
 		PREVIOUS_BULLETS.clear();
 		if (previous != null) {
@@ -82,7 +81,7 @@ public class WorldRenderer {
 			if (p.alive()) renderSwing(p, interpolated(p, alpha));
 
 		for (PlayerState p : current.players())
-			if (p.alive()) renderPlayer(p, interpolated(p, alpha), current.tick(), time, p.id() == localId, effects);
+			if (p.alive()) renderPlayer(p, interpolated(p, alpha), current.tick(), time, p.id() == frame.localId(), effects);
 
 		effects.render(TEXTURES.getGlow(), numberFont);
 	}
