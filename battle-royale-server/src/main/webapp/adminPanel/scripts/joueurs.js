@@ -46,6 +46,13 @@ export function evenementsEntre(avant, apres) {
 			evenements.push({ texte: `${joueur.pseudo} est éliminé${joueur.rang > 0 ? ` (${ordinal(joueur.rang)})` : ""}.`, genre: "erreur" });
 	}
 
+	// Un joueur retiré de la liste (non retenu pour la manche, par exemple)
+	// disparaît sans autre événement : il faut le signaler.
+	const presents = new Set(apres.map(joueur => joueur.id));
+	for (const joueur of avant)
+		if (!presents.has(joueur.id))
+			evenements.push({ texte: `${joueur.pseudo} a été retiré de la partie.`, genre: "info" });
+
 	return evenements;
 }
 
