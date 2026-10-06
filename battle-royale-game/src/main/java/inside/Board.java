@@ -537,8 +537,8 @@ public class Board {
 	 * @return Rectangle de l'élément bloquant, ou null
 	 */
 	private Rectangle findBlocker(Player self, Rectangle r, Rectangle start) {
-		for (GridCell z : map.areasOverlapping(r))
-			for (Obstacle o : z.getObstacles()) {
+		for (GridCell cell : map.areasOverlapping(r))
+			for (Obstacle o : cell.getObstacles()) {
 				Rectangle or = o.getRepresentation();
 				if (or.intersect(r) && !or.intersect(start)) return or;
 			}

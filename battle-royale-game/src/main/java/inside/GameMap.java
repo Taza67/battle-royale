@@ -74,8 +74,8 @@ public class GameMap {
 				cells[i][j] = new GridCell(j, i);
 
 		for (Obstacle o : obstacles)
-			for (GridCell z : areasOverlapping(o.getRepresentation()))
-				z.addObstacle(o);
+			for (GridCell cell : areasOverlapping(o.getRepresentation()))
+				cell.addObstacle(o);
 	}
 
 	/**
@@ -183,15 +183,15 @@ public class GameMap {
 	 * @return Liste des zones
 	 */
 	public List<GridCell> areasOverlapping(Rectangle r) {
-		List<GridCell> zones = new ArrayList<>();
+		List<GridCell> areas = new ArrayList<>();
 		int c1 = columnOf(r.getX1()), c2 = columnOf(r.getX2()),
 			r1 = rowOf(r.getY1()), r2 = rowOf(r.getY2());
 
 		for (int i = r1; i <= r2; i++)
 			for (int j = c1; j <= c2; j++)
-				zones.add(cells[i][j]);
+				areas.add(cells[i][j]);
 
-		return zones;
+		return areas;
 	}
 
 	/**
@@ -201,8 +201,8 @@ public class GameMap {
 	 * @return Obstacle trouvé ou null
 	 */
 	public Obstacle obstacleIntersecting(Rectangle r, boolean bulletBlockersOnly) {
-		for (GridCell z : areasOverlapping(r))
-			for (Obstacle o : z.getObstacles())
+		for (GridCell cell : areasOverlapping(r))
+			for (Obstacle o : cell.getObstacles())
 				if ((!bulletBlockersOnly || o.getType().blocksBullets()) && o.getRepresentation().intersect(r))
 					return o;
 
@@ -248,8 +248,8 @@ public class GameMap {
 	 */
 	public List<Player> playersNear(Rectangle r) {
 		List<Player> players = new ArrayList<>();
-		for (GridCell z : areasOverlapping(r))
-			players.addAll(z.getPlayers());
+		for (GridCell cell : areasOverlapping(r))
+			players.addAll(cell.getPlayers());
 		return players;
 	}
 
