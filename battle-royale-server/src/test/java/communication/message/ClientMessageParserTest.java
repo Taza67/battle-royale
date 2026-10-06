@@ -34,14 +34,15 @@ class ClientMessageParserTest {
 		assertEquals(new ClientMessage.Join("abcdefghijklmnop"),
 			ClientMessageParser.parse("{\"type\":\"join\",\"pseudo\":\"abcdefghijklmnop\"}"));
 
-		String emojis = "\uD83D\uDE00".repeat(16);
-		assertEquals(new ClientMessage.Join(emojis),
-			ClientMessageParser.parse("{\"type\":\"join\",\"pseudo\":\"" + emojis + "\"}"));
+		String accents = "\u00e9\u00e8\u00ea\u00e0\u00e7\u00f9\u00ee\u00ef\u00f6\u00fc\u00e4\u00c2\u00ca\u00ee"; // 16 points de code Latin-1
+		assertEquals(new ClientMessage.Join(accents),
+			ClientMessageParser.parse("{\"type\":\"join\",\"pseudo\":\"" + accents + "\"}"));
 	}
 
 	@ParameterizedTest
 	@ValueSource(strings = {
 		"{\"type\":\"join\",\"pseudo\":\"abcdefghijklmnopq\"}",
+		"{\"type\":\"join\",\"pseudo\":\"\ud83d\ude00\ud83d\ude00\"}",
 		"{\"type\":\"join\",\"pseudo\":\"\"}",
 		"{\"type\":\"join\",\"pseudo\":\"    \"}",
 		"{\"type\":\"join\",\"pseudo\":\"ta\\u0000za\"}",
