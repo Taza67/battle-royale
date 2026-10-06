@@ -17,6 +17,11 @@ au plus `100` joueurs par manche,
 directions numérotées dans le sens trigonométrique avec l'axe Y vers le bas :
 `0` est, `1` nord-est, `2` nord, `3` nord-ouest, `4` ouest, `5` sud-ouest, `6` sud, `7` sud-est.
 
+Le jeu accepte jusqu'à `100` joueurs par manche (`MAX_PLAYERS` de
+`battle-royale-game`) ; le serveur web n'en inscrit que `50`
+(`GameSession.MAX_PLAYERS`), un identifiant par image du panneau
+d'administration : la limite effective d'une partie en ligne est donc `50`.
+
 ## Jeu ⇄ serveur web (TCP)
 
 Le jeu écoute sur `127.0.0.1:8000` (options `--port` et `--bind`, par exemple
@@ -105,13 +110,14 @@ Point d'accès : `ws(s)://<hôte>/battle-royale-server/websocketserver`, constru
 | `{"type":"attack","form":1}` | attaque (`1` corps-à-corps, `2` tir) ; au plus 4 attaques en file par joueur, les suivantes sont ignorées sans réponse |
 | `{"type":"admin-join","password":"…"}` | connexion de l'administrateur |
 | `{"type":"admin-command","command":"start"}` | `start`, `pause`, `resume` ou `stop` |
+| `{"type":"ping"}` | entretien de la connexion, envoyé par les clients toutes les `20 s` ; ignoré par le serveur |
 
 ### Serveur → joueur
 
 | Message | Rôle |
 | --- | --- |
 | `{"type":"welcome","id":3,"pseudo":"Taza","state":"lobby","token":"…"}` | inscription acceptée, `state` vaut `lobby`, `running`, `paused`, `over` ou `stopped` ; `token` est le jeton de reprise du joueur |
-| `{"type":"rejected","reason":"…"}` | inscription refusée |
+| `{"type":"rejected","code":"…","reason":"…"}` | inscription refusée |
 | `{"type":"game","state":"running"}` | changement d'état de la partie |
 | `{"type":"state", …}` | état du joueur, voir ci-dessous |
 | `{"type":"end","winner":{"id":3,"pseudo":"Taza"},"ranking":[…]}` | fin de partie, `winner` peut valoir `null` |
@@ -143,7 +149,7 @@ arrêté la manche. `winner` vaut `null` en cas d'égalité ou si un robot gagne
 | Message | Rôle |
 | --- | --- |
 | `{"type":"admin-welcome","state":"lobby"}` | connexion acceptée |
-| `{"type":"rejected","reason":"…"}` | connexion refusée |
+| `{"type":"rejected","code":"…","reason":"…"}` | connexion refusée |
 | `{"type":"players","players":[…]}` | liste des joueurs à chaque changement (au plus 2 fois par seconde en partie) |
 | `{"type":"ack","command":"start","ok":true,"error":null}` | résultat d'une commande |
 | `{"type":"game","state":"running"}` | changement d'état de la partie |
@@ -151,6 +157,13 @@ arrêté la manche. `winner` vaut `null` en cas d'égalité ou si un robot gagne
 
 Éléments de `players` :
 `{"id":3,"pseudo":"Taza","connected":true,"status":"alive","life":87,"kills":2,"rank":0}`.
+
+Message `rejected` : `code` est un identifiant stable destiné aux comparaisons
+par les clients (`reason` reste le texte affiché, en français). Codes envoyés :
+`pseudo-taken` (pseudo associé à une session ouverte), `session-taken-over`
+(ancienne connexion d'un joueur remplacée par une reprise), `admin-replaced`
+(ancienne session administrateur remplacée) et `game-refused` pour tout autre
+refus.
 
 ### Règles
 

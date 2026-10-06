@@ -15,8 +15,10 @@ class ServerMessageTest {
 			Json.write(new ServerMessage.Welcome(3, "Taza", "lobby", "0f")));
 		assertEquals("Welcome[id=3, pseudo=Taza, state=lobby, token=***]",
 			new ServerMessage.Welcome(3, "Taza", "lobby", "0f").toString());
-		assertEquals("{\"type\":\"rejected\",\"reason\":\"Pseudo déjà utilisé\"}",
+		assertEquals("{\"type\":\"rejected\",\"code\":\"game-refused\",\"reason\":\"Pseudo déjà utilisé\"}",
 			Json.write(new ServerMessage.Rejected("Pseudo déjà utilisé")));
+		assertEquals("{\"type\":\"rejected\",\"code\":\"pseudo-taken\",\"reason\":\"Pseudo déjà utilisé\"}",
+			Json.write(new ServerMessage.Rejected("pseudo-taken", "Pseudo déjà utilisé")));
 	}
 
 	@Test

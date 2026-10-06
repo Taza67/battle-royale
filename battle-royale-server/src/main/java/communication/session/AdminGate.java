@@ -89,7 +89,7 @@ final class AdminGate {
 			ClientConnection previous = admin;
 			if (previous != null && previous != c) {
 				LOGGER.info(() -> "Session administrateur " + previous.id() + " remplacée par " + c.id());
-				previous.send(Json.write(new ServerMessage.Rejected(GameSession.ADMIN_REPLACED)));
+				previous.send(Json.write(new ServerMessage.Rejected(GameSession.CODE_ADMIN_REPLACED, GameSession.ADMIN_REPLACED)));
 				previous.close(GameSession.ADMIN_REPLACED);
 			}
 		} else if (admin != null && admin.isOpen()) {

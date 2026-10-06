@@ -5,7 +5,7 @@ import { creerConnexion, estModeDemo, urlManette } from "../../common/scripts/co
 import {
 	afficherEcran, creerElement, lierIndicateurConnexion, notifier, poserAvatar, remplirClassement, resumerFin
 } from "../../common/scripts/interface.js";
-import { LIBELLES_ETAT, entier, normaliserEtat } from "../../common/scripts/protocole.js";
+import { CODES_REFUS, LIBELLES_ETAT, entier, normaliserEtat, refusAvecCode } from "../../common/scripts/protocole.js";
 import { TableauJoueurs, evenementsEntre, normaliserJoueur } from "./joueurs.js";
 
 const CLE_SESSION = "battle-royale.admin";
@@ -111,6 +111,7 @@ function seConnecter(evenement) {
 	session.souhaitee = true;
 	session.automatique = false;
 	session.motDePasse = element("mot-de-passe").value;
+	element("mot-de-passe").setAttribute("aria-invalid", "false");
 	element("erreur-connexion").textContent = "";
 	envoyerConnexion();
 	actualiser();
@@ -130,6 +131,7 @@ function revenirConnexion(raison) {
 	ecrireSession(null);
 
 	element("erreur-connexion").textContent = raison;
+	element("mot-de-passe").setAttribute("aria-invalid", "true");
 	actualiser();
 	element("mot-de-passe").focus();
 }
@@ -171,7 +173,7 @@ connexion.sur("rejected", message => {
 	const raison = typeof message.reason === "string" && message.reason !== "" ? message.reason : "Connexion refusée.";
 
 	// Une session déjà admise qui reçoit un autre refus reste administrateur.
-	if (session.admise && raison !== RAISON_REMPLACEE)
+	if (session.admise && !refusAvecCode(message, CODES_REFUS.adminRemplace, RAISON_REMPLACEE))
 		return;
 
 	revenirConnexion(raison);
@@ -410,6 +412,10 @@ element("copier-url").addEventListener("click", async () => {
 });
 
 element("formulaire-connexion").addEventListener("submit", seConnecter);
+element("mot-de-passe").addEventListener("input", () => {
+	element("mot-de-passe").removeAttribute("aria-invalid");
+	element("erreur-connexion").textContent = "";
+});
 for (const bouton of boutons) {
 	bouton.addEventListener("click", () => {
 		if (bouton.dataset.commande === "stop")

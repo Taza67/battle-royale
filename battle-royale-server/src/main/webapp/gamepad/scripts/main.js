@@ -4,7 +4,8 @@
 import { creerConnexion, estModeDemo } from "../../common/scripts/connexion.js";
 import { afficherEcran, ecranCourant, effacerNotifications, lierIndicateurConnexion, notifier } from "../../common/scripts/interface.js";
 import {
-	CARTE, VIE_MAXIMALE, entier, normaliserEtat, normaliserPhase, normaliserStatut, normaliserZone
+	CARTE, CODES_REFUS, VIE_MAXIMALE, entier, normaliserEtat, normaliserPhase, normaliserStatut, normaliserZone,
+	refusAvecCode
 } from "../../common/scripts/protocole.js";
 import { afficherEtat, afficherFin, afficherProfil, reinitialiserEtat } from "./affichage.js";
 import { Commandes } from "./commandes.js";
@@ -236,7 +237,7 @@ connexion.sur("rejected", message => {
 
 	// Un autre onglet ou appareil a repris la session : pas de nouvel essai, qui
 	// la lui reprendrait à son tour.
-	if (raison === RAISON_SESSION_REPRISE) {
+	if (refusAvecCode(message, CODES_REFUS.sessionReprise, RAISON_SESSION_REPRISE)) {
 		revenirInscription(raison, true);
 		return;
 	}
@@ -248,7 +249,7 @@ connexion.sur("rejected", message => {
 	// Le pseudo peut être encore attaché à l'ancienne connexion, que le serveur
 	// n'a pas encore vue se fermer : on réessaie quelques secondes, aussi pour
 	// une inscription manuelle.
-	if (raison === RAISON_PSEUDO_PRIS && planifierEssai())
+	if (refusAvecCode(message, CODES_REFUS.pseudoPris, RAISON_PSEUDO_PRIS) && planifierEssai())
 		return;
 
 	revenirInscription(raison);

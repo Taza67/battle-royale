@@ -2,24 +2,21 @@
 // Il implémente le côté serveur du protocole WebSocket décrit dans
 // docs/PROTOCOLE.md et simule une manche complète avec des joueurs robots.
 
-import { pseudoValide } from "./protocole.js";
+import { CARTE, CODES_REFUS, VIE_MAXIMALE, directionDepuisVecteur, pseudoValide } from "./protocole.js";
 
-const LARGEUR_CARTE = 1280;
-const HAUTEUR_CARTE = 720;
-const VIE_MAXIMALE = 100;
 const JOUEURS_MAXIMUM = 50;
 const ESSAIS_MOT_DE_PASSE = 5;
 
 const REFUS = Object.freeze({
-	pseudoInvalide: "Pseudo invalide : 1 à 16 caractères",
-	pseudoPris: "Pseudo déjà utilisé",
-	inscriptionsFermees: "Inscriptions fermées : la partie a déjà commencé",
-	complet: "Partie complète",
-	sessionReprise: "Session reprise par une autre connexion",
-	dejaInscrite: "Session déjà inscrite",
-	motDePasse: "Mot de passe administrateur incorrect",
-	adminPris: "Un administrateur est déjà connecté",
-	adminRemplace: "Session administrateur reprise par une autre connexion"
+	pseudoInvalide: { code: CODES_REFUS.refusPartie, reason: "Pseudo invalide : 1 à 16 caractères" },
+	pseudoPris: { code: CODES_REFUS.pseudoPris, reason: "Pseudo déjà utilisé" },
+	inscriptionsFermees: { code: CODES_REFUS.refusPartie, reason: "Inscriptions fermées : la partie a déjà commencé" },
+	complet: { code: CODES_REFUS.refusPartie, reason: "Partie complète" },
+	sessionReprise: { code: CODES_REFUS.sessionReprise, reason: "Session reprise par une autre connexion" },
+	dejaInscrite: { code: CODES_REFUS.refusPartie, reason: "Session déjà inscrite" },
+	motDePasse: { code: CODES_REFUS.refusPartie, reason: "Mot de passe administrateur incorrect" },
+	adminPris: { code: CODES_REFUS.refusPartie, reason: "Un administrateur est déjà connecté" },
+	adminRemplace: { code: CODES_REFUS.adminRemplace, reason: "Session administrateur reprise par une autre connexion" }
 });
 
 const DUREE_TICK = 50;
@@ -374,12 +371,12 @@ export class ServeurFactice {
 		const pseudo = typeof pseudoRecu === "string" ? pseudoRecu.trim() : "";
 
 		if (socket === this.#admin || this.#joueurDeSession(socket) !== null) {
-			socket.livrer({ type: "rejected", reason: REFUS.dejaInscrite });
+			socket.livrer({ type: "rejected", ...REFUS.dejaInscrite });
 			return;
 		}
 
 		if (!pseudoValide(pseudo)) {
-			socket.livrer({ type: "rejected", reason: REFUS.pseudoInvalide });
+			socket.livrer({ type: "rejected", ...REFUS.pseudoInvalide });
 			return;
 		}
 
@@ -388,20 +385,20 @@ export class ServeurFactice {
 		if (joueur !== undefined) {
 			const ancienne = joueur.session;
 			if (joueur.robot || (ancienne !== null && jeton !== joueur.jeton)) {
-				socket.livrer({ type: "rejected", reason: REFUS.pseudoPris });
+				socket.livrer({ type: "rejected", ...REFUS.pseudoPris });
 				return;
 			}
 			if (ancienne !== null) {
 				joueur.session = null;
-				ancienne.congedier({ type: "rejected", reason: REFUS.sessionReprise });
+				ancienne.congedier({ type: "rejected", ...REFUS.sessionReprise });
 			}
 		} else {
 			if (this.#etat !== "lobby") {
-				socket.livrer({ type: "rejected", reason: REFUS.inscriptionsFermees });
+				socket.livrer({ type: "rejected", ...REFUS.inscriptionsFermees });
 				return;
 			}
 			if (this.#joueurs.size >= JOUEURS_MAXIMUM) {
-				socket.livrer({ type: "rejected", reason: REFUS.complet });
+				socket.livrer({ type: "rejected", ...REFUS.complet });
 				return;
 			}
 
@@ -423,7 +420,7 @@ export class ServeurFactice {
 
 	#connecterAdmin(socket, motDePasse) {
 		if (socket === this.#admin || this.#joueurDeSession(socket) !== null) {
-			socket.livrer({ type: "rejected", reason: REFUS.dejaInscrite });
+			socket.livrer({ type: "rejected", ...REFUS.dejaInscrite });
 			return;
 		}
 
@@ -432,18 +429,18 @@ export class ServeurFactice {
 				const echecs = (this.#echecsMotDePasse.get(socket) ?? 0) + 1;
 				this.#echecsMotDePasse.set(socket, echecs);
 				if (echecs >= ESSAIS_MOT_DE_PASSE)
-					socket.congedier({ type: "rejected", reason: REFUS.motDePasse });
+					socket.congedier({ type: "rejected", ...REFUS.motDePasse });
 				else
-					socket.livrer({ type: "rejected", reason: REFUS.motDePasse });
+					socket.livrer({ type: "rejected", ...REFUS.motDePasse });
 				return;
 			}
 			if (this.#admin !== null) {
 				const ancienne = this.#admin;
 				this.#admin = null;
-				ancienne.congedier({ type: "rejected", reason: REFUS.adminRemplace });
+				ancienne.congedier({ type: "rejected", ...REFUS.adminRemplace });
 			}
 		} else if (this.#admin !== null) {
-			socket.livrer({ type: "rejected", reason: REFUS.adminPris });
+			socket.livrer({ type: "rejected", ...REFUS.adminPris });
 			return;
 		}
 
@@ -513,7 +510,7 @@ export class ServeurFactice {
 			connecte: robot,
 			statut: STATUTS.alive,
 			vie: VIE_MAXIMALE,
-			x: LARGEUR_CARTE / 2, y: HAUTEUR_CARTE / 2,
+			x: CARTE.width / 2, y: CARTE.height / 2,
 			kills: 0, rang: 0,
 			deplacement: null,
 			recharge: 0,
@@ -572,14 +569,14 @@ export class ServeurFactice {
 			joueur.vie = VIE_MAXIMALE;
 			joueur.kills = 0;
 			joueur.rang = 0;
-			joueur.x = Math.round(LARGEUR_CARTE / 2 + Math.cos(angle) * LARGEUR_CARTE * 0.35);
-			joueur.y = Math.round(HAUTEUR_CARTE / 2 + Math.sin(angle) * HAUTEUR_CARTE * 0.35);
+			joueur.x = Math.round(CARTE.width / 2 + Math.cos(angle) * CARTE.width * 0.35);
+			joueur.y = Math.round(CARTE.height / 2 + Math.sin(angle) * CARTE.height * 0.35);
 			joueur.deplacement = null;
 			joueur.cible = null;
 			joueur.recharge = 0;
 		});
 
-		const zone = { x1: 0, y1: 0, x2: LARGEUR_CARTE, y2: HAUTEUR_CARTE };
+		const zone = { x1: 0, y1: 0, x2: CARTE.width, y2: CARTE.height };
 		this.#manche = {
 			phase: "warmup",
 			total,
@@ -761,8 +758,8 @@ export class ServeurFactice {
 			if (deplacement !== null && (joueur.robot || this.#horloge <= deplacement.expiration)) {
 				const vecteur = DIRECTIONS[deplacement.direction];
 				const longueur = deplacement.vitesse * PIXELS_PAR_VITESSE * this.#options.vitesse;
-				joueur.x = borner(joueur.x + vecteur.x * longueur, 0, LARGEUR_CARTE);
-				joueur.y = borner(joueur.y + vecteur.y * longueur, 0, HAUTEUR_CARTE);
+				joueur.x = borner(joueur.x + vecteur.x * longueur, 0, CARTE.width);
+				joueur.y = borner(joueur.y + vecteur.y * longueur, 0, CARTE.height);
 			} else if (deplacement !== null) {
 				joueur.deplacement = null;
 			}
@@ -821,8 +818,7 @@ export class ServeurFactice {
 		if (manche.phase === "battle" && adversaire !== undefined && distance(adversaire, robot) < 260 && estDansZone(robot, manche.zone))
 			destination = adversaire;
 
-		const angle = Math.atan2(-(destination.y - robot.y), destination.x - robot.x);
-		const direction = ((Math.round(angle / (Math.PI / 4)) % 8) + 8) % 8;
+		const direction = directionDepuisVecteur(destination.x - robot.x, destination.y - robot.y);
 		robot.deplacement = distance(robot, destination) > 12 ? { direction, vitesse: 3, expiration: Infinity } : null;
 
 		if (manche.phase === "battle" && adversaire !== undefined) {
@@ -855,7 +851,7 @@ export class ServeurFactice {
 			secondsLeft: manche.phase === "over" ? 0 : Math.max(0, Math.ceil((manche.finEtape - this.#horloge) / 1000)),
 			zone: arrondirZone(manche.zone),
 			nextZone: arrondirZone(manche.prochaineZone),
-			map: { width: LARGEUR_CARTE, height: HAUTEUR_CARTE }
+			map: { width: CARTE.width, height: CARTE.height }
 		};
 	}
 
