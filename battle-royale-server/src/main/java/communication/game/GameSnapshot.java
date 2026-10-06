@@ -114,7 +114,7 @@ public record GameSnapshot(Phase phase, int alive, int total, int winnerId, int 
 			int maxLife = Byte.toUnsignedInt(buffer.get());
 			Zone zone = readZone(buffer);
 			Zone nextZone = readZone(buffer);
-			int secondsLeft = buffer.getShort();
+			int secondsLeft = Math.max(0, buffer.getShort());
 
 			int count = (data.length - HEADER_SIZE) / PLAYER_SIZE;
 			List<PlayerSnapshot> players = new ArrayList<>(count);

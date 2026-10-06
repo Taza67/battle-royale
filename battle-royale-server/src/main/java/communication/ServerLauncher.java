@@ -1,6 +1,14 @@
 package communication;
 
 import java.io.File;
+import java.io.IOException;
+import java.net.URISyntaxException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.security.CodeSource;
+import java.util.Comparator;
+import java.util.Map;
+import java.util.WeakHashMap;
 import java.util.logging.Handler;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -46,6 +54,10 @@ public class ServerLauncher {
 
 	private static final Logger LOG = Logger.getLogger(ServerLauncher.class.getName());
 	/**
+	 * Répertoires de travail de chaque instance de Tomcat démarrée, pour leur suppression à l'arrêt
+	 */
+	private static final Map<Tomcat, Path> BASE_DIRS = new WeakHashMap<>();
+	/**
 	 * Journal parent de toutes les classes du serveur, conservé pour garder son niveau
 	 */
 	private static final Logger ROOT = Logger.getLogger("communication");
@@ -85,7 +97,11 @@ public class ServerLauncher {
 	@SuppressWarnings("deprecation")
 	public static Tomcat start(int port, File webapp, GameSession game) throws LifecycleException {
 		Tomcat tomcat = new Tomcat();
-		tomcat.setBaseDir(new File(System.getProperty("java.io.tmpdir"), "battle-royale-tomcat-" + port).getAbsolutePath());
+		Path baseDir = createBaseDirectory(port);
+		tomcat.setBaseDir(baseDir.toAbsolutePath().toString());
+		synchronized (BASE_DIRS) {
+			BASE_DIRS.put(tomcat, baseDir);
+		}
 		tomcat.setPort(port);
 		tomcat.getConnector();
 		tomcat.setAddDefaultWebXmlToWebapp(false);
@@ -122,7 +138,7 @@ public class ServerLauncher {
 				process.setProcessPeriod(1);
 			((ServerContainer) container).addEndpoint(WebSocketServer.config(game));
 		} catch (DeploymentException | RuntimeException e) {
-			destroyQuietly(tomcat);
+			destroyQuietly(tomcat, baseDir);
 			if (e instanceof IllegalStateException ise)
 				throw ise;
 			throw new IllegalStateException("Impossible d'enregistrer le point d'accès WebSocket", e);
@@ -137,7 +153,7 @@ public class ServerLauncher {
 	 */
 	public static void stop(Tomcat tomcat, GameSession game) {
 		game.close();
-		destroyQuietly(tomcat);
+		destroyQuietly(tomcat, null);
 	}
 
 	/**
@@ -158,16 +174,56 @@ public class ServerLauncher {
 	}
 
 	/**
-	 * Arrête et détruit Tomcat sans propager d'erreur
-	 * @param tomcat Instance de Tomcat
+	 * Crée le répertoire de travail de Tomcat dans le répertoire temporaire
+	 * @param port Port HTTP, pour rendre le nom lisible
+	 * @return Répertoire fraîchement créé
 	 */
-	private static void destroyQuietly(Tomcat tomcat) {
+	private static Path createBaseDirectory(int port) {
+		try {
+			return Files.createTempDirectory("battle-royale-tomcat-" + port + "-");
+		} catch (IOException e) {
+			throw new IllegalStateException("Impossible de créer le répertoire de travail de Tomcat", e);
+		}
+	}
+
+	/**
+	 * Arrête et détruit Tomcat sans propager d'erreur, puis supprime son répertoire de travail
+	 * @param tomcat Instance de Tomcat
+	 * @param baseDir Répertoire de travail à supprimer, null pour le retrouver via Tomcat
+	 */
+	private static void destroyQuietly(Tomcat tomcat, Path baseDir) {
+		if (baseDir == null) {
+			synchronized (BASE_DIRS) {
+				baseDir = BASE_DIRS.remove(tomcat);
+			}
+		}
 		try {
 			if (tomcat.getServer().getState().isAvailable())
 				tomcat.stop();
 			tomcat.destroy();
 		} catch (LifecycleException e) {
 			LOG.log(Level.WARNING, "Arrêt de Tomcat incomplet", e);
+		}
+		deleteTree(baseDir);
+	}
+
+	/**
+	 * Supprime un répertoire et son contenu sans propager d'erreur
+	 * @param dir Répertoire à supprimer, éventuellement null
+	 */
+	private static void deleteTree(Path dir) {
+		if (dir == null || !Files.isDirectory(dir))
+			return;
+		try (var paths = Files.walk(dir)) {
+			paths.sorted(Comparator.reverseOrder()).forEach(p -> {
+				try {
+					Files.deleteIfExists(p);
+				} catch (IOException e) {
+					LOG.fine(() -> "Suppression impossible de " + p + " : " + e);
+				}
+			});
+		} catch (IOException e) {
+			LOG.fine(() -> "Nettoyage du répertoire " + dir + " incomplet : " + e);
 		}
 	}
 
@@ -180,6 +236,12 @@ public class ServerLauncher {
 		if (configured != null)
 			return new File(configured);
 
+		File appHome = installDirectory();
+		if (appHome != null) {
+			File dir = new File(appHome, "webapp");
+			if (new File(dir, "gamepad").isDirectory())
+				return dir;
+		}
 		for (String candidate : new String[] { "src/main/webapp", "webapp", "../webapp" }) {
 			File dir = new File(candidate);
 			if (new File(dir, "gamepad").isDirectory())
@@ -187,5 +249,25 @@ public class ServerLauncher {
 		}
 
 		throw new IllegalStateException("Répertoire webapp introuvable (option -D" + ServerConfig.WEBAPP + ")");
+	}
+
+	/**
+	 * Retourne le répertoire d'installation quand le serveur tourne depuis une distribution
+	 * ({@code installDist} : {@code <application>/lib/*.jar}), sinon null
+	 * @return Répertoire d'installation, ou null
+	 */
+	private static File installDirectory() {
+		try {
+			CodeSource source = ServerLauncher.class.getProtectionDomain().getCodeSource();
+			if (source == null || source.getLocation() == null)
+				return null;
+			File location = new File(source.getLocation().toURI());
+			File parent = location.getParentFile();
+			if (location.isFile() && parent != null && "lib".equals(parent.getName()))
+				return parent.getParentFile();
+			return null;
+		} catch (URISyntaxException | SecurityException e) {
+			return null;
+		}
 	}
 }

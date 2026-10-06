@@ -122,6 +122,15 @@ public final class GameSession implements AutoCloseable {
 	private boolean starting;
 	private boolean closed;
 	private GameLink link;
+	/**
+	 * Connexion qui a demandé le lancement en cours : seule elle reçoit l'acquittement de `start`
+	 */
+	private ClientConnection startInitiator;
+	/**
+	 * Vrai quand le lancement a été annulé par un arrêt : les événements du lien sont
+	 * consommés sans démarrer ni terminer de manche
+	 */
+	private boolean startAborted;
 	private PendingActions actions;
 	private GameSnapshot lastSnapshot;
 	private String lastEndJson;
@@ -251,6 +260,8 @@ public final class GameSession implements AutoCloseable {
 			playersById.put(id, player);
 			LOG.info(() -> player + " inscrit (" + c.id() + ")");
 			c.send(Json.write(new ServerMessage.Welcome(id, player.getPseudo(), state.wireName(), tokenFor(player.getPseudo()))));
+			if (hasResult())
+				c.send(lastEndJson);
 			playersChanged();
 			return player;
 		}
@@ -342,7 +353,7 @@ public final class GameSession implements AutoCloseable {
 	 */
 	public void move(ClientConnection c, Player player, int direction, int speed) {
 		synchronized (lock) {
-			if (player.connection() != c || actions == null || !state.isInProgress())
+			if (player.connection() != c || actions == null || state != GameState.RUNNING)
 				return;
 			actions.move(player.getId(), direction, speed);
 		}
@@ -381,7 +392,7 @@ public final class GameSession implements AutoCloseable {
 			String error;
 			switch (command) {
 				case START:
-					error = startRound();
+					error = startRound(c);
 					if (error == null)
 						return;
 					break;
@@ -454,9 +465,10 @@ public final class GameSession implements AutoCloseable {
 
 	/**
 	 * Lance une manche avec les joueurs connectés
+	 * @param initiator Connexion de l'administrateur qui demande le lancement
 	 * @return Message d'erreur, ou null si le lancement est en cours
 	 */
-	private String startRound() {
+	private String startRound(ClientConnection initiator) {
 		if (closed)
 			return SHUTTING_DOWN;
 		if (starting)
@@ -477,6 +489,7 @@ public final class GameSession implements AutoCloseable {
 
 		actions = new PendingActions(roster.stream().map(Participant::id).toList());
 		starting = true;
+		startInitiator = initiator;
 		link = new GameLink(linkSettings, roster, actions, events);
 		link.start();
 		LOG.info(() -> "Lancement d'une manche avec " + roster.size() + " joueur(s) sur "
@@ -552,11 +565,12 @@ public final class GameSession implements AutoCloseable {
 	private String stopRound() {
 		if (starting) {
 			starting = false;
+			startAborted = true;
 			link.stop();
 			actions = null;
 			LOG.info("Lancement annulé par l'administrateur");
-			if (admin != null)
-				admin.send(Json.write(ServerMessage.Ack.failure(ClientMessage.Command.START.wireName(), START_CANCELLED)));
+			if (startInitiator != null)
+				startInitiator.send(Json.write(ServerMessage.Ack.failure(ClientMessage.Command.START.wireName(), START_CANCELLED)));
 			return null;
 		}
 		if (!state.isInProgress())
@@ -822,18 +836,34 @@ public final class GameSession implements AutoCloseable {
 	}
 
 	/**
+	 * Consomme un événement d'un lancement annulé par un arrêt : la manche n'a jamais
+	 * démarré côté serveur, le lien se termine sans produire ni classement ni état
+	 * @param l Lien émetteur de l'événement
+	 * @return true si l'événement appartient au lancement annulé et doit être ignoré
+	 */
+	private boolean consumeAbortedStart(GameLink l) {
+		if (l != link || !startAborted)
+			return false;
+		startAborted = false;
+		startInitiator = null;
+		return true;
+	}
+
+	/**
 	 * Traite les événements du lien avec le jeu en ignorant ceux d'une manche périmée
 	 */
 	private final class LinkEvents implements GameLinkListener {
 		@Override
 		public void onStarted(GameLink l) {
 			synchronized (lock) {
-				if (l != link || !starting)
+				if (consumeAbortedStart(l) || !starting)
 					return;
 				starting = false;
 				beginRound(l.roster());
-				if (admin != null)
-					admin.send(Json.write(ServerMessage.Ack.success(ClientMessage.Command.START.wireName())));
+				ClientConnection initiator = startInitiator;
+				startInitiator = null;
+				if (initiator != null)
+					initiator.send(Json.write(ServerMessage.Ack.success(ClientMessage.Command.START.wireName())));
 				changeState(GameState.RUNNING);
 				sendPlayers(false);
 			}
@@ -842,13 +872,15 @@ public final class GameSession implements AutoCloseable {
 		@Override
 		public void onStartFailed(GameLink l, String reason) {
 			synchronized (lock) {
-				if (l != link || !starting)
+				if (consumeAbortedStart(l) || !starting)
 					return;
 				starting = false;
 				actions = null;
 				LOG.warning(() -> "Lancement impossible : " + reason);
-				if (admin != null)
-					admin.send(Json.write(ServerMessage.Ack.failure(ClientMessage.Command.START.wireName(), reason)));
+				ClientConnection initiator = startInitiator;
+				startInitiator = null;
+				if (initiator != null)
+					initiator.send(Json.write(ServerMessage.Ack.failure(ClientMessage.Command.START.wireName(), reason)));
 				sendPlayers(false);
 			}
 		}
@@ -856,7 +888,7 @@ public final class GameSession implements AutoCloseable {
 		@Override
 		public void onSnapshot(GameLink l, GameSnapshot snapshot) {
 			synchronized (lock) {
-				if (l != link || !state.isInProgress())
+				if (l != link || startAborted || !state.isInProgress())
 					return;
 				lastSnapshot = snapshot;
 				applySnapshot(snapshot, false);
@@ -867,6 +899,8 @@ public final class GameSession implements AutoCloseable {
 		@Override
 		public void onFinished(GameLink l, GameSnapshot finalSnapshot) {
 			synchronized (lock) {
+				if (consumeAbortedStart(l))
+					return;
 				if (l != link)
 					return;
 				if (state.isInProgress())
@@ -879,6 +913,8 @@ public final class GameSession implements AutoCloseable {
 		@Override
 		public void onStopped(GameLink l, GameSnapshot finalSnapshot) {
 			synchronized (lock) {
+				if (consumeAbortedStart(l))
+					return;
 				if (l != link || !awaitingFinalState)
 					return;
 				if (finalSnapshot == null)
@@ -890,6 +926,8 @@ public final class GameSession implements AutoCloseable {
 		@Override
 		public void onLinkLost(GameLink l, String reason) {
 			synchronized (lock) {
+				if (consumeAbortedStart(l))
+					return;
 				if (l != link)
 					return;
 				if (state.isInProgress()) {

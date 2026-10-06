@@ -236,7 +236,11 @@ public final class GameLink {
 				return;
 			}
 			LOG.info("Partie acceptée par le jeu");
-			fire(l -> l.onStarted(this));
+			if (isStopRequested()) {
+				LOG.info("Arrêt demandé pendant la poignée de main : l'arrêt est transmis sans annoncer le début de la manche");
+			} else {
+				fire(l -> l.onStarted(this));
+			}
 
 			exchange(in, out);
 		} finally {
@@ -326,6 +330,19 @@ public final class GameLink {
 				LOG.log(Level.WARNING, reason + " après " + exchanges + " échange(s)", e);
 				fire(l -> l.onLinkLost(this, reason));
 			}
+		} catch (RuntimeException e) {
+			LOG.log(Level.SEVERE, "Boucle d'échange interrompue par une erreur inattendue", e);
+			fire(l -> l.onLinkLost(this, "Erreur interne du lien avec le jeu"));
+		}
+	}
+
+	/**
+	 * Indique si un arrêt a été demandé
+	 * @return true si {@link #stop()} a été appelé
+	 */
+	private boolean isStopRequested() {
+		synchronized (monitor) {
+			return stopRequested;
 		}
 	}
 
