@@ -26,12 +26,12 @@ public final class GameSettings implements IConfig {
 	 * Vagues par défaut : la zone se resserre jusqu'à une petite zone finale, puis se referme complètement
 	 */
 	public static final List<ZoneWave> DEFAULT_WAVES = List.of(
-		new ZoneWave(15, 12, 0.70f, 3),
-		new ZoneWave(15, 12, 0.48f, 5),
-		new ZoneWave(15, 10, 0.32f, 8),
-		new ZoneWave(12, 9, 0.20f, 12),
-		new ZoneWave(10, 8, 0.11f, 16),
-		new ZoneWave(15, 12, 0f, 25));
+		new ZoneWave(10, 8, 0.70f, 3),
+		new ZoneWave(8, 8, 0.48f, 5),
+		new ZoneWave(8, 7, 0.32f, 8),
+		new ZoneWave(7, 6, 0.20f, 12),
+		new ZoneWave(6, 6, 0.11f, 16),
+		new ZoneWave(8, 10, 0f, 25));
 
 	/**
 	 * Durée de l'échauffement, en secondes
