@@ -1,10 +1,7 @@
 // Affichage des informations du joueur sur la manette et de l'écran de fin.
 
 import { LIBELLES_PHASE, LIBELLES_STATUT } from "../../common/scripts/protocole.js";
-import { ordinal, poserAvatar, remplirClassement, resumerFin } from "../../common/scripts/interface.js";
-
-const SEUIL_ORANGE = 0.5;
-const SEUIL_ROUGE = 0.25;
+import { niveauVie, ordinal, poserAvatar, remplirClassement, resumerFin } from "../../common/scripts/interface.js";
 
 const element = identifiant => document.getElementById(identifiant);
 
@@ -16,17 +13,6 @@ export function afficherProfil(pseudo, id) {
 		cible.textContent = pseudo;
 	for (const image of document.querySelectorAll("img[data-avatar]"))
 		poserAvatar(image, id);
-}
-
-/**
- * Retourne la couleur de la barre de vie selon la proportion restante.
- */
-export function niveauVie(proportion) {
-	if (proportion > SEUIL_ORANGE)
-		return "haut";
-	if (proportion > SEUIL_ROUGE)
-		return "moyen";
-	return "bas";
 }
 
 /**

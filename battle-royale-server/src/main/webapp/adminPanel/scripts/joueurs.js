@@ -2,10 +2,7 @@
 // (arrivées, déconnexions, éliminations) entre deux listes successives.
 
 import { LIBELLES_STATUT, VIE_MAXIMALE, entier, normaliserStatut } from "../../common/scripts/protocole.js";
-import { creerElement, ordinal, poserAvatar } from "../../common/scripts/interface.js";
-
-const SEUIL_ORANGE = 0.5;
-const SEUIL_ROUGE = 0.25;
+import { creerElement, niveauVie, ordinal, poserAvatar } from "../../common/scripts/interface.js";
 
 /**
  * Normalise un élément du message `players`.
@@ -68,12 +65,6 @@ function comparateur(etatPartie) {
 		return (a, b) => (a.rang || Infinity) - (b.rang || Infinity) || a.id - b.id;
 
 	return (a, b) => a.id - b.id;
-}
-
-function niveauVie(proportion) {
-	if (proportion > SEUIL_ORANGE)
-		return "haut";
-	return proportion > SEUIL_ROUGE ? "moyen" : "bas";
 }
 
 function creerLigne() {
