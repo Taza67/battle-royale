@@ -4,6 +4,7 @@
 
 const NOM_POINT_ACCES = "websocketserver";
 const APPLICATIONS = ["gamepad", "adminPanel"];
+const HOTES_LOCAUX = ["localhost", "127.0.0.1", "[::1]"];
 
 const ATTENTE_INITIALE = 500;
 const ATTENTE_MAXIMALE = 10000;
@@ -33,13 +34,40 @@ export function cheminContexte(chemin = window.location.pathname) {
 }
 
 /**
+ * Retourne l'URL donnée par le paramètre `?ws=`, ou `null` s'il est absent ou
+ * refusé : il n'est pris en compte que pour une page servie en local et une URL
+ * `ws:` ou `wss:` sur le même hôte (seul le port peut changer), pour qu'un lien
+ * piégé ne puisse pas envoyer le mot de passe administrateur à un autre serveur.
+ */
+export function urlWebSocketForcee(adresse = window.location) {
+	const valeur = new URLSearchParams(adresse.search).get("ws");
+	if (!valeur)
+		return null;
+
+	let url = null;
+	try {
+		url = new URL(valeur);
+	} catch (erreur) {
+		// Adresse illisible : refusée ci-dessous.
+	}
+
+	const acceptee = url !== null && HOTES_LOCAUX.includes(adresse.hostname)
+		&& (url.protocol === "ws:" || url.protocol === "wss:") && url.hostname === adresse.hostname;
+	if (!acceptee) {
+		console.warn("Paramètre ws ignoré : seule une adresse ws(s) sur le même hôte local est acceptée.");
+		return null;
+	}
+	return url.href;
+}
+
+/**
  * Construit l'URL du point d'accès WebSocket à partir de l'adresse de la page :
- * même hôte et même port, `wss` derrière `https`. Le paramètre `?ws=` permet de
- * viser un autre serveur pendant le développement.
+ * même hôte et même port, `wss` derrière `https`. En local, le paramètre `?ws=`
+ * permet de viser un autre port pendant le développement.
  */
 export function urlWebSocket(adresse = window.location) {
-	const forcee = new URLSearchParams(adresse.search).get("ws");
-	if (forcee)
+	const forcee = urlWebSocketForcee(adresse);
+	if (forcee !== null)
 		return forcee;
 
 	const protocole = adresse.protocol === "https:" ? "wss:" : "ws:";

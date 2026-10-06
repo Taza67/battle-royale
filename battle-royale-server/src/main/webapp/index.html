@@ -54,9 +54,12 @@
         }
     </style>
     <script type="module">
-        // Conserve les paramètres de la page (par exemple ?mock=1) dans les liens.
+        // Conserve les paramètres de la page (par exemple ?mock=1) dans les liens,
+        // sauf ?ws= qui ne doit pas pouvoir être transmis par un lien.
+        const parametres = new URLSearchParams(window.location.search);
+        parametres.delete("ws");
         for (const lien of document.querySelectorAll("[data-conserver-parametres]"))
-            lien.search = window.location.search;
+            lien.search = parametres.toString();
     </script>
 </head>
 <body>
