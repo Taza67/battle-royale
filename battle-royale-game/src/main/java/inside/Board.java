@@ -99,29 +99,29 @@ public class Board implements IConfig {
 	 */
 	private volatile BoardSnapshot snapshot;
 	/**
-	 * Phase de la partie
+	 * Phase de la partie (volatile : lue par les autres fils)
 	 */
-	private Phase phase = Phase.WARMUP;
+	private volatile Phase phase = Phase.WARMUP;
 	/**
-	 * Indique si la partie est en pause
+	 * Indique si la partie est en pause (volatile : lue par les autres fils)
 	 */
-	private boolean paused;
+	private volatile boolean paused;
 	/**
-	 * Indique si la partie a été arrêtée par l'administrateur
+	 * Indique si la partie a été arrêtée par l'administrateur (volatile : lue par les autres fils)
 	 */
-	private boolean stopped;
+	private volatile boolean stopped;
 	/**
-	 * Nombre de pas de simulation effectués (hors pause)
+	 * Nombre de pas de simulation effectués (hors pause ; volatile : lu par les autres fils)
 	 */
-	private long tick;
+	private volatile long tick;
 	/**
 	 * Nombre d'éliminations depuis le début
 	 */
 	private int eliminations;
 	/**
-	 * Identifiant du vainqueur, -1 si aucun
+	 * Identifiant du vainqueur, -1 si aucun (volatile : lu par les autres fils)
 	 */
-	private int winnerId = -1;
+	private volatile int winnerId = -1;
 	/**
 	 * Identifiant du prochain projectile
 	 */
