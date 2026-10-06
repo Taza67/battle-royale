@@ -163,7 +163,7 @@ public class GameServer implements Runnable, AutoCloseable {
 			loop(in, out, board);
 		} catch (EOFException | SocketException e) {
 			if (closed) return;
-			LOGGER.log(Level.INFO, "Connexion fermée par le serveur web", e);
+			LOGGER.log(Level.FINE, "Connexion fermée par le serveur web", e);
 			if (!board.getSnapshot().isOver()) {
 				LISTENER.onConnectionLost(board);
 				LISTENER.onStatus("Connexion avec le serveur web perdue", true);
