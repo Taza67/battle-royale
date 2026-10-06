@@ -1,5 +1,6 @@
 package communication;
 
+import java.util.concurrent.ExecutorService;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -52,7 +53,7 @@ public final class WebSocketServer extends Endpoint {
 	 */
 	public static final String ALREADY_REGISTERED = "Session déjà inscrite";
 
-	private static final Logger LOG = Logger.getLogger(WebSocketServer.class.getName());
+	private static final Logger LOGGER = Logger.getLogger(WebSocketServer.class.getName());
 
 	/**
 	 * Rôle d'une session
@@ -67,6 +68,8 @@ public final class WebSocketServer extends Endpoint {
 	}
 
 	private final GameSession game;
+	private final Heartbeat heartbeat;
+	private final ExecutorService dispatcher;
 	private volatile Role role = Role.UNREGISTERED;
 	private volatile Player player;
 	private volatile WebSocketConnection connection;
@@ -74,22 +77,28 @@ public final class WebSocketServer extends Endpoint {
 	/**
 	 * Construit le point d'accès d'une connexion
 	 * @param game Session de jeu partagée
+	 * @param heartbeat Planificateur de pings partagé
+	 * @param dispatcher Pool de threads lançant les envois et les fermetures
 	 */
-	WebSocketServer(GameSession game) {
+	WebSocketServer(GameSession game, Heartbeat heartbeat, ExecutorService dispatcher) {
 		this.game = game;
+		this.heartbeat = heartbeat;
+		this.dispatcher = dispatcher;
 	}
 
 	/**
 	 * Construit la configuration du point d'accès, liée à la session de jeu donnée
 	 * @param game Session de jeu partagée par toutes les connexions
+	 * @param heartbeat Planificateur de pings partagé par toutes les connexions
+	 * @param dispatcher Pool de threads lançant les envois et les fermetures
 	 * @return Configuration à enregistrer auprès du conteneur WebSocket
 	 */
-	public static ServerEndpointConfig config(GameSession game) {
+	public static ServerEndpointConfig config(GameSession game, Heartbeat heartbeat, ExecutorService dispatcher) {
 		return ServerEndpointConfig.Builder.create(WebSocketServer.class, PATH)
 			.configurator(new ServerEndpointConfig.Configurator() {
 				@Override
 				public <T> T getEndpointInstance(Class<T> endpointClass) {
-					return endpointClass.cast(new WebSocketServer(game));
+					return endpointClass.cast(new WebSocketServer(game, heartbeat, dispatcher));
 				}
 
 				/**
@@ -106,13 +115,13 @@ public final class WebSocketServer extends Endpoint {
 
 	@Override
 	public void onOpen(Session session, EndpointConfig config) {
-		connection = new WebSocketConnection(session);
+		connection = new WebSocketConnection(session, dispatcher);
 		session.setMaxTextMessageBufferSize(MAX_MESSAGE_SIZE);
 		session.setMaxIdleTimeout(IDLE_TIMEOUT_MILLIS);
 		session.getUserProperties().put(Constants.READ_IDLE_TIMEOUT_MS, Long.valueOf(IDLE_TIMEOUT_MILLIS));
 		session.addMessageHandler(String.class, this::onMessage);
-		Heartbeat.shared().register(connection);
-		LOG.fine(() -> "Nouvelle connexion " + connection.id());
+		heartbeat.register(connection);
+		LOGGER.fine(() -> "Nouvelle connexion " + connection.id());
 	}
 
 	/**
@@ -124,14 +133,14 @@ public final class WebSocketServer extends Endpoint {
 		try {
 			message = ClientMessageParser.parse(text);
 		} catch (UnknownMessageTypeException e) {
-			LOG.info(() -> "Message de type inconnu ignoré (" + connection.id() + ") : " + e.getType());
+			LOGGER.info(() -> "Message de type inconnu ignoré (" + connection.id() + ") : " + e.getType());
 			return;
 		} catch (InvalidMessageException e) {
-			LOG.warning(() -> "Message invalide ignoré (" + connection.id() + ", " + role + ") : " + e.getMessage());
+			LOGGER.warning(() -> "Message invalide ignoré (" + connection.id() + ", " + role + ") : " + e.getMessage());
 			rejectInvalidRegistration(e);
 			return;
 		}
-		LOG.finest(() -> connection.id() + " -> " + message);
+		LOGGER.finest(() -> connection.id() + " -> " + message);
 
 		if (message instanceof ClientMessage.Join join)
 			onJoin(join);
@@ -196,14 +205,14 @@ public final class WebSocketServer extends Endpoint {
 	 * @param type Type du message refusé
 	 */
 	private void rejectAlreadyRegistered(String type) {
-		LOG.warning(() -> type + " refusé : " + connection.id() + " est déjà inscrite ("
+		LOGGER.warning(() -> type + " refusé : " + connection.id() + " est déjà inscrite ("
 			+ (role == Role.PLAYER ? String.valueOf(player) : "administrateur") + ")");
 		connection.send(Json.write(new ServerMessage.Rejected(ALREADY_REGISTERED)));
 	}
 
 	private void onMove(ClientMessage.Move move) {
 		if (role != Role.PLAYER) {
-			LOG.fine(() -> "Déplacement ignoré depuis une session " + role + " (" + connection.id() + ")");
+			LOGGER.fine(() -> "Déplacement ignoré depuis une session " + role + " (" + connection.id() + ")");
 			return;
 		}
 		game.move(connection, player, move.direction(), move.speed());
@@ -211,7 +220,7 @@ public final class WebSocketServer extends Endpoint {
 
 	private void onAttack(ClientMessage.Attack attack) {
 		if (role != Role.PLAYER) {
-			LOG.fine(() -> "Attaque ignorée depuis une session " + role + " (" + connection.id() + ")");
+			LOGGER.fine(() -> "Attaque ignorée depuis une session " + role + " (" + connection.id() + ")");
 			return;
 		}
 		game.attack(connection, player, attack.form());
@@ -219,7 +228,7 @@ public final class WebSocketServer extends Endpoint {
 
 	private void onAdminCommand(ClientMessage.AdminCommand command) {
 		if (role != Role.ADMIN) {
-			LOG.warning(() -> "Commande " + command.command().wireName() + " refusée depuis une session "
+			LOGGER.warning(() -> "Commande " + command.command().wireName() + " refusée depuis une session "
 				+ role + " (" + connection.id() + ")");
 			return;
 		}
@@ -228,14 +237,14 @@ public final class WebSocketServer extends Endpoint {
 
 	@Override
 	public void onClose(Session session, CloseReason closeReason) {
-		LOG.fine(() -> "Fermeture de " + connection.id() + " : " + closeReason.getCloseCode() + " " + closeReason.getReasonPhrase());
-		Heartbeat.shared().unregister(connection);
+		LOGGER.fine(() -> "Fermeture de " + connection.id() + " : " + closeReason.getCloseCode() + " " + closeReason.getReasonPhrase());
+		heartbeat.unregister(connection);
 		release();
 	}
 
 	@Override
 	public void onError(Session session, Throwable error) {
-		LOG.log(Level.WARNING, "Erreur sur la connexion " + (connection == null ? session.getId() : connection.id()), error);
+		LOGGER.log(Level.WARNING, "Erreur sur la connexion " + (connection == null ? session.getId() : connection.id()), error);
 	}
 
 	/**

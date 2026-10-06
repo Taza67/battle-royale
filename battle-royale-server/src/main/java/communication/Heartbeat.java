@@ -20,8 +20,7 @@ final class Heartbeat implements AutoCloseable {
 	 */
 	static final long PING_INTERVAL_MILLIS = 10_000;
 
-	private static final Logger LOG = Logger.getLogger(Heartbeat.class.getName());
-	private static final Heartbeat SHARED = new Heartbeat(PING_INTERVAL_MILLIS);
+	private static final Logger LOGGER = Logger.getLogger(Heartbeat.class.getName());
 
 	private final Set<WebSocketConnection> connections = ConcurrentHashMap.newKeySet();
 	private final ScheduledExecutorService scheduler;
@@ -38,12 +37,6 @@ final class Heartbeat implements AutoCloseable {
 		});
 		scheduler.scheduleAtFixedRate(this::beat, intervalMillis, intervalMillis, TimeUnit.MILLISECONDS);
 	}
-
-	/**
-	 * Retourne le planificateur partagé par toutes les sessions du serveur
-	 * @return Planificateur partagé
-	 */
-	static Heartbeat shared() { return SHARED; }
 
 	/**
 	 * Ajoute une connexion à surveiller
@@ -79,7 +72,7 @@ final class Heartbeat implements AutoCloseable {
 					connections.remove(c);
 			} catch (Throwable t) {
 				// Une erreur sur une connexion ne doit pas arrêter le planificateur
-				LOG.log(Level.WARNING, "Ping impossible vers " + c.id(), t);
+				LOGGER.log(Level.WARNING, "Ping impossible vers " + c.id(), t);
 			}
 		}
 	}

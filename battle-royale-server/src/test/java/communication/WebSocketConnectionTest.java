@@ -15,7 +15,7 @@ import org.junit.jupiter.api.Test;
 
 class WebSocketConnectionTest {
 	private final FakeSession fake = new FakeSession("1");
-	private final WebSocketConnection connection = new WebSocketConnection(fake.session);
+	private final WebSocketConnection connection = new WebSocketConnection(fake.session, WebSocketConnection.newDispatcher());
 
 	@Test
 	void boundsTheDurationOfEverySend() {
