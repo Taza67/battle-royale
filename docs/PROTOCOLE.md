@@ -1,0 +1,150 @@
+# Protocoles de communication
+
+Le projet est composé de trois briques :
+
+- **le jeu** (`battle-royale-game`) : simulation et affichage OpenGL, serveur TCP ;
+- **le serveur web** (`battle-royale-server`) : Tomcat embarqué, point d'accès WebSocket, client TCP du jeu ;
+- **les clients web** : la manette (`gamepad/`) et le panneau d'administration (`adminPanel/`).
+
+```
+manette(s) ──WebSocket/JSON──┐
+                             ├── serveur web ──TCP/binaire── jeu
+panneau admin ─WebSocket/JSON┘
+```
+
+Constantes partagées : carte de `1280 × 720` pixels, `100` points de vie maximum,
+directions numérotées dans le sens trigonométrique avec l'axe Y vers le bas :
+`0` est, `1` nord-est, `2` nord, `3` nord-ouest, `4` ouest, `5` sud-ouest, `6` sud, `7` sud-est.
+
+## Jeu ⇄ serveur web (TCP)
+
+Le jeu écoute sur le port `8000` (option `--port`). Le serveur web s'y connecte
+quand l'administrateur lance la partie (propriétés `battle-royale.game-host` et
+`battle-royale.game-port`). Tous les entiers sont en big-endian
+(`DataInputStream` / `DataOutputStream`).
+
+### Démarrage
+
+| Sens | Contenu |
+| --- | --- |
+| serveur → jeu | `int 0` |
+| serveur → jeu | `int n`, puis `n` fois `byte id` + `UTF pseudo` |
+| jeu → serveur | `boolean accepté` |
+
+### Boucle
+
+Toutes les `50 ms`, le serveur envoie un code `int` :
+
+| Code | Signification | Réponse du jeu |
+| --- | --- | --- |
+| `L ≥ 0` | `L` octets d'actions suivent (éventuellement aucune) | `int S`, `S` octets d'état, `boolean enCours` |
+| `-1` | pause | aucune |
+| `-3` | reprise | aucune |
+| `-2` | arrêt demandé par l'administrateur | aucune, le jeu termine la manche |
+
+Quand `enCours` vaut `false`, la partie est terminée et l'état reçu est l'état final.
+
+Actions :
+
+| Action | Octets |
+| --- | --- |
+| déplacement | `id`, `0`, `direction (0-7)`, `vitesse (0-4)` (`0` = arrêt) |
+| attaque | `id`, `1`, `forme` (`1` corps-à-corps, `2` tir) |
+
+Un déplacement reste actif jusqu'au déplacement suivant, à un arrêt explicite ou
+au bout de `250 ms` sans nouvelle commande.
+
+### État
+
+En-tête de `23` octets :
+
+| Champ | Type |
+| --- | --- |
+| phase (`0` échauffement, `1` combat, `2` terminé) | `byte` |
+| joueurs vivants | `byte` |
+| joueurs au total | `byte` |
+| identifiant du vainqueur (`-1` si aucun) | `byte` |
+| points de vie maximum | `byte` |
+| zone sûre actuelle `x1`, `y1`, `x2`, `y2` | `4 × short` |
+| prochaine zone sûre `x1`, `y1`, `x2`, `y2` | `4 × short` |
+| secondes avant la prochaine étape | `short` |
+
+Puis `9` octets par joueur :
+
+| Champ | Type |
+| --- | --- |
+| identifiant | `byte` |
+| statut (`0` éliminé, `1` vivant, `2` vainqueur) | `byte` |
+| points de vie | `byte` |
+| position `x`, `y` | `2 × short` |
+| éliminations | `byte` |
+| classement final (`0` tant que le joueur est en vie) | `byte` |
+
+## Clients web ⇄ serveur web (WebSocket)
+
+Point d'accès : `ws(s)://<hôte>/battle-royale-server/websocketserver`, construit
+à partir de `window.location`. Chaque message est un objet JSON muni d'un champ `type`.
+
+### Client → serveur
+
+| Message | Rôle |
+| --- | --- |
+| `{"type":"join","pseudo":"Taza"}` | inscription ou reconnexion d'un joueur (pseudo de 1 à 16 caractères) |
+| `{"type":"move","direction":0,"speed":4}` | déplacement (`speed` `0` = arrêt) |
+| `{"type":"attack","form":1}` | attaque (`1` corps-à-corps, `2` tir) |
+| `{"type":"admin-join","password":"…"}` | connexion de l'administrateur |
+| `{"type":"admin-command","command":"start"}` | `start`, `pause`, `resume` ou `stop` |
+
+### Serveur → joueur
+
+| Message | Rôle |
+| --- | --- |
+| `{"type":"welcome","id":3,"pseudo":"Taza","state":"lobby"}` | inscription acceptée, `state` vaut `lobby`, `running`, `paused`, `over` ou `stopped` |
+| `{"type":"rejected","reason":"…"}` | inscription refusée |
+| `{"type":"game","state":"running"}` | changement d'état de la partie |
+| `{"type":"state", …}` | état du joueur, voir ci-dessous |
+| `{"type":"end","winner":{"id":3,"pseudo":"Taza"},"ranking":[…]}` | fin de partie, `winner` peut valoir `null` |
+
+Message `state` :
+
+```json
+{
+  "type": "state",
+  "status": "alive",
+  "life": 87, "maxLife": 100,
+  "x": 640, "y": 360,
+  "kills": 2, "rank": 0,
+  "alive": 5, "total": 8,
+  "phase": "battle", "secondsLeft": 12,
+  "zone": {"x1": 100, "y1": 50, "x2": 1100, "y2": 650},
+  "nextZone": {"x1": 300, "y1": 120, "x2": 900, "y2": 560},
+  "map": {"width": 1280, "height": 720}
+}
+```
+
+Éléments de `ranking` : `{"id":3,"pseudo":"Taza","kills":2,"rank":1}`.
+
+### Serveur → administrateur
+
+| Message | Rôle |
+| --- | --- |
+| `{"type":"admin-welcome","state":"lobby"}` | connexion acceptée |
+| `{"type":"rejected","reason":"…"}` | connexion refusée |
+| `{"type":"players","players":[…]}` | liste des joueurs à chaque changement (au plus 2 fois par seconde en partie) |
+| `{"type":"ack","command":"start","ok":true,"error":null}` | résultat d'une commande |
+| `{"type":"game","state":"running"}` | changement d'état de la partie |
+| `{"type":"end", …}` | fin de partie, même format que pour les joueurs |
+
+Éléments de `players` :
+`{"id":3,"pseudo":"Taza","connected":true,"status":"alive","life":87,"kills":2,"rank":0}`.
+
+### Règles
+
+- Les inscriptions ne sont acceptées qu'avant le lancement de la partie.
+- Un joueur déconnecté peut se reconnecter avec le même pseudo à tout moment ;
+  il reçoit `welcome` avec l'état courant de la partie.
+- Un pseudo déjà associé à une session ouverte est refusé.
+- Seule la session administrateur peut envoyer `admin-command`.
+- Si la propriété `battle-royale.admin-password` est définie, `admin-join` doit
+  fournir ce mot de passe ; sinon la place d'administrateur revient à la première
+  session qui la réclame tant qu'elle reste connectée.
