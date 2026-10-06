@@ -235,7 +235,7 @@ public final class WebSocketServer extends Endpoint {
 
 	@Override
 	public void onError(Session session, Throwable error) {
-		LOG.log(Level.FINE, "Erreur sur la connexion " + (connection == null ? session.getId() : connection.id()), error);
+		LOG.log(Level.WARNING, "Erreur sur la connexion " + (connection == null ? session.getId() : connection.id()), error);
 	}
 
 	/**
