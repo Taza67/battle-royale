@@ -61,7 +61,7 @@ class MatchTest implements IConfig {
 		assertTrue(s.isOver());
 		assertTrue(s.stopped());
 		assertEquals(-1, s.winnerId());
-		for (BoardSnapshot.PlayerState p : s.players()) assertEquals(1, p.rank());
+		assertEquals(List.of(1, 2, 3), s.players().stream().map(BoardSnapshot.PlayerState::rank).sorted().toList());
 		assertEquals(1, count(events, GameEvent.Type.GAME_OVER));
 
 		// Plus rien ne bouge après la fin

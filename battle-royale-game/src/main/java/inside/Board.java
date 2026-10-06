@@ -3,6 +3,7 @@ package inside;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.Deque;
 import java.util.Iterator;
 import java.util.List;
@@ -646,7 +647,8 @@ public class Board implements IConfig {
 	}
 
 	/**
-	 * Termine la partie : le dernier survivant gagne ; s'il en reste plusieurs (arrêt), ils partagent la première place
+	 * Termine la partie : le dernier survivant gagne ; s'il en reste plusieurs (arrêt),
+	 * ils reçoivent des rangs distincts (départage par éliminations, puis points de vie, puis identifiant)
 	 */
 	private void endGame() {
 		if (phase == Phase.ENDED) return;
@@ -654,10 +656,14 @@ public class Board implements IConfig {
 		List<Player> survivors = new ArrayList<>();
 		for (Player p : PLAYERS.values())
 			if (p.getIsAlive()) survivors.add(p);
+		survivors.sort(Comparator.comparingInt(Player::getKills).reversed()
+			.thenComparing(Comparator.comparingInt(Player::getLifePoints).reversed())
+			.thenComparingInt(Player::getID));
 
 		winnerId = survivors.size() == 1 ? survivors.get(0).getID() : -1;
-		for (Player p : survivors) {
-			p.setRank(1);
+		for (int i = 0; i < survivors.size(); i++) {
+			Player p = survivors.get(i);
+			p.setRank(i + 1);
 			p.stop();
 			p.setMoving(false);
 			p.getWeapon().cancelSwing();
