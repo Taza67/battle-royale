@@ -266,8 +266,8 @@ public class Game implements IConfig {
 			down(GLFW_KEY_LEFT) || down(GLFW_KEY_A),
 			down(GLFW_KEY_RIGHT) || down(GLFW_KEY_D),
 			down(GLFW_KEY_LEFT_SHIFT) || down(GLFW_KEY_RIGHT_SHIFT),
-			down(GLFW_KEY_SPACE) || down(GLFW_KEY_J),
-			down(GLFW_KEY_K) || down(GLFW_KEY_ENTER) || down(GLFW_KEY_KP_ENTER));
+			down(GLFW_KEY_K) || down(GLFW_KEY_ENTER) || down(GLFW_KEY_KP_ENTER),
+			down(GLFW_KEY_SPACE) || down(GLFW_KEY_J));
 	}
 
 	private boolean down(int key) {

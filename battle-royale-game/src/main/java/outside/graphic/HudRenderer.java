@@ -182,7 +182,7 @@ public class HudRenderer implements IConfig {
 	 */
 	private void renderWarmup(BoardSnapshot s, HudInfo info) {
 		String help = info.multi() ? "Échauffement : aucun dégât, prenez vos marques avec la manette"
-			: "Flèches / ZQSD / WASD : se déplacer   -   Espace / J : épée   -   K / Entrée : tir   -   P : pause";
+			: "Flèches / ZQSD / WASD : se déplacer   -   Espace / J : tir   -   K / Entrée : épée   -   P : pause";
 		float w = FONTS.SMALL.width(help) + 30;
 		panel(MAP_WIDTH / 2 - w / 2, MAP_HEIGHT - 44, MAP_WIDTH / 2 + w / 2, MAP_HEIGHT - 12, 8, new Color(0.05f, 0.07f, 0.1f, 0.7f));
 		FONTS.SMALL.draw(help, MAP_WIDTH / 2, MAP_HEIGHT - 38, Color.WHITE, Align.CENTER);
