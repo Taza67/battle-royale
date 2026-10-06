@@ -2,14 +2,19 @@ package communication.session;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.HexFormat;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
+import java.util.WeakHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -62,6 +67,12 @@ public final class GameSession implements AutoCloseable {
 	public static final String GAME_FULL = "Partie complète";
 	/** Refus : mauvais mot de passe administrateur */
 	public static final String WRONG_PASSWORD = "Mot de passe administrateur incorrect";
+	/** Refus envoyé à l'ancienne session d'un joueur reprise grâce au jeton */
+	public static final String SESSION_TAKEN_OVER = "Session reprise par une autre connexion";
+	/** Raison de fermeture après trop de mots de passe administrateur erronés */
+	public static final String TOO_MANY_WRONG_PASSWORDS = "Trop de mots de passe administrateur incorrects";
+	/** Nombre de mots de passe administrateur erronés au bout duquel la session est fermée */
+	public static final int MAX_WRONG_PASSWORDS = 5;
 	/** Refus : place d'administrateur occupée */
 	public static final String ADMIN_TAKEN = "Un administrateur est déjà connecté";
 	/** Refus envoyé à l'ancienne session administrateur remplacée */
@@ -88,6 +99,7 @@ public final class GameSession implements AutoCloseable {
 	public static final String SHUTTING_DOWN = "Serveur en cours d'arrêt";
 
 	private static final Logger LOG = Logger.getLogger(GameSession.class.getName());
+	private static final SecureRandom RANDOM = new SecureRandom();
 
 	private final Object lock = new Object();
 	private final GameLinkSettings linkSettings;
@@ -97,6 +109,14 @@ public final class GameSession implements AutoCloseable {
 
 	private final Map<String, Player> playersByKey = new HashMap<>();
 	private final TreeMap<Integer, Player> playersById = new TreeMap<>();
+	/**
+	 * Jetons de reprise par pseudo (en minuscules), conservés pendant toute la vie du serveur
+	 */
+	private final Map<String, String> tokens = new HashMap<>();
+	/**
+	 * Mots de passe administrateur erronés par connexion ; les connexions fermées sont oubliées
+	 */
+	private final Map<ClientConnection, Integer> wrongPasswords = new WeakHashMap<>();
 	private ClientConnection admin;
 	private GameState state = GameState.LOBBY;
 	private boolean starting;
@@ -105,6 +125,10 @@ public final class GameSession implements AutoCloseable {
 	private PendingActions actions;
 	private GameSnapshot lastSnapshot;
 	private String lastEndJson;
+	/**
+	 * Vrai entre l'arrêt d'une manche et la réception de son état final
+	 */
+	private boolean awaitingFinalState;
 	private String lastPlayersJson;
 	private long lastPlayersMillis;
 	private boolean playersFlushScheduled;
@@ -162,12 +186,26 @@ public final class GameSession implements AutoCloseable {
 	}
 
 	/**
-	 * Inscrit un joueur ou le reconnecte s'il existe déjà ; envoie `welcome` ou `rejected`
+	 * Inscrit un joueur ou le reconnecte s'il existe déjà, sans jeton de reprise
 	 * @param c Connexion du joueur
 	 * @param pseudo Pseudo validé
 	 * @return Joueur inscrit, ou null si l'inscription est refusée
+	 * @see #join(ClientConnection, String, String)
 	 */
 	public Player join(ClientConnection c, String pseudo) {
+		return join(c, pseudo, null);
+	}
+
+	/**
+	 * Inscrit un joueur ou le reconnecte s'il existe déjà ; envoie `welcome` ou `rejected`.
+	 * Si le pseudo est associé à une session ouverte, le bon jeton de reprise permet à la
+	 * nouvelle connexion de remplacer l'ancienne, qui reçoit `rejected` puis est fermée.
+	 * @param c Connexion du joueur
+	 * @param pseudo Pseudo validé
+	 * @param token Jeton de reprise fourni, null s'il est absent
+	 * @return Joueur inscrit, ou null si l'inscription est refusée
+	 */
+	public Player join(ClientConnection c, String pseudo, String token) {
 		synchronized (lock) {
 			if (closed) {
 				reject(c, SHUTTING_DOWN);
@@ -175,15 +213,25 @@ public final class GameSession implements AutoCloseable {
 			}
 			Player existing = playersByKey.get(key(pseudo));
 			if (existing != null) {
+				if (starting && !inPendingRoster(existing)) {
+					reject(c, REGISTRATION_CLOSED);
+					return null;
+				}
 				ClientConnection current = existing.connection();
 				if (current != null && current != c && current.isOpen()) {
-					LOG.info(() -> "Pseudo " + pseudo + " refusé pour " + c.id() + " : session " + current.id() + " ouverte");
-					reject(c, PSEUDO_TAKEN);
-					return null;
+					if (!tokenMatches(pseudo, token)) {
+						LOG.info(() -> "Pseudo " + pseudo + " refusé pour " + c.id() + " : session " + current.id() + " ouverte");
+						reject(c, PSEUDO_TAKEN);
+						return null;
+					}
+					LOG.info(() -> "Session " + current.id() + " de " + existing + " reprise par " + c.id());
+					reject(current, SESSION_TAKEN_OVER);
+					current.close(SESSION_TAKEN_OVER);
 				}
 				existing.attach(c);
 				LOG.info(() -> existing + " reconnecté (" + c.id() + "), partie " + state.wireName());
-				c.send(Json.write(new ServerMessage.Welcome(existing.getId(), existing.getPseudo(), state.wireName())));
+				c.send(Json.write(new ServerMessage.Welcome(existing.getId(), existing.getPseudo(), state.wireName(),
+					tokenFor(existing.getPseudo()))));
 				replayTo(existing);
 				playersChanged();
 				return existing;
@@ -202,7 +250,7 @@ public final class GameSession implements AutoCloseable {
 			playersByKey.put(key(pseudo), player);
 			playersById.put(id, player);
 			LOG.info(() -> player + " inscrit (" + c.id() + ")");
-			c.send(Json.write(new ServerMessage.Welcome(id, player.getPseudo(), state.wireName())));
+			c.send(Json.write(new ServerMessage.Welcome(id, player.getPseudo(), state.wireName(), tokenFor(player.getPseudo()))));
 			playersChanged();
 			return player;
 		}
@@ -222,8 +270,14 @@ public final class GameSession implements AutoCloseable {
 			}
 			if (adminPassword != null) {
 				if (!MessageDigest.isEqual(password.getBytes(StandardCharsets.UTF_8), adminPassword.getBytes(StandardCharsets.UTF_8))) {
-					LOG.warning(() -> "Mot de passe administrateur incorrect (" + c.id() + ")");
+					int attempts = wrongPasswords.merge(c, 1, Integer::sum);
+					LOG.warning(() -> "Mot de passe administrateur incorrect (" + c.id() + ", tentative " + attempts + ")");
 					reject(c, WRONG_PASSWORD);
+					if (attempts >= MAX_WRONG_PASSWORDS) {
+						wrongPasswords.remove(c);
+						LOG.warning(() -> "Session " + c.id() + " fermée après " + attempts + " mots de passe administrateur incorrects");
+						c.close(TOO_MANY_WRONG_PASSWORDS);
+					}
 					return false;
 				}
 				ClientConnection previous = admin;
@@ -242,7 +296,7 @@ public final class GameSession implements AutoCloseable {
 			LOG.info(() -> "Administrateur connecté (" + c.id() + ")");
 			c.send(Json.write(new ServerMessage.AdminWelcome(state.wireName())));
 			sendPlayers(true);
-			if (state == GameState.OVER && lastEndJson != null)
+			if (hasResult())
 				c.send(lastEndJson);
 			return true;
 		}
@@ -392,7 +446,7 @@ public final class GameSession implements AutoCloseable {
 		if (previous == null)
 			return;
 		try {
-			previous.awaitTermination(2000);
+			previous.awaitTermination(GameLink.STOP_TIMEOUT_MILLIS + 1000);
 		} catch (InterruptedException e) {
 			Thread.currentThread().interrupt();
 		}
@@ -414,37 +468,56 @@ public final class GameSession implements AutoCloseable {
 		if (playersById.isEmpty())
 			return NO_PLAYER;
 
-		boolean removed = false;
-		for (Iterator<Player> it = playersById.values().iterator(); it.hasNext();) {
-			Player p = it.next();
-			if (!p.isConnected()) {
-				it.remove();
-				playersByKey.remove(key(p.getPseudo()));
-				removed = true;
-				LOG.info(() -> p + " retiré : absent au lancement");
-			}
-		}
-		if (playersById.isEmpty()) {
-			if (removed)
-				playersChanged();
-			return NO_CONNECTED_PLAYER;
-		}
-
 		List<Participant> roster = new ArrayList<>();
-		for (Player p : playersById.values()) {
-			p.resetForRound();
-			roster.add(new Participant(p.getId(), p.getPseudo()));
-		}
-		actions = new PendingActions(playersById.keySet());
-		lastSnapshot = null;
-		lastEndJson = null;
+		for (Player p : playersById.values())
+			if (p.isConnected())
+				roster.add(new Participant(p.getId(), p.getPseudo()));
+		if (roster.isEmpty())
+			return NO_CONNECTED_PLAYER;
+
+		actions = new PendingActions(roster.stream().map(Participant::id).toList());
 		starting = true;
 		link = new GameLink(linkSettings, roster, actions, events);
 		link.start();
 		LOG.info(() -> "Lancement d'une manche avec " + roster.size() + " joueur(s) sur "
 			+ linkSettings.host() + ":" + linkSettings.port());
-		playersChanged();
 		return null;
+	}
+
+	/**
+	 * Prépare la session pour la manche acceptée par le jeu : retire les joueurs absents
+	 * au lancement, remet les statistiques à zéro et oublie le résultat précédent
+	 * @param roster Joueurs transmis au jeu
+	 */
+	private void beginRound(List<Participant> roster) {
+		Set<Integer> ids = new HashSet<>();
+		for (Participant p : roster)
+			ids.add(p.id());
+		for (Iterator<Player> it = playersById.values().iterator(); it.hasNext();) {
+			Player p = it.next();
+			if (!ids.contains(p.getId())) {
+				it.remove();
+				playersByKey.remove(key(p.getPseudo()));
+				LOG.info(() -> p + " retiré : absent au lancement");
+			} else {
+				p.resetForRound();
+			}
+		}
+		lastSnapshot = null;
+		lastEndJson = null;
+		awaitingFinalState = false;
+	}
+
+	/**
+	 * Indique si un joueur fait partie de la manche en cours de lancement
+	 * @param player Joueur
+	 * @return true si le joueur a été transmis au jeu
+	 */
+	private boolean inPendingRoster(Player player) {
+		for (Participant p : link.roster())
+			if (p.id() == player.getId())
+				return true;
+		return false;
 	}
 
 	/**
@@ -490,6 +563,7 @@ public final class GameSession implements AutoCloseable {
 			return NOTHING_TO_STOP;
 		link.stop();
 		actions.clear();
+		awaitingFinalState = true;
 		LOG.info("Manche arrêtée par l'administrateur");
 		changeState(GameState.STOPPED);
 		sendPlayers(false);
@@ -533,9 +607,17 @@ public final class GameSession implements AutoCloseable {
 				c.sendLatest(json);
 				player.stateSent(json, now());
 			}
-		} else if (state == GameState.OVER && lastEndJson != null) {
+		} else if (hasResult()) {
 			c.send(lastEndJson);
 		}
+	}
+
+	/**
+	 * Indique si le résultat de la dernière manche terminée ou arrêtée est disponible
+	 * @return true si `end` doit être renvoyé aux sessions qui se reconnectent
+	 */
+	private boolean hasResult() {
+		return (state == GameState.OVER || state == GameState.STOPPED) && lastEndJson != null;
 	}
 
 	/**
@@ -594,26 +676,56 @@ public final class GameSession implements AutoCloseable {
 	}
 
 	/**
-	 * Construit le message de fin de partie
+	 * Termine la manche : applique l'état final, construit `end`, le mémorise, l'envoie
+	 * aux joueurs et à l'administrateur puis envoie à ce dernier la liste des joueurs à jour
+	 * @param finalSnapshot État final, ou null pour reprendre le dernier état reçu
+	 * @param stopped true si la manche a été arrêtée avant son terme (l'état est déjà diffusé)
+	 */
+	private void endRound(GameSnapshot finalSnapshot, boolean stopped) {
+		awaitingFinalState = false;
+		actions = null;
+		if (finalSnapshot != null) {
+			lastSnapshot = finalSnapshot;
+			applySnapshot(finalSnapshot, true);
+		}
+		ServerMessage.End end = endMessage(lastSnapshot, stopped);
+		lastEndJson = Json.write(end);
+		LOG.info(() -> (stopped ? "Manche arrêtée" : "Fin de manche") + ", vainqueur : "
+			+ (end.winner() == null ? "aucun" : end.winner().pseudo()));
+		if (!stopped)
+			changeState(GameState.OVER);
+		broadcast(lastEndJson);
+		sendPlayers(true);
+	}
+
+	/**
+	 * Construit le message de fin de partie pour les joueurs de la manche
 	 * @param snapshot État final, éventuellement null
+	 * @param stopped true si la manche a été arrêtée avant son terme
 	 * @return Message `end`
 	 */
-	private ServerMessage.End endMessage(GameSnapshot snapshot) {
+	private ServerMessage.End endMessage(GameSnapshot snapshot, boolean stopped) {
+		Set<Integer> ids = new HashSet<>();
+		for (Participant p : link.roster())
+			ids.add(p.id());
 		Player winner = null;
-		if (snapshot != null && snapshot.winnerId() >= 0)
+		if (snapshot != null && snapshot.winnerId() >= 0 && ids.contains(snapshot.winnerId()))
 			winner = playersById.get(snapshot.winnerId());
 		if (winner == null)
 			winner = playersById.values().stream()
-				.filter(p -> p.status() == PlayerSnapshot.Status.WINNER)
+				.filter(p -> ids.contains(p.getId()) && p.status() == PlayerSnapshot.Status.WINNER)
 				.findFirst().orElse(null);
 
 		List<ServerMessage.RankingEntry> ranking = playersById.values().stream()
+			.filter(p -> ids.contains(p.getId()))
 			.sorted(Comparator.<Player>comparingInt(p -> p.rank() > 0 ? p.rank() : Integer.MAX_VALUE)
 				.thenComparing(Comparator.comparingInt(Player::kills).reversed())
 				.thenComparingInt(Player::getId))
 			.map(Player::toRankingEntry)
 			.toList();
-		return new ServerMessage.End(winner == null ? null : new ServerMessage.PlayerRef(winner.getId(), winner.getPseudo()), ranking);
+		int total = snapshot != null ? snapshot.total() : ids.size();
+		return new ServerMessage.End(winner == null ? null : new ServerMessage.PlayerRef(winner.getId(), winner.getPseudo()),
+			ranking, total, stopped);
 	}
 
 	/**
@@ -672,6 +784,31 @@ public final class GameSession implements AutoCloseable {
 		return -1;
 	}
 
+	/**
+	 * Retourne le jeton de reprise d'un pseudo, créé à la première demande
+	 * @param pseudo Pseudo
+	 * @return Jeton aléatoire de 128 bits en hexadécimal
+	 */
+	private String tokenFor(String pseudo) {
+		return tokens.computeIfAbsent(key(pseudo), k -> {
+			byte[] bytes = new byte[16];
+			RANDOM.nextBytes(bytes);
+			return HexFormat.of().formatHex(bytes);
+		});
+	}
+
+	/**
+	 * Compare en temps constant le jeton fourni à celui du pseudo
+	 * @param pseudo Pseudo
+	 * @param token Jeton fourni, éventuellement null
+	 * @return true si le jeton est celui du pseudo
+	 */
+	private boolean tokenMatches(String pseudo, String token) {
+		String expected = tokens.get(key(pseudo));
+		return token != null && expected != null
+			&& MessageDigest.isEqual(token.getBytes(StandardCharsets.UTF_8), expected.getBytes(StandardCharsets.UTF_8));
+	}
+
 	private static void reject(ClientConnection c, String reason) {
 		c.send(Json.write(new ServerMessage.Rejected(reason)));
 	}
@@ -694,6 +831,7 @@ public final class GameSession implements AutoCloseable {
 				if (l != link || !starting)
 					return;
 				starting = false;
+				beginRound(l.roster());
 				if (admin != null)
 					admin.send(Json.write(ServerMessage.Ack.success(ClientMessage.Command.START.wireName())));
 				changeState(GameState.RUNNING);
@@ -729,36 +867,38 @@ public final class GameSession implements AutoCloseable {
 		@Override
 		public void onFinished(GameLink l, GameSnapshot finalSnapshot) {
 			synchronized (lock) {
-				if (l != link || !state.isInProgress())
+				if (l != link)
 					return;
-				if (finalSnapshot != null) {
-					lastSnapshot = finalSnapshot;
-					applySnapshot(finalSnapshot, true);
-				}
-				actions = null;
-				ServerMessage.End end = endMessage(finalSnapshot);
-				lastEndJson = Json.write(end);
-				LOG.info(() -> "Fin de manche, vainqueur : " + (end.winner() == null ? "aucun" : end.winner().pseudo()));
-				changeState(GameState.OVER);
-				broadcast(lastEndJson);
-				sendPlayers(false);
+				if (state.isInProgress())
+					endRound(finalSnapshot, false);
+				else if (awaitingFinalState)
+					endRound(finalSnapshot, true);
 			}
 		}
 
 		@Override
-		public void onStopped(GameLink l) {
-			LOG.fine("Lien avec le jeu arrêté");
+		public void onStopped(GameLink l, GameSnapshot finalSnapshot) {
+			synchronized (lock) {
+				if (l != link || !awaitingFinalState)
+					return;
+				if (finalSnapshot == null)
+					LOG.warning("Aucun état final reçu après l'arrêt, classement établi sur le dernier état connu");
+				endRound(finalSnapshot, true);
+			}
 		}
 
 		@Override
 		public void onLinkLost(GameLink l, String reason) {
 			synchronized (lock) {
-				if (l != link || !state.isInProgress())
+				if (l != link)
 					return;
-				LOG.severe(() -> "Manche interrompue : " + reason);
-				actions = null;
-				changeState(GameState.STOPPED);
-				sendPlayers(false);
+				if (state.isInProgress()) {
+					LOG.severe(() -> "Manche interrompue : " + reason);
+					changeState(GameState.STOPPED);
+					endRound(null, true);
+				} else if (awaitingFinalState) {
+					endRound(null, true);
+				}
 			}
 		}
 	}

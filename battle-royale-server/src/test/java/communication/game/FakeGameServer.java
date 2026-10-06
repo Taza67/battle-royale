@@ -30,7 +30,20 @@ public final class FakeGameServer implements AutoCloseable {
 	/** Connexion fermée par le serveur web */
 	public record Closed() implements Event {}
 
-	public static final int PORT = 18000;
+	/** Port du faux jeu, dans la plage réservée aux tests du serveur web */
+	public static final int PORT = 38230;
+	/** Port sur lequel aucun jeu n'écoute */
+	public static final int UNUSED_PORT = 38231;
+
+	/** Comportement du faux jeu après le code d'arrêt */
+	public enum StopBehavior {
+		/** Répond au cycle suivant avec l'état d'arrêt et `enCours = false`, comme le vrai jeu */
+		FINISH,
+		/** Continue de répondre `enCours = true` indéfiniment */
+		IGNORE,
+		/** Ferme la connexion sans rien envoyer */
+		CLOSE
+	}
 
 	private final ServerSocket server;
 	private final Thread thread;
@@ -42,6 +55,8 @@ public final class FakeGameServer implements AutoCloseable {
 	private volatile boolean dropNext;
 	private volatile boolean silentHandshake;
 	private volatile Socket current;
+	private volatile StopBehavior stopBehavior = StopBehavior.FINISH;
+	private volatile byte[] stopState;
 
 	public FakeGameServer() throws IOException {
 		this(PORT);
@@ -66,6 +81,10 @@ public final class FakeGameServer implements AutoCloseable {
 	public FakeGameServer state(byte[] value) { state = value; return this; }
 	/** Termine la partie au prochain échange avec l'état donné */
 	public FakeGameServer finish(byte[] value) { finalState = value; finishNext = true; return this; }
+	/** Comportement après le code d'arrêt */
+	public FakeGameServer onStop(StopBehavior value) { stopBehavior = value; return this; }
+	/** État final renvoyé après le code d'arrêt (par défaut l'état courant) */
+	public FakeGameServer stopState(byte[] value) { stopState = value; return this; }
 	/** Coupe brutalement la connexion au prochain échange */
 	public FakeGameServer dropNext() { dropNext = true; return this; }
 
@@ -138,6 +157,7 @@ public final class FakeGameServer implements AutoCloseable {
 			return;
 		}
 
+		boolean stopping = false;
 		while (true) {
 			int code;
 			try {
@@ -149,9 +169,12 @@ public final class FakeGameServer implements AutoCloseable {
 			if (code < 0) {
 				events.add(new Control(code));
 				if (code == GameLink.CODE_STOP) {
-					in.read();
-					events.add(new Closed());
-					return;
+					stopping = true;
+					if (stopBehavior == StopBehavior.CLOSE) {
+						socket.close();
+						events.add(new Closed());
+						return;
+					}
 				}
 				continue;
 			}
@@ -164,15 +187,17 @@ public final class FakeGameServer implements AutoCloseable {
 				socket.close();
 				return;
 			}
-			boolean finishing = finishNext;
-			byte[] reply = finishing ? finalState : state;
+			boolean finishing = finishNext || stopping && stopBehavior == StopBehavior.FINISH;
+			byte[] reply = finishNext ? finalState : stopping && stopState != null ? stopState : state;
 			out.writeInt(reply.length);
 			out.write(reply);
 			out.writeBoolean(!finishing);
 			out.flush();
 			if (finishing) {
 				finishNext = false;
-				in.read();
+				while (in.read() >= 0) {
+					// attend la fermeture par le serveur web
+				}
 				events.add(new Closed());
 				return;
 			}

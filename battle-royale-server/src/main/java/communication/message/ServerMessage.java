@@ -25,15 +25,24 @@ public sealed interface ServerMessage {
 	 * @param id Identifiant attribué
 	 * @param pseudo Pseudo retenu
 	 * @param state État courant de la partie
+	 * @param token Jeton de reprise du pseudo
 	 */
-	record Welcome(String type, int id, String pseudo, String state) implements ServerMessage {
+	record Welcome(String type, int id, String pseudo, String state, String token) implements ServerMessage {
 		/**
 		 * Construit le message
 		 * @param id Identifiant attribué
 		 * @param pseudo Pseudo retenu
 		 * @param state État courant de la partie
+		 * @param token Jeton de reprise du pseudo
 		 */
-		public Welcome(int id, String pseudo, String state) { this("welcome", id, pseudo, state); }
+		public Welcome(int id, String pseudo, String state, String token) { this("welcome", id, pseudo, state, token); }
+
+		/**
+		 * Masque le jeton dans les journaux
+		 * @return Représentation textuelle sans le jeton
+		 */
+		@Override
+		public String toString() { return "Welcome[id=" + id + ", pseudo=" + pseudo + ", state=" + state + ", token=***]"; }
 	}
 
 	/**
@@ -138,15 +147,21 @@ public sealed interface ServerMessage {
 	 * Fin de partie
 	 * @param type Toujours "end"
 	 * @param winner Vainqueur, ou null
-	 * @param ranking Classement final
+	 * @param ranking Classement final des joueurs humains
+	 * @param total Nombre de participants, robots compris
+	 * @param stopped true si la manche a été arrêtée avant son terme
 	 */
-	record End(String type, PlayerRef winner, List<RankingEntry> ranking) implements ServerMessage {
+	record End(String type, PlayerRef winner, List<RankingEntry> ranking, int total, boolean stopped) implements ServerMessage {
 		/**
 		 * Construit le message
 		 * @param winner Vainqueur, ou null
-		 * @param ranking Classement final
+		 * @param ranking Classement final des joueurs humains
+		 * @param total Nombre de participants, robots compris
+		 * @param stopped true si la manche a été arrêtée avant son terme
 		 */
-		public End(PlayerRef winner, List<RankingEntry> ranking) { this("end", winner, List.copyOf(ranking)); }
+		public End(PlayerRef winner, List<RankingEntry> ranking, int total, boolean stopped) {
+			this("end", winner, List.copyOf(ranking), total, stopped);
+		}
 	}
 
 	/**

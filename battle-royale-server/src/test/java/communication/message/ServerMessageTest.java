@@ -11,8 +11,10 @@ import communication.game.Zone;
 class ServerMessageTest {
 	@Test
 	void serializesWelcomeAndRejected() {
-		assertEquals("{\"type\":\"welcome\",\"id\":3,\"pseudo\":\"Taza\",\"state\":\"lobby\"}",
-			Json.write(new ServerMessage.Welcome(3, "Taza", "lobby")));
+		assertEquals("{\"type\":\"welcome\",\"id\":3,\"pseudo\":\"Taza\",\"state\":\"lobby\",\"token\":\"0f\"}",
+			Json.write(new ServerMessage.Welcome(3, "Taza", "lobby", "0f")));
+		assertEquals("Welcome[id=3, pseudo=Taza, state=lobby, token=***]",
+			new ServerMessage.Welcome(3, "Taza", "lobby", "0f").toString());
 		assertEquals("{\"type\":\"rejected\",\"reason\":\"Pseudo déjà utilisé\"}",
 			Json.write(new ServerMessage.Rejected("Pseudo déjà utilisé")));
 	}
@@ -23,8 +25,8 @@ class ServerMessageTest {
 			Json.write(ServerMessage.Ack.success("start")));
 		assertEquals("{\"type\":\"ack\",\"command\":\"start\",\"ok\":false,\"error\":\"Jeu injoignable\"}",
 			Json.write(ServerMessage.Ack.failure("start", "Jeu injoignable")));
-		assertEquals("{\"type\":\"end\",\"winner\":null,\"ranking\":[]}",
-			Json.write(new ServerMessage.End(null, List.of())));
+		assertEquals("{\"type\":\"end\",\"winner\":null,\"ranking\":[],\"total\":4,\"stopped\":true}",
+			Json.write(new ServerMessage.End(null, List.of(), 4, true)));
 	}
 
 	@Test
@@ -41,9 +43,9 @@ class ServerMessageTest {
 	@Test
 	void serializesEndAndPlayers() {
 		assertEquals("{\"type\":\"end\",\"winner\":{\"id\":3,\"pseudo\":\"Taza\"},"
-			+ "\"ranking\":[{\"id\":3,\"pseudo\":\"Taza\",\"kills\":2,\"rank\":1}]}",
+			+ "\"ranking\":[{\"id\":3,\"pseudo\":\"Taza\",\"kills\":2,\"rank\":1}],\"total\":5,\"stopped\":false}",
 			Json.write(new ServerMessage.End(new ServerMessage.PlayerRef(3, "Taza"),
-				List.of(new ServerMessage.RankingEntry(3, "Taza", 2, 1)))));
+				List.of(new ServerMessage.RankingEntry(3, "Taza", 2, 1)), 5, false)));
 		assertEquals("{\"type\":\"players\",\"players\":[{\"id\":3,\"pseudo\":\"Taza\",\"connected\":true,"
 			+ "\"status\":\"alive\",\"life\":87,\"kills\":2,\"rank\":0}]}",
 			Json.write(new ServerMessage.Players(List.of(
@@ -54,7 +56,7 @@ class ServerMessageTest {
 
 	@Test
 	void escapesPseudosSafely() {
-		String json = Json.write(new ServerMessage.Welcome(1, "a\"b\\<c>", "lobby"));
+		String json = Json.write(new ServerMessage.Welcome(1, "a\"b\\<c>", "lobby", "0f"));
 		assertEquals("a\"b\\<c>", Json.GSON.fromJson(json, com.google.gson.JsonObject.class).get("pseudo").getAsString());
 	}
 }

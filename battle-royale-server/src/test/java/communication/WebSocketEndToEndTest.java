@@ -3,6 +3,7 @@ package communication;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.File;
@@ -11,12 +12,14 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.net.http.WebSocket;
+import java.net.http.WebSocketHandshakeException;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
@@ -39,8 +42,8 @@ import communication.session.GameState;
  * Tests de bout en bout : Tomcat embarqué, vrais clients WebSocket et faux jeu TCP
  */
 class WebSocketEndToEndTest {
-	private static final int HTTP_PORT = 18080;
-	private static final int UNUSED_GAME_PORT = 18001;
+	private static final int HTTP_PORT = 38232;
+	private static final int UNUSED_GAME_PORT = FakeGameServer.UNUSED_PORT;
 	private static final String BASE = "localhost:" + HTTP_PORT + ServerLauncher.CONTEXT_PATH;
 	private static final String TEST_PASSWORD = "mot-de-passe-de-test";
 
@@ -73,8 +76,15 @@ class WebSocketEndToEndTest {
 		private final WebSocket socket;
 
 		Client() throws Exception {
-			socket = http.newWebSocketBuilder()
-				.buildAsync(URI.create("ws://" + BASE + WebSocketServer.PATH), this)
+			this(null);
+		}
+
+		/** Ouvre une connexion avec l'en-tête Origin donné, aucun si null */
+		Client(String origin) throws Exception {
+			WebSocket.Builder builder = http.newWebSocketBuilder();
+			if (origin != null)
+				builder.header("Origin", origin);
+			socket = builder.buildAsync(URI.create("ws://" + BASE + WebSocketServer.PATH), this)
 				.get(5, TimeUnit.SECONDS);
 			clients.add(this);
 		}
@@ -145,6 +155,21 @@ class WebSocketEndToEndTest {
 		return o.toString();
 	}
 
+	private static String join(String pseudo, String token) {
+		JsonObject o = new JsonObject();
+		o.addProperty("type", "join");
+		o.addProperty("pseudo", pseudo);
+		o.addProperty("token", token);
+		return o.toString();
+	}
+
+	/** Code HTTP renvoyé par une poignée de main refusée avec l'origine donnée */
+	private int refusedHandshake(String origin) {
+		ExecutionException e = assertThrows(ExecutionException.class, () -> new Client(origin));
+		assertTrue(e.getCause() instanceof WebSocketHandshakeException, String.valueOf(e.getCause()));
+		return ((WebSocketHandshakeException) e.getCause()).getResponse().statusCode();
+	}
+
 	private static String adminJoin(String password) {
 		JsonObject o = new JsonObject();
 		o.addProperty("type", "admin-join");
@@ -192,6 +217,94 @@ class WebSocketEndToEndTest {
 		taza.close();
 		Client back = new Client().send(join("taza"));
 		assertEquals(0, back.next("welcome").get("id").getAsInt());
+	}
+
+	@Test
+	void acceptsOnlyAMissingOrSameHostOrigin() throws Exception {
+		startServer(UNUSED_GAME_PORT, null);
+		new Client().send(join("SansOrigine")).next("welcome");
+		new Client("http://localhost:" + HTTP_PORT).send(join("MemeHote")).next("welcome");
+		new Client("http://LOCALHOST:" + HTTP_PORT).send(join("Casse")).next("welcome");
+
+		assertEquals(403, refusedHandshake("http://evil.example"));
+		assertEquals(403, refusedHandshake("http://evil.example:" + HTTP_PORT));
+		assertEquals(403, refusedHandshake("http://localhost:" + (HTTP_PORT + 1)));
+		assertEquals(403, refusedHandshake("http://localhost"));
+		assertEquals(403, refusedHandshake("null"));
+		assertEquals(3, session.playerEntries().size());
+	}
+
+	@Test
+	void rejectsJoinAndAdminJoinFromRegisteredSessions() throws Exception {
+		startServer(UNUSED_GAME_PORT, null);
+		Client admin = new Client().send(adminJoin(""));
+		admin.next("admin-welcome");
+		Client taza = new Client().send(join("Taza"));
+		taza.next("welcome");
+
+		for (String again : new String[] { join("Taza"), join("Autre"), adminJoin(""), join("") }) {
+			taza.send(again);
+			assertEquals(WebSocketServer.ALREADY_REGISTERED, taza.next("rejected").get("reason").getAsString(), again);
+		}
+		for (String again : new String[] { adminJoin(""), join("Admin") }) {
+			admin.send(again);
+			assertEquals(WebSocketServer.ALREADY_REGISTERED, admin.next("rejected").get("reason").getAsString(), again);
+		}
+
+		// Les deux sessions gardent leur rôle
+		assertEquals(1, session.playerEntries().size());
+		assertTrue(session.playerEntries().get(0).connected());
+		admin.send(command("pause"));
+		assertEquals(GameSession.NOT_RUNNING, admin.next("ack").get("error").getAsString());
+		assertTrue(taza.receivesNo("welcome", 100));
+	}
+
+	@Test
+	void letsTheResumeTokenTakeOverAnOpenSession() throws Exception {
+		startServer(UNUSED_GAME_PORT, null);
+		Client admin = new Client().send(adminJoin(""));
+		admin.next("admin-welcome");
+		Client taza = new Client().send(join("Taza"));
+		String token = taza.next("welcome").get("token").getAsString();
+		assertTrue(token.matches("[0-9a-f]{32}"), token);
+
+		Client wrong = new Client().send(join("Taza", "0".repeat(32)));
+		assertEquals(GameSession.PSEUDO_TAKEN, wrong.next("rejected").get("reason").getAsString());
+		Client missing = new Client().send(join("Taza"));
+		assertEquals(GameSession.PSEUDO_TAKEN, missing.next("rejected").get("reason").getAsString());
+
+		Client resumed = new Client().send(join("taza", token));
+		JsonObject welcome = resumed.next("welcome");
+		assertEquals(0, welcome.get("id").getAsInt());
+		assertEquals(token, welcome.get("token").getAsString());
+		assertEquals(GameSession.SESSION_TAKEN_OVER, taza.next("rejected").get("reason").getAsString());
+		assertEquals(1000, taza.closed.get(3, TimeUnit.SECONDS));
+
+		// La fermeture de l'ancienne session ne déconnecte pas le joueur
+		Thread.sleep(200);
+		assertEquals(1, session.playerEntries().size());
+		assertTrue(session.playerEntries().get(0).connected());
+		JsonObject players;
+		do {
+			players = admin.next("players");
+			assertFalse(players.toString().contains(token), players.toString());
+		} while (players.getAsJsonArray("players").size() == 0);
+	}
+
+	@Test
+	void closesTheSessionAfterFiveWrongAdminPasswords() throws Exception {
+		startServer(UNUSED_GAME_PORT, TEST_PASSWORD);
+		Client guesser = new Client();
+		for (int i = 1; i <= GameSession.MAX_WRONG_PASSWORDS; i++) {
+			assertFalse(guesser.closed.isDone(), "fermée avant la tentative " + i);
+			guesser.send(adminJoin("essai" + i));
+			assertEquals(GameSession.WRONG_PASSWORD, guesser.next("rejected").get("reason").getAsString());
+		}
+		assertEquals(1000, guesser.closed.get(3, TimeUnit.SECONDS));
+
+		Client admin = new Client().send(adminJoin("mauvais")).send(adminJoin(TEST_PASSWORD));
+		assertEquals(GameSession.WRONG_PASSWORD, admin.next("rejected").get("reason").getAsString());
+		admin.next("admin-welcome");
 	}
 
 	@Test

@@ -18,7 +18,6 @@ import org.junit.jupiter.api.Test;
 import communication.session.PendingActions;
 
 class GameLinkTest {
-	private static final int UNUSED_PORT = 18001;
 	private static final List<Participant> ROSTER = List.of(new Participant(0, "Taza"), new Participant(3, "Émile"));
 
 	private FakeGameServer game;
@@ -30,12 +29,13 @@ class GameLinkTest {
 		final BlockingQueue<String> events = new LinkedBlockingQueue<>();
 		volatile GameSnapshot lastSnapshot;
 		volatile GameSnapshot finalSnapshot;
+		volatile GameSnapshot stoppedSnapshot;
 
 		@Override public void onStarted(GameLink l) { events.add("started"); }
 		@Override public void onStartFailed(GameLink l, String reason) { events.add("failed:" + reason); }
 		@Override public void onSnapshot(GameLink l, GameSnapshot s) { lastSnapshot = s; events.add("snapshot"); }
 		@Override public void onFinished(GameLink l, GameSnapshot s) { finalSnapshot = s; events.add("finished"); }
-		@Override public void onStopped(GameLink l) { events.add("stopped"); }
+		@Override public void onStopped(GameLink l, GameSnapshot s) { stoppedSnapshot = s; events.add("stopped"); }
 		@Override public void onLinkLost(GameLink l, String reason) { events.add("lost:" + reason); }
 
 		String next(String expectedPrefix) throws InterruptedException {
@@ -129,6 +129,69 @@ class GameLinkTest {
 	}
 
 	@Test
+	void keepsExchangingAfterStopUntilTheFinalState() throws Exception {
+		start(now -> new byte[0]);
+		recorder.next("started");
+		game.await(FakeGameServer.Actions.class, 2000);
+		game.stopState(SnapshotBytes.battle().phase(2).counts(1, 2).winner(3)
+			.player(0, 0, 0, 10, 10, 0, 2)
+			.player(3, 2, 40, 20, 20, 1, 1)
+			.build());
+
+		link.stop();
+		assertEquals(GameLink.CODE_STOP, game.awaitControl(2000).code());
+		assertEquals(0, game.await(FakeGameServer.Actions.class, 1000).payload().length);
+		recorder.next("stopped");
+		assertNotNull(recorder.stoppedSnapshot);
+		assertEquals(GameSnapshot.Phase.OVER, recorder.stoppedSnapshot.phase());
+		assertEquals(2, recorder.stoppedSnapshot.player(0).rank());
+		game.await(FakeGameServer.Closed.class, 2000);
+		assertTrue(link.awaitTermination(2000));
+	}
+
+	@Test
+	void givesUpWaitingForTheFinalStateAfterTheStopTimeout() throws Exception {
+		game.onStop(FakeGameServer.StopBehavior.IGNORE);
+		start(now -> new byte[0]);
+		recorder.next("started");
+		recorder.next("snapshot");
+
+		long begin = System.nanoTime();
+		link.stop();
+		assertEquals(GameLink.CODE_STOP, game.awaitControl(2000).code());
+		String event;
+		do {
+			event = recorder.events.poll(4, TimeUnit.SECONDS);
+		} while ("snapshot".equals(event));
+		assertEquals("stopped", event);
+		long elapsedMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - begin);
+		assertTrue(elapsedMillis >= GameLink.STOP_TIMEOUT_MILLIS - 100 && elapsedMillis < GameLink.STOP_TIMEOUT_MILLIS + 1000,
+			"arrêt abandonné après " + elapsedMillis + " ms");
+		assertNotNull(recorder.stoppedSnapshot, "le dernier état reçu sert d'état final");
+		int ticks = 0;
+		FakeGameServer.Event e;
+		while ((e = game.events().poll(2, TimeUnit.SECONDS)) != null && !(e instanceof FakeGameServer.Closed))
+			if (e instanceof FakeGameServer.Actions)
+				ticks++;
+		assertTrue(e instanceof FakeGameServer.Closed, "connexion fermée après l'abandon");
+		assertTrue(ticks >= 20, ticks + " échanges vides pendant l'attente");
+		assertTrue(link.awaitTermination(2000));
+	}
+
+	@Test
+	void reportsTheStopWhenTheGameClosesTheConnection() throws Exception {
+		game.onStop(FakeGameServer.StopBehavior.CLOSE);
+		start(now -> new byte[0]);
+		recorder.next("started");
+		recorder.next("snapshot");
+
+		link.stop();
+		recorder.next("stopped");
+		assertNotNull(recorder.stoppedSnapshot);
+		assertTrue(link.awaitTermination(2000));
+	}
+
+	@Test
 	void stopsWhilePaused() throws Exception {
 		start(now -> new byte[0]);
 		recorder.next("started");
@@ -169,7 +232,7 @@ class GameLinkTest {
 
 	@Test
 	void reportsUnreachableGamesWithoutExiting() throws Exception {
-		start(now -> new byte[0], GameLinkSettings.of("localhost", UNUSED_PORT));
+		start(now -> new byte[0], GameLinkSettings.of("localhost", FakeGameServer.UNUSED_PORT));
 		assertEquals("failed:" + GameLink.UNREACHABLE, recorder.next("failed"));
 		assertTrue(link.awaitTermination(2000));
 	}

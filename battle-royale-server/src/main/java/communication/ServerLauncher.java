@@ -14,7 +14,10 @@ import org.apache.catalina.LifecycleState;
 import org.apache.catalina.Wrapper;
 import org.apache.catalina.servlets.DefaultServlet;
 import org.apache.catalina.startup.Tomcat;
+import org.apache.tomcat.util.descriptor.web.FilterDef;
+import org.apache.tomcat.util.descriptor.web.FilterMap;
 import org.apache.tomcat.util.scan.StandardJarScanner;
+import org.apache.tomcat.websocket.BackgroundProcess;
 
 import communication.session.GameSession;
 
@@ -56,6 +59,9 @@ public class ServerLauncher {
 		configureLogging(System.getProperty(LOG_LEVEL, "INFO"));
 		ServerConfig config = ServerConfig.fromSystemProperties();
 		LOG.config(config::toString);
+		if (config.adminPassword() == null)
+			LOG.warning(() -> "Aucun mot de passe administrateur (propriété " + ServerConfig.ADMIN_PASSWORD + ") : "
+				+ "la place d'administrateur revient à la première session qui la réclame");
 
 		GameSession game = new GameSession(config.game(), config.adminPassword());
 		Tomcat tomcat = start(config.port(), resolveWebappDirectory(config.webapp()), game);
@@ -91,6 +97,15 @@ public class ServerLauncher {
 		files.setLoadOnStartup(1);
 		context.addServletMappingDecoded("/", "default", false);
 		context.addWelcomeFile("index.html");
+		FilterDef handshake = new FilterDef();
+		handshake.setFilterName("websocket-handshake");
+		handshake.setFilter(new OriginCheck.HandshakeFilter());
+		handshake.setAsyncSupported("true");
+		context.addFilterDef(handshake);
+		FilterMap handshakeMap = new FilterMap();
+		handshakeMap.setFilterName(handshake.getFilterName());
+		handshakeMap.addURLPatternDecoded(WebSocketServer.PATH);
+		context.addFilterMap(handshakeMap);
 		Tomcat.addDefaultMimeTypeMappings(context);
 		if (context.getJarScanner() instanceof StandardJarScanner scanner)
 			scanner.setScanClassPath(false);
@@ -103,6 +118,8 @@ public class ServerLauncher {
 			Object container = context.getServletContext().getAttribute(ServerContainer.class.getName());
 			if (!(container instanceof ServerContainer))
 				throw new IllegalStateException("Conteneur WebSocket indisponible");
+			if (container instanceof BackgroundProcess process)
+				process.setProcessPeriod(1);
 			((ServerContainer) container).addEndpoint(WebSocketServer.config(game));
 		} catch (DeploymentException | RuntimeException e) {
 			destroyQuietly(tomcat);

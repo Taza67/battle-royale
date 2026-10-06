@@ -9,6 +9,8 @@ import javax.websocket.EndpointConfig;
 import javax.websocket.Session;
 import javax.websocket.server.ServerEndpointConfig;
 
+import org.apache.tomcat.websocket.Constants;
+
 import communication.message.ClientMessage;
 import communication.message.ClientMessageParser;
 import communication.message.InvalidMessageException;
@@ -34,6 +36,10 @@ public final class WebSocketServer extends Endpoint {
 	 */
 	public static final int MAX_MESSAGE_SIZE = 4096;
 	/**
+	 * Durée au bout de laquelle une session qui n'a rien envoyé (pas même un pong) est fermée
+	 */
+	public static final long IDLE_TIMEOUT_MILLIS = 30_000;
+	/**
 	 * Préfixe du refus envoyé pour un `join` invalide
 	 */
 	public static final String INVALID_PSEUDO = "Pseudo invalide";
@@ -41,6 +47,10 @@ public final class WebSocketServer extends Endpoint {
 	 * Préfixe du refus envoyé pour un `admin-join` invalide
 	 */
 	public static final String INVALID_ADMIN_JOIN = "Connexion administrateur invalide";
+	/**
+	 * Refus envoyé à une session déjà inscrite qui renvoie `join` ou `admin-join`
+	 */
+	public static final String ALREADY_REGISTERED = "Session déjà inscrite";
 
 	private static final Logger LOG = Logger.getLogger(WebSocketServer.class.getName());
 
@@ -81,6 +91,15 @@ public final class WebSocketServer extends Endpoint {
 				public <T> T getEndpointInstance(Class<T> endpointClass) {
 					return endpointClass.cast(new WebSocketServer(game));
 				}
+
+				/**
+				 * Accepte un en-tête `Origin` absent ou désignant l'hôte de la requête ;
+				 * la requête est fournie par {@link OriginCheck.HandshakeFilter}
+				 */
+				@Override
+				public boolean checkOrigin(String originHeaderValue) {
+					return OriginCheck.allowsCurrent(originHeaderValue);
+				}
 			})
 			.build();
 	}
@@ -89,7 +108,10 @@ public final class WebSocketServer extends Endpoint {
 	public void onOpen(Session session, EndpointConfig config) {
 		connection = new WebSocketConnection(session);
 		session.setMaxTextMessageBufferSize(MAX_MESSAGE_SIZE);
+		session.setMaxIdleTimeout(IDLE_TIMEOUT_MILLIS);
+		session.getUserProperties().put(Constants.READ_IDLE_TIMEOUT_MS, Long.valueOf(IDLE_TIMEOUT_MILLIS));
 		session.addMessageHandler(String.class, this::onMessage);
+		Heartbeat.shared().register(connection);
 		LOG.fine(() -> "Nouvelle connexion " + connection.id());
 	}
 
@@ -128,8 +150,12 @@ public final class WebSocketServer extends Endpoint {
 	 * @param e Erreur de validation
 	 */
 	private void rejectInvalidRegistration(InvalidMessageException e) {
-		if (role != Role.UNREGISTERED)
+		boolean registration = "join".equals(e.getType()) || "admin-join".equals(e.getType());
+		if (role != Role.UNREGISTERED) {
+			if (registration)
+				rejectAlreadyRegistered(e.getType());
 			return;
+		}
 		String reason;
 		if ("join".equals(e.getType()))
 			reason = INVALID_PSEUDO + " : " + e.getMessage();
@@ -143,28 +169,36 @@ public final class WebSocketServer extends Endpoint {
 	private void onJoin(ClientMessage.Join join) {
 		switch (role) {
 			case UNREGISTERED:
-				Player p = game.join(connection, join.pseudo());
+				Player p = game.join(connection, join.pseudo(), join.token());
 				if (p != null) {
 					player = p;
 					role = Role.PLAYER;
 				}
 				break;
 			case PLAYER:
-				LOG.warning(() -> "Nouvelle inscription ignorée : " + connection.id() + " est déjà " + player);
-				break;
 			case ADMIN:
-				LOG.warning(() -> "Inscription de joueur ignorée depuis la session administrateur " + connection.id());
+				rejectAlreadyRegistered("join");
 				break;
 		}
 	}
 
 	private void onAdminJoin(ClientMessage.AdminJoin adminJoin) {
-		if (role == Role.PLAYER) {
-			LOG.warning(() -> "Connexion administrateur refusée : " + connection.id() + " est le joueur " + player);
+		if (role != Role.UNREGISTERED) {
+			rejectAlreadyRegistered("admin-join");
 			return;
 		}
 		if (game.claimAdmin(connection, adminJoin.password()))
 			role = Role.ADMIN;
+	}
+
+	/**
+	 * Refuse une nouvelle inscription d'une session qui a déjà un rôle ; la session le conserve
+	 * @param type Type du message refusé
+	 */
+	private void rejectAlreadyRegistered(String type) {
+		LOG.warning(() -> type + " refusé : " + connection.id() + " est déjà inscrite ("
+			+ (role == Role.PLAYER ? String.valueOf(player) : "administrateur") + ")");
+		connection.send(Json.write(new ServerMessage.Rejected(ALREADY_REGISTERED)));
 	}
 
 	private void onMove(ClientMessage.Move move) {
@@ -195,6 +229,7 @@ public final class WebSocketServer extends Endpoint {
 	@Override
 	public void onClose(Session session, CloseReason closeReason) {
 		LOG.fine(() -> "Fermeture de " + connection.id() + " : " + closeReason.getCloseCode() + " " + closeReason.getReasonPhrase());
+		Heartbeat.shared().unregister(connection);
 		release();
 	}
 

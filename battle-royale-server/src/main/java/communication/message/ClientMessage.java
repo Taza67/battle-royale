@@ -31,8 +31,22 @@ public sealed interface ClientMessage {
 	/**
 	 * Inscription ou reconnexion d'un joueur
 	 * @param pseudo Pseudo nettoyé (sans espaces de bord, 1 à 16 caractères)
+	 * @param token Jeton de reprise reçu dans `welcome`, null s'il est absent
 	 */
-	record Join(String pseudo) implements ClientMessage {}
+	record Join(String pseudo, String token) implements ClientMessage {
+		/**
+		 * Construit une inscription sans jeton de reprise
+		 * @param pseudo Pseudo nettoyé
+		 */
+		public Join(String pseudo) { this(pseudo, null); }
+
+		/**
+		 * Masque le jeton dans les journaux
+		 * @return Représentation textuelle sans le jeton
+		 */
+		@Override
+		public String toString() { return "Join[pseudo=" + pseudo + ", token=" + (token == null ? "aucun" : "***") + "]"; }
+	}
 
 	/**
 	 * Intention de déplacement d'un joueur
