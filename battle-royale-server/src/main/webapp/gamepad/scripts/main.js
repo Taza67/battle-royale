@@ -386,9 +386,10 @@ function actualiser() {
 		minicarte.arreter();
 
 	// En partie, le serveur envoie l'état du joueur inscrit en continu : un
-	// silence prolongé révèle une connexion morte.
-	const enPartie = session.partie === "running" || session.partie === "paused";
-	connexion.surveiller(session.inscrit && enPartie ? SILENCE_MAXIMAL : 0);
+	// silence prolongé révèle une connexion morte. En pause, il n'envoie plus
+	// rien par conception : la détection repose alors sur le message
+	// d'entretien périodique de la connexion, comme hors partie.
+	connexion.surveiller(session.inscrit && session.partie === "running" ? SILENCE_MAXIMAL : 0);
 	actualiserCommandes();
 }
 
