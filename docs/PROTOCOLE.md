@@ -100,7 +100,7 @@ Point d'accès : `ws(s)://<hôte>/battle-royale-server/websocketserver`, constru
 | --- | --- |
 | `{"type":"join","pseudo":"Taza","token":"…"}` | inscription ou reconnexion d'un joueur (pseudo de 1 à 16 caractères, `token` facultatif) |
 | `{"type":"move","direction":0,"speed":4}` | déplacement (`speed` `0` = arrêt) |
-| `{"type":"attack","form":1}` | attaque (`1` corps-à-corps, `2` tir) |
+| `{"type":"attack","form":1}` | attaque (`1` corps-à-corps, `2` tir) ; au plus 4 attaques en file par joueur, les suivantes sont ignorées sans réponse |
 | `{"type":"admin-join","password":"…"}` | connexion de l'administrateur |
 | `{"type":"admin-command","command":"start"}` | `start`, `pause`, `resume` ou `stop` |
 
@@ -167,9 +167,15 @@ arrêté la manche. `winner` vaut `null` en cas d'égalité ou si un robot gagne
 - Une session déjà inscrite (joueur ou administrateur) qui envoie `join` ou
   `admin-join` reçoit `rejected` et reste dans son rôle.
 - Le serveur n'accepte que les connexions WebSocket dont l'en-tête `Origin` est
-  absent ou correspond à l'hôte de la requête. Après 5 mots de passe
+  absent ou correspond à l'hôte de la requête. Derrière un mandataire qui termine
+  TLS, le schéma vu par le client est lu depuis `Forwarded`/`X-Forwarded-Proto`.
+  Après 5 mots de passe
   administrateur erronés, la session est fermée.
 - Seule la session administrateur peut envoyer `admin-command`.
 - Si la propriété `battle-royale.admin-password` est définie, `admin-join` doit
   fournir ce mot de passe ; sinon la place d'administrateur revient à la première
   session qui la réclame tant qu'elle reste connectée.
+- Un joueur qui s'inscrit entre deux manches reçoit `welcome` puis le dernier `end`
+  disponible, pour afficher le résultat de la manche écoulée.
+- La limite de 5 mots de passe administrateur erronés s'applique par connexion :
+  rouvrir une session WebSocket remet le compteur à zéro.
