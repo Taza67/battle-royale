@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#3b3d2c">
+    <link rel="icon" type="image/x-icon" href="./favicon.ico">
+    <title>UJM Battle Royale</title>
+    <link rel="stylesheet" href="./common/stylesheets/commun.css">
+    <style>
+        .accueil {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 18px;
+            width: min(560px, 94vw);
+            max-height: 100%;
+            overflow-y: auto;
+            padding: clamp(16px, 4vmin, 32px);
+            text-align: center;
+        }
+
+        .accueil-logo {
+            width: min(70%, 320px);
+            max-height: 28vh;
+            object-fit: contain;
+        }
+
+        .accueil-titre {
+            font-size: clamp(1.4rem, 6vmin, 2.2rem);
+        }
+
+        .accueil p {
+            margin: 0;
+            line-height: 1.5;
+        }
+
+        .accueil-liens {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 14px;
+            width: 100%;
+        }
+
+        .accueil-liens .bouton {
+            flex-direction: column;
+            min-height: 4.6em;
+            text-decoration: none;
+        }
+
+        .accueil-liens small {
+            font-size: 0.7rem;
+            opacity: 0.8;
+        }
+    </style>
+    <script type="module">
+        // Conserve les paramètres de la page (par exemple ?mock=1) dans les liens.
+        for (const lien of document.querySelectorAll("[data-conserver-parametres]"))
+            lien.search = window.location.search;
+    </script>
+</head>
+<body>
+    <main class="ecran">
+        <div class="carte accueil">
+            <img class="accueil-logo" src="./common/images/logo.png" alt="">
+            <h1 class="carte-titre accueil-titre">UJM Battle Royale</h1>
+            <p class="texte-doux">Le jeu s'affiche sur l'écran commun ; chaque joueur se sert de son téléphone comme manette.</p>
+            <nav class="accueil-liens" aria-label="Applications">
+                <a class="bouton bouton-principal" href="./gamepad/" data-conserver-parametres>Manette<small>Rejoindre la partie</small></a>
+                <a class="bouton bouton-secondaire" href="./adminPanel/" data-conserver-parametres>Administration<small>Lancer et piloter les manches</small></a>
+            </nav>
+            <p class="texte-doux"><small>Ajoutez <code>?mock=1</code> à l'adresse pour essayer les pages sans serveur.</small></p>
+        </div>
+    </main>
+</body>
+</html>

@@ -1,182 +1,405 @@
-import { addMessageListener, initializeClient, removeMessageListener, sendMessage, waitForMessage } from "./client.js";
-import { changeMainScreen, putBackMainScreen} from "./dynamicStyle.js"
-import { getPseudo } from "./registration.js";
-import { setButtonLoading, simulateLoading, simulateButtonLoading, reinitButtonsLoading } from "./loading.js";
-import { addClientHTML } from "./panel.js";
-// Variables /////////////////////////////////////////////////////////////////
-//////////////////////////////////////////////////////////////////////////////
+// Panneau d'administration : connexion, suivi des joueurs en direct et
+// commandes de la partie (docs/PROTOCOLE.md).
 
-// Initialisation de la webSocket
-let wsIsInitialized = false;
+import { creerConnexion, estModeDemo, urlManette } from "../../common/scripts/connexion.js";
+import {
+	afficherEcran, creerElement, lierIndicateurConnexion, notifier, poserAvatar, remplirClassement
+} from "../../common/scripts/interface.js";
+import { LIBELLES_ETAT, entier, normaliserEtat } from "../../common/scripts/protocole.js";
+import { TableauJoueurs, evenementsEntre, normaliserJoueur } from "./joueurs.js";
 
-// Fonctions /////////////////////////////////////////////////////////////////
-//////////////////////////////////////////////////////////////////////////////
+const CLE_SESSION = "battle-royale.admin";
+const TENTATIVES_RECONNEXION = 3;
+const DELAI_RECONNEXION = 1500;
+const DELAI_ACQUITTEMENT = 8000;
+const TAILLE_JOURNAL = 60;
 
-// Initialisations ////////////////////
-///////////////////////////////////////
+const COMMANDES_PERMISES = {
+	lobby: ["start"],
+	running: ["pause", "stop"],
+	paused: ["resume", "stop"],
+	over: ["start"],
+	stopped: ["start"]
+};
 
-// Envoie le pseudo de l'admin au jeu et lance le panneau d'administration
-function connect() {
-    !wsIsInitialized ? initializeClient()
-    .then(() => {
-        sendPseudo();
+const LIBELLES_COMMANDE = {
+	start: "Lancement de la partie",
+	pause: "Mise en pause",
+	resume: "Reprise de la partie",
+	stop: "Arrêt de la partie"
+};
 
-        // WebSocket initialisée
-        wsIsInitialized = true;
-    })
-    .catch(function(error) {
-        console.error(error);
-    }) : sendPseudo();
+const SUCCES_COMMANDE = {
+	start: "Partie lancée !",
+	pause: "Partie mise en pause.",
+	resume: "Partie reprise.",
+	stop: "Partie arrêtée."
+};
+
+const AIDES_ETAT = {
+	lobby: "Les joueurs s'inscrivent depuis la manette. Lancez la partie quand tout le monde est prêt.",
+	running: "La partie est en cours : vous pouvez la mettre en pause ou l'arrêter.",
+	paused: "La partie est en pause : les manettes affichent un écran d'attente.",
+	over: "La manche est terminée. Vous pouvez lancer une nouvelle manche.",
+	stopped: "La manche a été arrêtée. Vous pouvez lancer une nouvelle manche."
+};
+
+const element = identifiant => document.getElementById(identifiant);
+
+const session = {
+	souhaitee: false,
+	motDePasse: "",
+	admise: false,
+	automatique: false,
+	echecs: 0,
+	partie: null,
+	joueurs: [],
+	listeRecue: false,
+	finRecue: false,
+	commande: null
+};
+
+const connexion = await creerConnexion({ robots: 7, arriveeRobots: 1600 });
+const tableau = new TableauJoueurs(element("corps-joueurs"), element("aucun-joueur"));
+const boutons = [...document.querySelectorAll("[data-commande]")];
+
+// Stockage ///////////////////////////////////////////////////////////////////
+
+function lireSession() {
+	try {
+		const valeur = sessionStorage.getItem(CLE_SESSION);
+		return valeur === null ? null : JSON.parse(valeur);
+	} catch (erreur) {
+		return null;
+	}
 }
 
-
-// Envoie le pseudo du joueur
-async function sendPseudo() {
-    let message, pseudo, response;
-
-    // Récupération du pseudo entré
-    pseudo = getPseudo();
-
-    // Envoi du pseudo
-    message = {
-        type: "informations",
-        pseudo: pseudo
-    };
-    sendMessage(message);
-
-    // On passe à l'écran de chargement
-    changeMainScreen("waiting-container");
-    putBackMainScreen();
-
-    // Attente de la confirmation
-    response = await waitForMessage(simulateLoading, 500);
-    
-    // Échec de la connexion ?
-    if (response == "ko") {
-        alert("Échec de la connexion !");
-
-        // Retour à l'écran de connexion
-        changeMainScreen("registration-container");
-        putBackMainScreen();
-
-        return;
-    }
-
-    // On passe au panneau d'admin
-    changeMainScreen("panel-container");
-    putBackMainScreen();
-
-    // On ajoute l'écouteur d'inscriptions de clients
-    addMessageListener(addClient);
+function ecrireSession(donnees) {
+	try {
+		if (donnees === null)
+			sessionStorage.removeItem(CLE_SESSION);
+		else
+			sessionStorage.setItem(CLE_SESSION, JSON.stringify(donnees));
+	} catch (erreur) {
+		// Stockage indisponible : il faudra se reconnecter après un rechargement.
+	}
 }
 
-// Communication //////////////////////
-///////////////////////////////////////
+// Journal ////////////////////////////////////////////////////////////////////
 
-// Envoie un message indiquant le début du jeu
-async function startGame() {
-    // On enlève l'écouteur d'inscriptions de clients
-    removeMessageListener(addClient);
+function journaliser(texte, genre = "info") {
+	const journal = element("journal");
+	const heure = new Date().toLocaleTimeString("fr-FR");
 
-    // Envoi du message
-    sendMessage("admin-debut");
+	journal.prepend(creerElement("li", { "data-genre": genre }, [
+		creerElement("time", { texte: heure }),
+		creerElement("span", { texte })
+	]));
 
-    // Attente de la confirmation
-    setButtonLoading("start");
-    let response = await waitForMessage(simulateButtonLoading, 500);
-    if (response != "ok") alert("La requête de début n'a pas réussie !");
-    reinitButtonsLoading();
-
-    // Le bouton start doit être désactivé
-    document.getElementById("start").removeEventListener("click", startGame);
-    document.getElementById("start").classList.add("panel-button-disabled");
-
-    // Les boutons pause et stop sont désormais fonctionnels
-    document.getElementById("pause").addEventListener("click", pauseGame);
-    document.getElementById("pause").classList.toggle("panel-button-disabled");
-    document.getElementById("stop").addEventListener("click", stopGame);
-    document.getElementById("stop").classList.toggle("panel-button-disabled");
+	while (journal.children.length > TAILLE_JOURNAL)
+		journal.lastElementChild.remove();
 }
 
-// Envoie un message indiquant une pause du jeu
-async function pauseGame() {
-    // Envoi du message
-    sendMessage("admin-pause");
+// Connexion //////////////////////////////////////////////////////////////////
 
-    // Attente de la confirmation
-    setButtonLoading("pause");
-    let response = await waitForMessage(simulateButtonLoading, 500);
-    if (response != "ok") alert("La requête de pause n'a pas réussie !");
-    reinitButtonsLoading();
-
-    // Les boutons stop et pause doivent être désactivés
-    document.getElementById("pause").removeEventListener("click", pauseGame);
-    document.getElementById("pause").classList.toggle("panel-button-disabled");
-    document.getElementById("stop").removeEventListener("click", stopGame);
-    document.getElementById("stop").classList.toggle("panel-button-disabled");
-
-    // Le bouton continue est fonctionnel
-    document.getElementById("continue").addEventListener("click", continueGame);
-    document.getElementById("continue").classList.toggle("panel-button-disabled");
+function envoyerConnexion() {
+	if (session.souhaitee)
+		connexion.envoyer({ type: "admin-join", password: session.motDePasse });
 }
 
-// Envoie un message indiquant la reprise du jeu
-async function continueGame() {
-    // Envoi du message
-    sendMessage("admin-continue");
+function seConnecter(evenement) {
+	evenement.preventDefault();
 
-    // Attente de la confirmation
-    setButtonLoading("continue");
-    let response = await waitForMessage(simulateButtonLoading, 500);
-    if (response != "ok") alert("La requête de pause n'a pas réussie !");
-    reinitButtonsLoading();
-
-    // Le bouton continue doit être désactivé
-    document.getElementById("continue").removeEventListener("click", continueGame);
-    document.getElementById("continue").classList.toggle("panel-button-disabled");
-
-    // Les boutons pause et stop sont fonctionnels
-    document.getElementById("pause").addEventListener("click", pauseGame);
-    document.getElementById("pause").classList.toggle("panel-button-disabled");
-    document.getElementById("stop").addEventListener("click", stopGame);
-    document.getElementById("stop").classList.toggle("panel-button-disabled");
+	session.souhaitee = true;
+	session.automatique = false;
+	session.echecs = 0;
+	session.motDePasse = element("mot-de-passe").value;
+	element("erreur-connexion").textContent = "";
+	envoyerConnexion();
+	actualiser();
 }
 
-// Envoie un message indiquant la fin du jeu
-async function stopGame() {
-    // Envoi du message
-    sendMessage("admin-stop");
+function revenirConnexion(raison) {
+	session.souhaitee = false;
+	session.admise = false;
+	session.automatique = false;
+	ecrireSession(null);
 
-    // Attente de la confirmation
-    setButtonLoading("stop");
-    let response = await waitForMessage(simulateButtonLoading, 500);
-    if (response != "ok") alert("La requête de fin n'a pas réussie !");
-    reinitButtonsLoading();
-
-    // Tous les boutons doivent être désactivés
-    document.getElementById("pause").removeEventListener("click", pauseGame);
-    document.getElementById("pause").classList.toggle("panel-button-disabled");
-    document.getElementById("stop").removeEventListener("click", stopGame);
-    document.getElementById("stop").classList.toggle("panel-button-disabled");
+	element("erreur-connexion").textContent = raison;
+	actualiser();
+	element("mot-de-passe").focus();
 }
 
-// Gestion des clients ////////////////
-///////////////////////////////////////
-
-// Ajoute le client reçu en message à la liste des clients 
-function addClient(event) {
-    let client = JSON.parse(event.data);
-
-    addClientHTML(client);
-}
-
-
-// Écouteurs /////////////////////////////////////////////////////////////////
-//////////////////////////////////////////////////////////////////////////////
-
-window.addEventListener("load", () => {
-    // Écouteurs
-    // // Boutons
-    document.getElementById("register-button").addEventListener("click", connect);
-    document.getElementById("start").addEventListener("click", startGame);
+connexion.surOuverture(() => {
+	session.admise = false;
+	envoyerConnexion();
+	actualiser();
 });
+
+connexion.surEtat(() => {
+	if (!connexion.estConnectee) {
+		session.admise = false;
+		terminerCommande();
+	}
+	actualiser();
+});
+
+connexion.sur("admin-welcome", message => {
+	const premiere = !session.automatique;
+
+	session.admise = true;
+	session.automatique = true;
+	session.echecs = 0;
+	ecrireSession({ motDePasse: session.motDePasse });
+
+	changerPartie(normaliserEtat(message.state) ?? "lobby", false);
+	if (premiere)
+		journaliser("Connexion au serveur établie.", "succes");
+	else
+		journaliser("Connexion au serveur rétablie.", "succes");
+	actualiser();
+});
+
+connexion.sur("rejected", message => {
+	const raison = typeof message.reason === "string" && message.reason !== "" ? message.reason : "Connexion refusée.";
+
+	if (session.automatique && session.echecs < TENTATIVES_RECONNEXION) {
+		session.echecs++;
+		setTimeout(envoyerConnexion, DELAI_RECONNEXION);
+		return;
+	}
+
+	revenirConnexion(raison);
+});
+
+// Partie /////////////////////////////////////////////////////////////////////
+
+function changerPartie(etat, journal = true) {
+	const precedent = session.partie;
+	if (etat === precedent)
+		return;
+
+	session.partie = etat;
+	if (etat === "lobby" || (etat === "running" && (precedent === "lobby" || precedent === "over" || precedent === "stopped"))) {
+		session.finRecue = false;
+		element("bloc-resultats").hidden = true;
+	}
+
+	if (journal) {
+		const textes = {
+			running: precedent === "paused" ? "Partie reprise." : "Partie lancée.",
+			paused: "Partie mise en pause.",
+			over: "Manche terminée.",
+			stopped: "Manche arrêtée.",
+			lobby: "Retour en salle d'attente."
+		};
+		journaliser(textes[etat], etat === "stopped" ? "erreur" : "info");
+	}
+
+	actualiser();
+}
+
+connexion.sur("game", message => {
+	const etat = normaliserEtat(message.state);
+	if (etat !== null && session.admise)
+		changerPartie(etat);
+});
+
+connexion.sur("players", message => {
+	if (!session.admise || !Array.isArray(message.players))
+		return;
+
+	const joueurs = message.players.map(normaliserJoueur);
+	if (session.listeRecue) {
+		for (const { texte, genre } of evenementsEntre(session.joueurs, joueurs))
+			journaliser(texte, genre);
+	}
+
+	session.joueurs = joueurs;
+	session.listeRecue = true;
+	afficherJoueurs();
+	deduireResultats();
+});
+
+function afficherResultats(vainqueur, classement) {
+	element("bloc-resultats").hidden = false;
+	element("resultat-vainqueur").hidden = vainqueur === null;
+	if (vainqueur !== null) {
+		element("pseudo-vainqueur").textContent = vainqueur.pseudo;
+		poserAvatar(element("avatar-vainqueur"), entier(vainqueur.id, null));
+	}
+	remplirClassement(element("corps-classement"), classement);
+}
+
+// Si le message `end` a été manqué (panneau ouvert ou reconnecté après la fin),
+// les résultats sont reconstitués à partir des rangs de la liste des joueurs.
+function deduireResultats() {
+	if (session.finRecue || (session.partie !== "over" && session.partie !== "stopped"))
+		return;
+
+	const classes = session.joueurs.filter(joueur => joueur.rang > 0).sort((a, b) => a.rang - b.rang);
+	if (classes.length === 0)
+		return;
+
+	const gagnant = session.joueurs.find(joueur => joueur.statut === "winner");
+	afficherResultats(
+		gagnant === undefined ? null : { id: gagnant.id, pseudo: gagnant.pseudo },
+		classes.map(({ id, pseudo, kills, rang }) => ({ id, pseudo, kills, rank: rang }))
+	);
+}
+
+connexion.sur("end", message => {
+	if (!session.admise)
+		return;
+
+	const vainqueur = message.winner ?? null;
+	const classement = Array.isArray(message.ranking) ? message.ranking : [];
+
+	session.finRecue = true;
+	afficherResultats(vainqueur, classement);
+
+	journaliser(vainqueur === null ? "Fin de la manche sans vainqueur." : `Victoire de ${vainqueur.pseudo} !`, "succes");
+});
+
+// Commandes //////////////////////////////////////////////////////////////////
+
+function envoyerCommande(commande) {
+	if (session.commande !== null || !(COMMANDES_PERMISES[session.partie] ?? []).includes(commande))
+		return;
+
+	if (!connexion.envoyer({ type: "admin-command", command: commande })) {
+		notifier("Impossible d'envoyer la commande : connexion perdue.", "erreur");
+		return;
+	}
+
+	session.commande = {
+		nom: commande,
+		minuteur: setTimeout(() => {
+			terminerCommande();
+			notifier(`${LIBELLES_COMMANDE[commande]} : aucune réponse du serveur.`, "erreur");
+			actualiserCommandes();
+		}, DELAI_ACQUITTEMENT)
+	};
+	actualiserCommandes();
+}
+
+function terminerCommande() {
+	if (session.commande !== null)
+		clearTimeout(session.commande.minuteur);
+	session.commande = null;
+}
+
+connexion.sur("ack", message => {
+	if (session.commande !== null && session.commande.nom === message.command)
+		terminerCommande();
+
+	if (message.ok === true) {
+		notifier(SUCCES_COMMANDE[message.command] ?? "Commande effectuée.", "succes");
+	} else {
+		const erreur = typeof message.error === "string" && message.error !== "" ? message.error : "erreur inconnue";
+		notifier(`${LIBELLES_COMMANDE[message.command] ?? "Commande"} impossible : ${erreur}`, "erreur");
+		journaliser(`Commande « ${message.command} » refusée : ${erreur}`, "erreur");
+	}
+	actualiserCommandes();
+});
+
+function demanderArret() {
+	const dialogue = element("dialogue-arret");
+	if (typeof dialogue.showModal !== "function") {
+		envoyerCommande("stop");
+		return;
+	}
+
+	dialogue.returnValue = "";
+	dialogue.showModal();
+}
+
+// Affichage //////////////////////////////////////////////////////////////////
+
+function afficherJoueurs() {
+	const joueurs = session.joueurs;
+	const enPartie = session.partie === "running" || session.partie === "paused";
+
+	tableau.afficher(joueurs, session.partie);
+	element("stat-inscrits").textContent = String(joueurs.length);
+	element("stat-connectes").textContent = String(joueurs.filter(joueur => joueur.connecte).length);
+	element("stat-vivants").textContent = enPartie || session.partie === "over" || session.partie === "stopped"
+		? String(joueurs.filter(joueur => joueur.statut !== "eliminated").length)
+		: "–";
+}
+
+function actualiserCommandes() {
+	const permises = session.admise && connexion.estConnectee ? COMMANDES_PERMISES[session.partie] ?? [] : [];
+
+	for (const bouton of boutons) {
+		const commande = bouton.dataset.commande;
+		bouton.disabled = session.commande !== null || !permises.includes(commande);
+		bouton.setAttribute("aria-busy", String(session.commande?.nom === commande));
+	}
+
+	const start = element("commande-start");
+	start.textContent = session.partie === "over" || session.partie === "stopped" ? "Nouvelle manche" : "Lancer la partie";
+
+	element("aide-commande").textContent = !connexion.estConnectee
+		? "Connexion au serveur perdue : les commandes sont indisponibles."
+		: AIDES_ETAT[session.partie] ?? "";
+}
+
+function actualiser() {
+	afficherEcran(session.admise || session.automatique ? "ecran-panneau" : "ecran-connexion");
+
+	const enCours = session.souhaitee && !session.admise && !session.automatique;
+	const bouton = element("bouton-connexion");
+	bouton.disabled = enCours;
+	bouton.setAttribute("aria-busy", String(enCours));
+	bouton.textContent = enCours ? (connexion.estConnectee ? "Connexion" : "Connexion au serveur") : "Se connecter";
+
+	const badge = element("badge-etat");
+	const etat = session.partie ?? "lobby";
+	badge.dataset.etat = connexion.estConnectee && session.admise ? etat : "";
+	badge.textContent = connexion.estConnectee && session.admise ? LIBELLES_ETAT[etat] : "Hors ligne";
+
+	actualiserCommandes();
+	afficherJoueurs();
+}
+
+// Démarrage //////////////////////////////////////////////////////////////////
+
+const memorisee = lireSession();
+if (memorisee !== null) {
+	session.souhaitee = true;
+	session.automatique = true;
+	session.motDePasse = typeof memorisee.motDePasse === "string" ? memorisee.motDePasse : "";
+}
+
+// En démonstration, la manette ouverte depuis le lien reste elle aussi en démonstration
+// (chaque page simule son propre serveur).
+const lien = estModeDemo() ? `${urlManette()}?mock=1` : urlManette();
+element("url-manette").textContent = lien;
+element("url-manette").href = lien;
+element("copier-url").addEventListener("click", async () => {
+	try {
+		await navigator.clipboard.writeText(lien);
+		notifier("Lien de la manette copié.", "succes");
+	} catch (erreur) {
+		notifier("Copie impossible : sélectionnez le lien manuellement.", "erreur");
+	}
+});
+
+element("formulaire-connexion").addEventListener("submit", seConnecter);
+for (const bouton of boutons) {
+	bouton.addEventListener("click", () => {
+		if (bouton.dataset.commande === "stop")
+			demanderArret();
+		else
+			envoyerCommande(bouton.dataset.commande);
+	});
+}
+element("dialogue-arret").addEventListener("close", () => {
+	if (element("dialogue-arret").returnValue === "confirmer")
+		envoyerCommande("stop");
+});
+
+lierIndicateurConnexion(element("connexion"), connexion, estModeDemo());
+actualiser();
+connexion.ouvrir();

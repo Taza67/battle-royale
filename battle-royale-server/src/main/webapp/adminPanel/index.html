@@ -1,51 +1,117 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="shortcut icon" type="image/x-icon" href="../favicon.ico">
-    <title>Panneau d'administration</title>
-    <link rel="stylesheet" href="stylesheets/style.css">
+    <meta name="theme-color" content="#3b3d2c">
+    <link rel="icon" type="image/x-icon" href="../favicon.ico">
+    <title>Administration · UJM Battle Royale</title>
+    <link rel="stylesheet" href="../common/stylesheets/commun.css">
+    <link rel="stylesheet" href="./stylesheets/style.css">
+    <script type="module" src="./scripts/main.js"></script>
 </head>
 <body>
-    <div class="registration-container" id="registration-container">
-        <div class="register-container" id="register-container">
-            <img class="register-logo" src="./images/logo.png" alt="Logo du jeu">
-            <h2 class="register-title">Inscription</h2>
-            <form class="register-form" onsubmit="event.preventDefault()">
-                <input type="text" id="pseudo" placeholder="Pseudo...">
-                <input type="button" id="register-button" value="S'inscrire">
+    <div class="connexion" id="connexion" data-etat="connexion"><span class="connexion-texte">Connexion…</span></div>
+
+    <!-- Connexion de l'administrateur -->
+    <section class="ecran" id="ecran-connexion" hidden>
+        <div class="carte boite-connexion secousse">
+            <img class="logo" src="./images/logo.png" alt="UJM Battle Royale">
+            <h1 class="carte-titre">Administration</h1>
+            <form class="formulaire" id="formulaire-connexion" novalidate>
+                <label class="etiquette-champ" for="mot-de-passe">Mot de passe <span class="texte-doux">(si le serveur en exige un)</span></label>
+                <input class="champ" type="password" id="mot-de-passe" name="mot-de-passe" placeholder="Mot de passe..." autocomplete="current-password">
+                <p class="message-erreur" id="erreur-connexion" role="alert"></p>
+                <button class="bouton bouton-principal" type="submit" id="bouton-connexion">Se connecter</button>
             </form>
         </div>
-    </div>
+    </section>
 
-    <div class="waiting-container" id="waiting-container">
-		<div class="loading-container">
-			<h2 class="loading-title" id="loading-title">Chargement en cours</h2>
-		</div>
-	</div>
+    <!-- Panneau -->
+    <section class="ecran ecran-panneau" id="ecran-panneau" hidden>
+        <header class="entete">
+            <img class="entete-logo" src="./images/logo.png" alt="">
+            <h1 class="entete-titre">Panneau d'administration</h1>
+            <span class="badge-etat" id="badge-etat" data-etat="lobby" role="status" aria-live="polite">Salle d'attente</span>
+        </header>
 
-    <div class="panel-container" id="panel-container">
-        <div class="panel-buttons" id="panel-buttons">
-            <button id="start">LANCER</button>
-            <button class="panel-button-disabled" id="pause">PAUSE</button>
-            <button class="panel-button-disabled" id="continue">REPRENDRE</button>
-            <button class="panel-button-disabled" id="stop">ARRÊTER</button>
-        </div>
-        <div class="panel-data" id="panel-data">
-            <div class="players-panel" id="players-panel">
+        <div class="partage carte-panneau">
+            <div class="partage-texte">
+                <span class="etiquette">Les joueurs rejoignent la partie depuis leur téléphone :</span>
+                <a class="url-manette" id="url-manette" href="../gamepad/" target="_blank" rel="noopener"></a>
             </div>
-            <div class="game-infos-panel" id="game-infos-panel">
-
-            </div>
+            <button class="bouton bouton-secondaire" type="button" id="copier-url">Copier le lien</button>
         </div>
-    </div>
 
-    <!-- Scripts -->
-    <script type="module" src="./scripts/dynamicStyle.js"></script>
-    <script type="module" src="./scripts/client.js"></script>
-    <script type="module" src="./scripts/registration.js"></script>
-    <script type="module" src="./scripts/main.js"></script>
+        <div class="panneau-grille">
+            <aside class="carte-panneau colonne-commandes">
+                <h2 class="titre-section">Partie</h2>
+                <div class="commandes">
+                    <button class="bouton bouton-principal" type="button" id="commande-start" data-commande="start" disabled>Lancer la partie</button>
+                    <button class="bouton" type="button" id="commande-pause" data-commande="pause" disabled>Pause</button>
+                    <button class="bouton" type="button" id="commande-resume" data-commande="resume" disabled>Reprendre</button>
+                    <button class="bouton bouton-danger" type="button" id="commande-stop" data-commande="stop" disabled>Arrêter</button>
+                </div>
+                <p class="texte-doux aide-commande" id="aide-commande"></p>
+
+                <h2 class="titre-section">Statistiques</h2>
+                <dl class="statistiques">
+                    <div><dt>Inscrits</dt><dd id="stat-inscrits">0</dd></div>
+                    <div><dt>Connectés</dt><dd id="stat-connectes">0</dd></div>
+                    <div><dt>En vie</dt><dd id="stat-vivants">–</dd></div>
+                </dl>
+            </aside>
+
+            <main class="carte-panneau colonne-joueurs">
+                <h2 class="titre-section">Joueurs</h2>
+                <div class="tableau-defilant">
+                    <table class="tableau-joueurs">
+                        <thead>
+                            <tr>
+                                <th>Joueur</th>
+                                <th class="colonne-id">ID</th>
+                                <th>Connexion</th>
+                                <th>Statut</th>
+                                <th>Vie</th>
+                                <th class="colonne-nombre">Élim.</th>
+                                <th class="colonne-nombre">Rang</th>
+                            </tr>
+                        </thead>
+                        <tbody id="corps-joueurs"></tbody>
+                    </table>
+                    <p class="texte-doux aucun-joueur" id="aucun-joueur">Aucun joueur inscrit pour le moment. Partagez le lien de la manette !</p>
+                </div>
+            </main>
+
+            <aside class="carte-panneau colonne-evenements">
+                <section class="bloc-resultats" id="bloc-resultats" hidden>
+                    <h2 class="titre-section" id="titre-resultats">Résultats</h2>
+                    <div class="resultat-vainqueur" id="resultat-vainqueur">
+                        <img class="avatar-mini" id="avatar-vainqueur" alt="">
+                        <div><span class="etiquette">Vainqueur</span><b id="pseudo-vainqueur"></b></div>
+                    </div>
+                    <div class="tableau-defilant tableau-resultats">
+                        <table class="tableau-classement">
+                            <thead><tr><th>Rang</th><th>Joueur</th><th>Élim.</th></tr></thead>
+                            <tbody id="corps-classement"></tbody>
+                        </table>
+                    </div>
+                </section>
+                <h2 class="titre-section">Journal</h2>
+                <ol class="journal" id="journal" aria-live="polite"></ol>
+            </aside>
+        </div>
+    </section>
+
+    <dialog class="carte dialogue" id="dialogue-arret">
+        <form method="dialog">
+            <h2 class="carte-titre">Arrêter la partie ?</h2>
+            <p>La manche en cours sera terminée immédiatement pour tous les joueurs.</p>
+            <div class="dialogue-boutons">
+                <button class="bouton bouton-secondaire" value="annuler">Annuler</button>
+                <button class="bouton bouton-danger" value="confirmer">Arrêter</button>
+            </div>
+        </form>
+    </dialog>
 </body>
 </html>
