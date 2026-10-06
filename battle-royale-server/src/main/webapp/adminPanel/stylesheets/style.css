@@ -398,6 +398,19 @@
     margin-bottom: 18px;
 }
 
+.resultat-message {
+    margin: 0 0 10px;
+    padding: 8px 10px;
+    background-color: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 8px;
+}
+
+.resultat-total {
+    margin: 0 0 6px;
+    font-size: 0.85rem;
+}
+
 .resultat-vainqueur {
     display: flex;
     align-items: center;
