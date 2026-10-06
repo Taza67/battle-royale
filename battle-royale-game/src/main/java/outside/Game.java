@@ -232,7 +232,7 @@ public class Game {
 	private void consumeEvents(double now) {
 		for (SimulationLoop.Events batch : simulation.drainEvents()) {
 			if (batch.session() != shown) continue;
-			effects.consume(batch.events(), batch.snapshot(), localId);
+			effects.consume(batch.events(), batch.snapshot(), localId, now);
 			audio.play(batch.events(), localId);
 		}
 		if (endTime < 0 && shown.board().getSnapshot().isOver()) endTime = now;
