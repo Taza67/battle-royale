@@ -42,6 +42,15 @@ export function refusAvecCode(message, code, raison) {
 	return message?.reason === raison;
 }
 
+/**
+ * Convertit un vecteur écran (axe Y vers le bas) en direction du protocole :
+ * `0` est, `2` nord, `4` ouest, `6` sud.
+ */
+export function directionDepuisVecteur(dx, dy) {
+	const angle = Math.atan2(-dy, dx);
+	return ((Math.round(angle / (Math.PI / 4)) % 8) + 8) % 8;
+}
+
 /** Formes d'attaque. */
 export const ATTAQUE = Object.freeze({ corpsACorps: 1, tir: 2 });
 

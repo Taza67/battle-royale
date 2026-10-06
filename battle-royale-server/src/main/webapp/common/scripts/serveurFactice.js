@@ -2,7 +2,7 @@
 // Il implémente le côté serveur du protocole WebSocket décrit dans
 // docs/PROTOCOLE.md et simule une manche complète avec des joueurs robots.
 
-import { CARTE, CODES_REFUS, VIE_MAXIMALE, pseudoValide } from "./protocole.js";
+import { CARTE, CODES_REFUS, VIE_MAXIMALE, directionDepuisVecteur, pseudoValide } from "./protocole.js";
 
 const JOUEURS_MAXIMUM = 50;
 const ESSAIS_MOT_DE_PASSE = 5;
@@ -818,8 +818,7 @@ export class ServeurFactice {
 		if (manche.phase === "battle" && adversaire !== undefined && distance(adversaire, robot) < 260 && estDansZone(robot, manche.zone))
 			destination = adversaire;
 
-		const angle = Math.atan2(-(destination.y - robot.y), destination.x - robot.x);
-		const direction = ((Math.round(angle / (Math.PI / 4)) % 8) + 8) % 8;
+		const direction = directionDepuisVecteur(destination.x - robot.x, destination.y - robot.y);
 		robot.deplacement = distance(robot, destination) > 12 ? { direction, vitesse: 3, expiration: Infinity } : null;
 
 		if (manche.phase === "battle" && adversaire !== undefined) {

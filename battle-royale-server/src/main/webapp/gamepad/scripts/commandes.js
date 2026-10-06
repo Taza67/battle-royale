@@ -1,7 +1,7 @@
 // Commandes de la manette : joystick tactile (nipplejs), boutons A et B
 // (pointeur : tactile, souris ou stylet) et clavier pour les tests sur ordinateur.
 
-import { ATTAQUE } from "../../common/scripts/protocole.js";
+import { ATTAQUE, directionDepuisVecteur } from "../../common/scripts/protocole.js";
 
 const COULEUR_JOYSTICK = "rgba(120, 113, 129, 0.9)";
 
@@ -23,15 +23,6 @@ const TOUCHES_ATTAQUE = {
 	KeyJ: ATTAQUE.tir, Space: ATTAQUE.tir,
 	KeyK: ATTAQUE.corpsACorps, Enter: ATTAQUE.corpsACorps, NumpadEnter: ATTAQUE.corpsACorps
 };
-
-/**
- * Convertit un vecteur écran (axe Y vers le bas) en direction du protocole :
- * `0` est, `2` nord, `4` ouest, `6` sud.
- */
-export function directionDepuisVecteur(dx, dy) {
-	const angle = Math.atan2(-dy, dx);
-	return ((Math.round(angle / (Math.PI / 4)) % 8) + 8) % 8;
-}
 
 /**
  * Convertit la force du joystick (distance rapportée au rayon) en vitesse de 0 à 4.
