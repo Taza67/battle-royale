@@ -112,7 +112,7 @@ class GameServerTest implements IConfig {
 	}
 
 	/**
-	 * Fait avancer la simulation (rôle de la boucle principale) jusqu'à ce que la condition soit vraie
+	 * Fait avancer la simulation (rôle du fil de simulation) jusqu'à ce que la condition soit vraie
 	 */
 	private static void tickUntil(Board b, BooleanSupplier condition) throws InterruptedException {
 		long deadline = System.currentTimeMillis() + 5000;
