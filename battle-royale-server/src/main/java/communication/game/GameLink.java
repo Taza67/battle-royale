@@ -60,6 +60,10 @@ public final class GameLink {
 	 * Raison d'échec : le jeu n'a pas répondu à la poignée de main
 	 */
 	public static final String NO_HANDSHAKE = "Le jeu n'a pas répondu au démarrage";
+	/**
+	 * Délai maximal laissé au jeu pour envoyer son état final après un arrêt, en millisecondes
+	 */
+	public static final long STOP_TIMEOUT_MILLIS = 2000;
 
 	private static final Logger LOG = Logger.getLogger(GameLink.class.getName());
 	private static final AtomicInteger COUNTER = new AtomicInteger();
@@ -83,6 +87,10 @@ public final class GameLink {
 	private boolean stopRequested;
 	private volatile Socket socket;
 	private volatile long exchanges;
+	/**
+	 * Dernier état décodé, utilisé uniquement par le thread du lien
+	 */
+	private GameSnapshot latest;
 
 	/**
 	 * Construit le lien, sans le démarrer
@@ -133,7 +141,8 @@ public final class GameLink {
 	}
 
 	/**
-	 * Demande l'arrêt (code -2 envoyé dès que possible, puis fermeture)
+	 * Demande l'arrêt : code -2 envoyé dès que possible, puis échanges vides jusqu'à
+	 * l'état final du jeu (au plus {@link #STOP_TIMEOUT_MILLIS}), puis fermeture
 	 */
 	public void stop() {
 		synchronized (monitor) {
@@ -268,7 +277,8 @@ public final class GameLink {
 						out.writeInt(CODE_STOP);
 						out.flush();
 						LOG.info("Arrêt transmis au jeu");
-						fire(l -> l.onStopped(this));
+						GameSnapshot last = awaitFinalState(in, out);
+						fire(l -> l.onStopped(this, last));
 						return;
 					case PAUSE:
 						out.writeInt(CODE_PAUSE);
@@ -288,8 +298,15 @@ public final class GameLink {
 						nextTick += tickNanos;
 						if (nextTick < now)
 							nextTick = now + tickNanos;
-						if (!tick(in, out))
+						sendActions(out);
+						Reply reply = readReply(in);
+						if (!reply.running()) {
+							LOG.info("Fin de partie annoncée par le jeu");
+							fire(l -> l.onFinished(this, reply.snapshot()));
 							return;
+						}
+						if (reply.snapshot() != null)
+							fire(l -> l.onSnapshot(this, reply.snapshot()));
 						break;
 				}
 			}
@@ -300,7 +317,8 @@ public final class GameLink {
 			}
 			if (stopping) {
 				LOG.info(() -> "Connexion fermée pendant l'arrêt : " + e);
-				fire(l -> l.onStopped(this));
+				GameSnapshot last = latest;
+				fire(l -> l.onStopped(this, last));
 			} else {
 				String reason = e instanceof SocketTimeoutException
 					? "Le jeu ne répond plus"
@@ -345,13 +363,50 @@ public final class GameLink {
 	}
 
 	/**
-	 * Réalise un échange : envoi des actions, lecture de l'état et de l'indicateur `enCours`
+	 * Après l'envoi du code d'arrêt, continue d'envoyer des échanges vides à chaque cycle
+	 * jusqu'à ce que le jeu annonce la fin de la manche ou que le délai d'arrêt soit écoulé
 	 * @param in Flux depuis le jeu
 	 * @param out Flux vers le jeu
-	 * @return true si la partie continue
-	 * @throws IOException en cas d'erreur de communication ou de taille d'état invalide
+	 * @return État final du jeu, à défaut le dernier état reçu, ou null
+	 * @throws IOException en cas d'erreur de communication ou si le jeu ne répond plus à temps
 	 */
-	private boolean tick(DataInputStream in, DataOutputStream out) throws IOException {
+	private GameSnapshot awaitFinalState(DataInputStream in, DataOutputStream out) throws IOException {
+		long tickNanos = TimeUnit.MILLISECONDS.toNanos(settings.tickMillis());
+		long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(STOP_TIMEOUT_MILLIS);
+		long nextTick = System.nanoTime();
+		while (true) {
+			long now = System.nanoTime();
+			if (now >= deadline) {
+				LOG.warning(() -> "Le jeu n'a pas terminé la manche " + STOP_TIMEOUT_MILLIS + " ms après l'arrêt");
+				return latest;
+			}
+			if (nextTick > now) {
+				try {
+					TimeUnit.NANOSECONDS.sleep(Math.min(nextTick, deadline) - now);
+				} catch (InterruptedException e) {
+					Thread.currentThread().interrupt();
+					return latest;
+				}
+				continue;
+			}
+			nextTick = now + tickNanos;
+			socket.setSoTimeout((int) Math.max(1, TimeUnit.NANOSECONDS.toMillis(deadline - now)));
+			out.writeInt(0);
+			out.flush();
+			Reply reply = readReply(in);
+			if (!reply.running()) {
+				LOG.info("État final reçu après l'arrêt");
+				return reply.snapshot() != null ? reply.snapshot() : latest;
+			}
+		}
+	}
+
+	/**
+	 * Envoie les actions en attente, éventuellement aucune
+	 * @param out Flux vers le jeu
+	 * @throws IOException en cas d'erreur d'écriture
+	 */
+	private void sendActions(DataOutputStream out) throws IOException {
 		byte[] payload;
 		try {
 			payload = actions.drainActions(TimeUnit.NANOSECONDS.toMillis(System.nanoTime()));
@@ -362,7 +417,24 @@ public final class GameLink {
 		out.writeInt(payload.length);
 		out.write(payload);
 		out.flush();
+		final int sent = payload.length;
+		LOG.finest(() -> "Échange " + (exchanges + 1) + " : " + sent + " octet(s) d'actions");
+	}
 
+	/**
+	 * Réponse du jeu à un échange
+	 * @param snapshot État décodé, ou null s'il était illisible
+	 * @param running Valeur de l'indicateur `enCours`
+	 */
+	private record Reply(GameSnapshot snapshot, boolean running) {}
+
+	/**
+	 * Lit la réponse du jeu à un échange : taille, état et indicateur `enCours`
+	 * @param in Flux depuis le jeu
+	 * @return Réponse du jeu
+	 * @throws IOException en cas d'erreur de communication ou de taille d'état invalide
+	 */
+	private Reply readReply(DataInputStream in) throws IOException {
 		int size = in.readInt();
 		if (size < 0 || size > GameSnapshot.MAX_SIZE)
 			throw new ProtocolException("Taille d'état invalide : " + size);
@@ -371,25 +443,14 @@ public final class GameLink {
 		boolean running = in.readBoolean();
 		exchanges++;
 
-		final int sent = payload.length;
-		LOG.finest(() -> "Échange " + exchanges + " : " + sent + " octet(s) d'actions, " + size + " octet(s) d'état");
-
 		GameSnapshot snapshot = null;
 		try {
 			snapshot = GameSnapshot.decode(data);
+			latest = snapshot;
 		} catch (ProtocolException e) {
 			LOG.warning(() -> "État ignoré : " + e.getMessage());
 		}
-
-		final GameSnapshot decoded = snapshot;
-		if (!running) {
-			LOG.info("Fin de partie annoncée par le jeu");
-			fire(l -> l.onFinished(this, decoded));
-			return false;
-		}
-		if (decoded != null)
-			fire(l -> l.onSnapshot(this, decoded));
-		return true;
+		return new Reply(snapshot, running);
 	}
 
 	/**

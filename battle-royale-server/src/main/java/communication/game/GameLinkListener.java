@@ -35,10 +35,12 @@ public interface GameLinkListener {
 	void onFinished(GameLink link, GameSnapshot finalSnapshot);
 
 	/**
-	 * L'arrêt demandé a été transmis au jeu et la connexion est fermée
+	 * L'arrêt demandé a été transmis au jeu, qui a terminé la manche ou n'a pas répondu
+	 * à temps ; la connexion est fermée juste après
 	 * @param link Lien concerné
+	 * @param lastSnapshot État final envoyé par le jeu, à défaut le dernier état reçu, ou null
 	 */
-	void onStopped(GameLink link);
+	void onStopped(GameLink link, GameSnapshot lastSnapshot);
 
 	/**
 	 * La connexion avec le jeu a été perdue en cours de partie

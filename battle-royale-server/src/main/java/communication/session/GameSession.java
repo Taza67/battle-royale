@@ -746,7 +746,7 @@ public final class GameSession implements AutoCloseable {
 		}
 
 		@Override
-		public void onStopped(GameLink l) {
+		public void onStopped(GameLink l, GameSnapshot lastSnapshot) {
 			LOG.fine("Lien avec le jeu arrêté");
 		}
 

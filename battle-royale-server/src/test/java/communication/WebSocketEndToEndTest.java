@@ -39,8 +39,8 @@ import communication.session.GameState;
  * Tests de bout en bout : Tomcat embarqué, vrais clients WebSocket et faux jeu TCP
  */
 class WebSocketEndToEndTest {
-	private static final int HTTP_PORT = 18080;
-	private static final int UNUSED_GAME_PORT = 18001;
+	private static final int HTTP_PORT = 38232;
+	private static final int UNUSED_GAME_PORT = FakeGameServer.UNUSED_PORT;
 	private static final String BASE = "localhost:" + HTTP_PORT + ServerLauncher.CONTEXT_PATH;
 	private static final String TEST_PASSWORD = "mot-de-passe-de-test";
 
