@@ -30,6 +30,10 @@ public class BotController implements IConfig {
 	 */
 	private static final float VISION_RANGE = 240;
 	/**
+	 * Nombre de survivants à partir duquel les robots traquent sans limite de perception
+	 */
+	private static final int HUNT_ALIVE = 3;
+	/**
 	 * Écart angulaire maximal (radians) pour tirer sur un ennemi
 	 */
 	private static final float SHOOT_TOLERANCE = 0.16f;
@@ -189,7 +193,8 @@ public class BotController implements IConfig {
 
 		// 4. Tir si l'ennemi est aligné, sinon poursuite
 		if (tryShoot(bot, dx, dy, distance)) return;
-		goTo(bot, m, enemy.getX(), enemy.getY(), 3);
+		boolean finish = enemy.getLifePoints() < bot.getLifePoints() || BOARD.getAliveCount() <= HUNT_ALIVE;
+		goTo(bot, m, enemy.getX(), enemy.getY(), finish ? 4 : 3);
 	}
 
 	/**
@@ -320,9 +325,13 @@ public class BotController implements IConfig {
 	 * @return Ennemi ou null
 	 */
 	private Player nearestEnemy(Player bot) {
+		// En fin de partie, les robots traquent les derniers survivants où qu'ils soient
+		boolean hunt = BOARD.getAliveCount() <= HUNT_ALIVE;
 		Player best = null;
-		float bestDistance = VISION_RANGE * VISION_RANGE;
-		for (Player p : BOARD.getMap().playersNear(Rectangle.centered(bot.getX(), bot.getY(), VISION_RANGE, VISION_RANGE))) {
+		float bestDistance = hunt ? Float.MAX_VALUE : VISION_RANGE * VISION_RANGE;
+		Iterable<Player> candidates = hunt ? BOARD.getPlayers()
+			: BOARD.getMap().playersNear(Rectangle.centered(bot.getX(), bot.getY(), VISION_RANGE, VISION_RANGE));
+		for (Player p : candidates) {
 			if (p == bot || !p.getIsAlive()) continue;
 			float dx = p.getX() - bot.getX(), dy = p.getY() - bot.getY();
 			float d = dx * dx + dy * dy;
