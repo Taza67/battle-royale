@@ -1,6 +1,8 @@
 package communication;
 
 import java.io.File;
+import java.net.URISyntaxException;
+import java.security.CodeSource;
 import java.util.logging.Handler;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -180,6 +182,12 @@ public class ServerLauncher {
 		if (configured != null)
 			return new File(configured);
 
+		File appHome = installDirectory();
+		if (appHome != null) {
+			File dir = new File(appHome, "webapp");
+			if (new File(dir, "gamepad").isDirectory())
+				return dir;
+		}
 		for (String candidate : new String[] { "src/main/webapp", "webapp", "../webapp" }) {
 			File dir = new File(candidate);
 			if (new File(dir, "gamepad").isDirectory())
@@ -187,5 +195,25 @@ public class ServerLauncher {
 		}
 
 		throw new IllegalStateException("Répertoire webapp introuvable (option -D" + ServerConfig.WEBAPP + ")");
+	}
+
+	/**
+	 * Retourne le répertoire d'installation quand le serveur tourne depuis une distribution
+	 * ({@code installDist} : {@code <application>/lib/*.jar}), sinon null
+	 * @return Répertoire d'installation, ou null
+	 */
+	private static File installDirectory() {
+		try {
+			CodeSource source = ServerLauncher.class.getProtectionDomain().getCodeSource();
+			if (source == null || source.getLocation() == null)
+				return null;
+			File location = new File(source.getLocation().toURI());
+			File parent = location.getParentFile();
+			if (location.isFile() && parent != null && "lib".equals(parent.getName()))
+				return parent.getParentFile();
+			return null;
+		} catch (URISyntaxException | SecurityException e) {
+			return null;
+		}
 	}
 }
