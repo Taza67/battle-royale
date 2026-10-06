@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+	<meta http-equiv='cache-control' content='no-cache'>
+	<meta http-equiv='expires' content='0'>
+	<meta http-equiv='pragma' content='no-cache'>
+    <link rel="shortcut icon" type="image/x-icon" href="../favicon.ico">
+
+    <title>Battle Royale</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- Stylesheets -->
+    <link rel="stylesheet" href="./stylesheets/style.css">
+    <script src="./scripts/frameworks/nipple.min.js"></script>
+</head>
+<body>
+    <div class="fullscreen-request-container" id="fullscreen-request-container">
+        <div class="fullscreen-button-container">
+            <div class="fullscreen-request">Veuillez passer en plein écran svp !</div>
+            <button class="fullscreen-button" id="fullscreen-button">Entrer</button>
+        </div>
+    </div>
+    
+    <div class="registration-container" id="registration-container">
+        <div class="register-container" id="register-container">
+            <img class="register-logo" src="./images/logo.png" alt="Logo du jeu">
+            <h2 class="register-title">Inscription</h2>
+            <form class="register-form" onsubmit="event.preventDefault()">
+                <input type="text" id="pseudo" placeholder="Pseudo...">
+                <input type="button" id="register-button" value="S'inscrire">
+            </form>
+        </div>
+    </div>
+
+	<div class="waiting-container" id="waiting-container">
+		<div class="loading-container">
+			<h2 class="loading-title" id="loading-title"></h2>
+		</div>
+	</div>
+
+    <div class="gamepad-container" id="gamepad-container">
+        <div class="movement-container">
+            <div class="movement-infos-container">
+                <div class="labels-container">
+                    <div>Pseudo</div>
+                    <div>Statut</div>
+                    <div>Vie</div>
+                    <div>Score</div>
+                </div>
+                <div class="datas-container">
+                    <div id="pseudo-container">TOTO</div>
+                    <div id="status-container">VIVANT</div>
+                    <div id="health-bar" class="health-bar" ><div class="health-status" id="health-status"></div></div>
+                    <div id="score-container">0 JOUEUR(S)</div>
+                </div>
+            </div>
+            <div class="joystick-container">
+                <div id="joystick"></div>
+            </div>
+        </div>
+        <div class="game-container">
+            <canvas id="minimap"></canvas>
+        </div>
+        <div class="actions-container">
+            <div class="buttons-container">
+                <button class="game-button" id="game-button-A">A</button>
+                <button class="game-button" id="game-button-B">B</button>
+            </div>
+            <div class="buttons-infos-container">
+                <img src="images/1.png" alt="Votre avatar">
+            </div>
+        </div>
+    </div>
+    
+    <!-- Scripts -->
+    <script type="module" src="./scripts/dynamicStyle.js"></script>
+    <script type="module" src="./scripts/client.js"></script>
+    <script type="module" src="./scripts/gamepad.js"></script>
+    <script type="module" src="./scripts/registration.js"></script>
+    <script type="module" src="./scripts/main.js"></script>
+</body>
+</html>

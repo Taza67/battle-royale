@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="shortcut icon" type="image/x-icon" href="../favicon.ico">
+    <title>Panneau d'administration</title>
+    <link rel="stylesheet" href="stylesheets/style.css">
+</head>
+<body>
+    <div class="registration-container" id="registration-container">
+        <div class="register-container" id="register-container">
+            <img class="register-logo" src="./images/logo.png" alt="Logo du jeu">
+            <h2 class="register-title">Inscription</h2>
+            <form class="register-form" onsubmit="event.preventDefault()">
+                <input type="text" id="pseudo" placeholder="Pseudo...">
+                <input type="button" id="register-button" value="S'inscrire">
+            </form>
+        </div>
+    </div>
+
+    <div class="waiting-container" id="waiting-container">
+		<div class="loading-container">
+			<h2 class="loading-title" id="loading-title">Chargement en cours</h2>
+		</div>
+	</div>
+
+    <div class="panel-container" id="panel-container">
+        <div class="panel-buttons" id="panel-buttons">
+            <button id="start">LANCER</button>
+            <button class="panel-button-disabled" id="pause">PAUSE</button>
+            <button class="panel-button-disabled" id="continue">REPRENDRE</button>
+            <button class="panel-button-disabled" id="stop">ARRÊTER</button>
+        </div>
+        <div class="panel-data" id="panel-data">
+            <div class="players-panel" id="players-panel">
+            </div>
+            <div class="game-infos-panel" id="game-infos-panel">
+
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script type="module" src="./scripts/dynamicStyle.js"></script>
+    <script type="module" src="./scripts/client.js"></script>
+    <script type="module" src="./scripts/registration.js"></script>
+    <script type="module" src="./scripts/main.js"></script>
+</body>
+</html>
