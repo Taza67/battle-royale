@@ -1,509 +1,716 @@
 package inside;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Deque;
+import java.util.Iterator;
 import java.util.List;
+import java.util.Queue;
+import java.util.Random;
+import java.util.TreeMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
+
+import inside.BoardSnapshot.BulletState;
+import inside.BoardSnapshot.KillFeedEntry;
+import inside.BoardSnapshot.PlayerState;
+import inside.geometry.Rectangle;
+import inside.geometry.Vertice;
 
 /**
- * Classe représentant le plateau de jeu
+ * Classe représentant le plateau de jeu : c'est la simulation qui fait autorité.
+ * <p>
+ * Elle n'est modifiée que par un seul fil, à pas fixe ({@link #tick()}). Les autres fils
+ * (réseau, clavier) déposent des commandes dans une file sûre ({@link #enqueue(Command)}),
+ * vidée au début de chaque pas, et lisent l'image immuable publiée à la fin de chaque pas
+ * ({@link #getSnapshot()}).
  * @author mourtaza
  *
  * @see IConfig
  */
 public class Board implements IConfig {
 	/**
-	 * Variables de classe indiquant le type des actions d'un joueur
+	 * Description d'un joueur à créer
+	 * @param id Identifiant
+	 * @param pseudo Pseudo
+	 * @param bot true si le joueur est contrôlé par l'ordinateur
 	 */
-	private final static int MOVE_ACTION = 0, ATTACK_ACTION = 1;
+	public record PlayerSpec(int id, String pseudo, boolean bot) {}
+
 	/**
-	 * Variable contenant toutes les informations sur la carte du jeu (obstacles, etc)
+	 * Nombre d'éliminations conservées dans le fil des éliminations
+	 */
+	private static final int KILL_FEED_SIZE = 6;
+	/**
+	 * Nombre maximal d'événements conservés en attente de lecture
+	 */
+	private static final int MAX_PENDING_EVENTS = 2048;
+
+	/**
+	 * Réglages de la partie
+	 */
+	private final GameSettings SETTINGS;
+	/**
+	 * Générateur aléatoire de la partie
+	 */
+	private final Random RANDOM;
+	/**
+	 * Carte du jeu
 	 * @see Map
 	 */
 	private final Map MAP;
 	/**
-	 * Variable contenant un tableau des objets représentant les joueurs (vivants)
-	 * @see Player
+	 * Zone sûre
+	 * @see SafeZone
 	 */
-	private final Player[] PLAYERS;
+	private final SafeZone SAFE_ZONE;
 	/**
-	 * Variable contenant une liste des identifiants des joueurs vivants
+	 * Joueurs indexés par identifiant (triés)
 	 */
-	private final List<Integer> PLAYERS_IDS;
+	private final TreeMap<Integer, Player> PLAYERS;
 	/**
-	 * Variable contenant un tableau des objets répresentant les joueurs (éliminés)
-	 * @see Player
-	 */
-	private final Player[] DEADS;
-	/**
-	 * Variable contenant une liste des identifiants des joueurs éliminés
-	 * @see Player
-	 */
-	private final List<Integer> DEADS_IDS;
-	/**
-	 * Variable contenant une liste des projectiles actifs
-	 * @see Bullet
+	 * Projectiles actifs
 	 */
 	private final List<Bullet> BULLETS;
 	/**
-	 * Variable contenant un tableau à 2 dimensions représentant les zones de la carte
-	 * @see Zone
+	 * File des commandes en attente, alimentée par n'importe quel fil
 	 */
-	private final Zone[][] AREAS;
+	private final Queue<Command> COMMANDS;
 	/**
-	 * Variable contenant le thread qui gère le mode à sable
-	 * @see TSandbox
+	 * Événements produits et pas encore lus
 	 */
-	private final TSandbox SANDBOX_THREAD;
+	private final List<GameEvent> EVENTS;
 	/**
-	 * Variable contenant le thread qui gère le mouvement de la lave
-	 * @see TLavaMovement
+	 * Dernières éliminations
 	 */
-	private final TLavaMovement LAVA_MOVER_THREAD;
-	/**
-	 * Variable contenant le thread qui gère tout ce qui est relatif à la vie des joueurs
-	 * @see TPlayersHandler
-	 */
-	private final TPlayersHandler PLAYERS_HANDLER_THREAD;
-	/**
-	 * Variable indiquant si la fenêtre doit être actualisée ou pas
-	 */
-	private volatile boolean isWindowDirty;
-	/**
-	 * Variable indiquand la fin de la partie
-	 */
-	private volatile boolean isDone = false; 
+	private final Deque<KillFeedEntry> KILL_FEED;
 
 	/**
-	 * Construit une instance du plateau de jeu
-	 * 
-	 * @see Board#PLAYERS
-	 * @see Board#PLAYERS_IDS
-	 * @see Board#DEADS
-	 * @see Board#DEADS_IDS
-	 * @see Board#BULLETS
-	 * @see Board#AREAS
-	 * @see Board#generateAreas()
-	 * @see Board#MAP
-	 * @see Board#SANDBOX_THREAD
-	 * @see Board#LAVA_MOVER_THREAD
-	 * @see Board#PLAYERS_HANDLER_THREAD
-	 * @see Board#isWindowDirty
+	 * Dernière image publiée
 	 */
-	public Board() {
-		PLAYERS = new Player[PLAYERS_NUMBER];
-		PLAYERS_IDS = new ArrayList<>();
-		DEADS = new Player[PLAYERS_NUMBER];
-		DEADS_IDS = new ArrayList<>();
+	private volatile BoardSnapshot snapshot;
+	/**
+	 * Phase de la partie
+	 */
+	private Phase phase = Phase.WARMUP;
+	/**
+	 * Indique si la partie est en pause
+	 */
+	private boolean paused;
+	/**
+	 * Indique si la partie a été arrêtée par l'administrateur
+	 */
+	private boolean stopped;
+	/**
+	 * Nombre de pas de simulation effectués (hors pause)
+	 */
+	private long tick;
+	/**
+	 * Nombre d'éliminations depuis le début
+	 */
+	private int eliminations;
+	/**
+	 * Identifiant du vainqueur, -1 si aucun
+	 */
+	private int winnerId = -1;
+	/**
+	 * Identifiant du prochain projectile
+	 */
+	private int nextBulletId;
+
+
+	/**
+	 * Construit un plateau avec une carte générée à partir de la graine des réglages
+	 * @param settings Réglages de la partie
+	 * @param players Joueurs à placer
+	 */
+	public Board(GameSettings settings, List<PlayerSpec> players) {
+		this(settings, null, players);
+	}
+
+	/**
+	 * Construit un plateau sur une carte donnée
+	 * @param settings Réglages de la partie
+	 * @param map Carte (null pour en générer une)
+	 * @param players Joueurs à placer aléatoirement
+	 */
+	public Board(GameSettings settings, Map map, List<PlayerSpec> players) {
+		if (players.size() > MAX_PLAYERS)
+			throw new IllegalArgumentException("Trop de joueurs : " + players.size());
+
+		SETTINGS = settings;
+		RANDOM = new Random(settings.getSeed());
+		MAP = map != null ? map : Map.generate(RANDOM, settings.getObstaclesNumber());
+		SAFE_ZONE = new SafeZone(MAP.getBounds(), settings.getWaves(), RANDOM,
+			c -> MAP.isFree(Rectangle.centered(c.getX(), c.getY(), PLAYER_RADIUS_X * 2, PLAYER_RADIUS_Y * 2)));
+		PLAYERS = new TreeMap<>();
 		BULLETS = new ArrayList<>();
-		AREAS = new Zone[AREAS_HEIGHT][AREAS_WIDTH];
+		COMMANDS = new ConcurrentLinkedQueue<>();
+		EVENTS = new ArrayList<>();
+		KILL_FEED = new ArrayDeque<>();
 
-		generateAreas();
-		MAP = new Map(AREAS);
-
-		// Threads
-		SANDBOX_THREAD = new TSandbox(this);
-		LAVA_MOVER_THREAD = new TLavaMovement(this, MAP);
-		PLAYERS_HANDLER_THREAD = new TPlayersHandler(this);
-
-		isWindowDirty = true;
-	}
-
-
-	/**
-	 * Retourne la variable indiquant si la fenêtre est sale ou pas
-	 * @return true si la fenêtre est sale, false sinon
-	 *
-	 * @see Board#isWindowDirty
-	 */
-	public synchronized boolean getIsWindowDirty() { return isWindowDirty; }
-	/**
-	 * Retourne le tableau contenant les joueurs actifs
-	 * @return Tableau contenant la liste des joueurs
-	 * 
-	 * @see Board#PLAYERS
-	 */
-	public synchronized Player[] getPLAYERS() { return PLAYERS; }
-	/**
-	 * Retourne la liste des identifiants des joueurs actifs
-	 * @return Liste des identifiants des joueurs actifs
-	 * 
-	 * @see Board#PLAYERS_IDS
-	 */
-	public synchronized List<Integer> getPLAYERS_IDS() { return PLAYERS_IDS; }
-	/**
-	 * Retourne le tableau des joueurs éliminés
-	 * @return le tableau des joueurs éliminés
-	 * 
-	 * @see Board#PLAYERS_IDS
-	 */
-	public synchronized Player[] getDEADS() { return DEADS; }
-	
-	/**
-	 * Retourne la liste des projectiles actifs
-	 * @return Liste des projectile actifs
-	 * 
-	 * @see Board#BULLETS
-	 */
-	public synchronized List<Bullet> getBULLETS() { return BULLETS; }
-	/**
-	 * Retourne la variable indiquant la fin de la partie
-	 * @return true si la partie est terminée, false sinon
-	 * 
-	 * @see Board#isDone
-	 */
-	public synchronized boolean getIsDone() { return isDone; }
-
-	/**
-	 * Change la valeur de la variable indiquant le besoin d'actualisation de la fenêtre
-	 * @param value true (actualisation nécessaire) ou false (actualisation non nécessaire)
-	 * 
-	 * @see Board#isWindowDirty
-	 */
-	public synchronized void setIsWindowDirty(boolean value) {
-		isWindowDirty = value;
-	}
-
-
-	/**
-	 * Génère des joueurs aléatoirement placés sur le plateau
-	 * @param playersNumber Nombre de joueurs à générer
-	 * 
-	 * @see Board#PLAYERS
-	 * @see Board#AREAS
-	 * @see Weapon
-	 * @see IConfig#PLAYER_RADIUS_X
-	 * @see IConfig#PLAYER_RADIUS_Y
-	 * @see IConfig#ONE_ZONE_HEIGHT
-	 * @see IConfig#ONE_ZONE_WIDTH
-	 */
-	public void generatePlayers(int playersNumber) {
-		for (int i = 0; i < playersNumber; i++) {
-			// Création d'un joueur placé aléatoirement
-			Player p = new Player(this, MAP, i, Element.getFreePosition(
-				MAP.getOBSTACLES(), PLAYERS_IDS, PLAYERS, PLAYER_RADIUS_X, PLAYER_RADIUS_Y)
-			);
-
-			// Ajout du joueur à la zone adéquate
-			int zoneX = (int)(p.getPosition().getX() / ONE_ZONE_WIDTH),
-				zoneY = (int)(p.getPosition().getY() / ONE_ZONE_HEIGHT);
-			AREAS[zoneY][zoneX].addPlayer(p.getID(), p);
-			p.setZone(AREAS[zoneY][zoneX]);
-
-			// Ajout de l'arme
-			p.setWeapon(new Weapon(MAP, p));
-
-			// Ajout du joueur à la liste des joueurs
-			PLAYERS[i] = p;
-			PLAYERS_IDS.add(i);
+		for (PlayerSpec spec : players) {
+			if (PLAYERS.containsKey(spec.id()))
+				throw new IllegalArgumentException("Identifiant de joueur en double : " + spec.id());
+			Vertice p = spawnPosition();
+			Player player = new Player(spec.id(), spec.pseudo(), spec.bot(), p.getX(), p.getY());
+			PLAYERS.put(spec.id(), player);
+			MAP.updatePlayerArea(player);
 		}
-		
-		// Actualisation de la fenêtre requis
-		setIsWindowDirty(true);
+
+		publishSnapshot();
 	}
 
 	/**
-	 * Génère et ajoute un joueur sur le plateau
-	 * @param playerId Identifiant du joueur à générer
-	 * @return Objet représentant le joueur
-	 * 
-	 * @see Board#PLAYERS
-	 * @see Board#AREAS
-	 * @see Weapon
-	 * @see IConfig#PLAYER_RADIUS_X
-	 * @see IConfig#PLAYER_RADIUS_Y
-	 * @see IConfig#ONE_ZONE_HEIGHT
-	 * @see IConfig#ONE_ZONE_WIDTH
+	 * Cherche une position d'apparition libre et éloignée des autres joueurs
+	 * @return Position
 	 */
-	public Player addPlayer(int playerId) {
-		// Création d'un joueur placé aléatoirement
-		Player p = new Player(this, MAP, playerId, Element.getFreePosition(
-			MAP.getOBSTACLES(), PLAYERS_IDS, PLAYERS, PLAYER_RADIUS_X, PLAYER_RADIUS_Y)
-		);
+	private Vertice spawnPosition() {
+		Rectangle area = MAP.getBounds().expand(-20);
+		return MAP.findFreePosition(RANDOM, PLAYER_RADIUS_X, PLAYER_RADIUS_Y, area, r -> {
+			for (Player other : PLAYERS.values()) {
+				float dx = other.getX() - r.getCenterX(), dy = other.getY() - r.getCenterY();
+				if (dx * dx + dy * dy < SPAWN_MIN_DISTANCE * SPAWN_MIN_DISTANCE) return false;
+			}
+			return true;
+		}) ;
+	}
 
-		// Ajout du joueur à la zone adéquate
-		int zoneX = (int)(p.getPosition().getX() / ONE_ZONE_WIDTH),
-			zoneY = (int)(p.getPosition().getY() / ONE_ZONE_HEIGHT);
-		AREAS[zoneY][zoneX].addPlayer(p.getID(), p);
-		p.setZone(AREAS[zoneY][zoneX]);
 
-		// Ajout de l'arme
-		p.setWeapon(new Weapon(MAP, p));
-		
-		// Ajout du joueur à la liste des joueurs
-		PLAYERS[playerId] = p;
-		PLAYERS_IDS.add(playerId);
+	/**
+	 * Retourne la dernière image publiée (utilisable depuis n'importe quel fil)
+	 * @return Image immuable du plateau
+	 */
+	public BoardSnapshot getSnapshot() { return snapshot; }
 
-		// Actualisation de la fenêtre requis
-		setIsWindowDirty(true);
-		
-		return p;
+	/**
+	 * Dépose une commande, appliquée au début du prochain pas (utilisable depuis n'importe quel fil)
+	 * @param c Commande
+	 */
+	public void enqueue(Command c) {
+		if (c != null) COMMANDS.add(c);
 	}
 
 	/**
-	 * Ajoute une projectile sur le plateau
-	 * @param Objet représentant le projectile
-	 * 
-	 * @see Board#BULLETS
+	 * Retourne et vide la liste des événements produits depuis le dernier appel (fil de la simulation)
+	 * @return Événements
 	 */
-	public synchronized void addBullet(Bullet b) {
+	public List<GameEvent> drainEvents() {
+		List<GameEvent> events = new ArrayList<>(EVENTS);
+		EVENTS.clear();
+		return events;
+	}
+
+	/**
+	 * Retourne la carte
+	 * @return Carte
+	 */
+	public Map getMap() { return MAP; }
+	/**
+	 * Retourne la zone sûre
+	 * @return Zone sûre
+	 */
+	public SafeZone getSafeZone() { return SAFE_ZONE; }
+	/**
+	 * Retourne les réglages de la partie
+	 * @return Réglages
+	 */
+	public GameSettings getSettings() { return SETTINGS; }
+	/**
+	 * Retourne la phase de la partie
+	 * @return Phase
+	 */
+	public Phase getPhase() { return phase; }
+	/**
+	 * Indique si la partie est en pause
+	 * @return true en pause
+	 */
+	public boolean isPaused() { return paused; }
+	/**
+	 * Indique si la partie est terminée
+	 * @return true si la partie est terminée
+	 */
+	public boolean isOver() { return phase == Phase.ENDED; }
+	/**
+	 * Retourne le nombre de pas de simulation effectués
+	 * @return Nombre de pas
+	 */
+	public long getTick() { return tick; }
+	/**
+	 * Retourne l'identifiant du vainqueur
+	 * @return Identifiant, -1 si aucun
+	 */
+	public int getWinnerId() { return winnerId; }
+	/**
+	 * Retourne les joueurs, triés par identifiant (fil de la simulation)
+	 * @return Collection non modifiable
+	 */
+	public List<Player> getPlayers() { return List.copyOf(PLAYERS.values()); }
+	/**
+	 * Retourne un joueur (fil de la simulation)
+	 * @param id Identifiant
+	 * @return Joueur ou null
+	 */
+	public Player getPlayer(int id) { return PLAYERS.get(id); }
+	/**
+	 * Retourne les projectiles actifs (fil de la simulation)
+	 * @return Liste non modifiable
+	 */
+	public List<Bullet> getBullets() { return Collections.unmodifiableList(BULLETS); }
+	/**
+	 * Retourne le nombre de joueurs vivants
+	 * @return Nombre de joueurs vivants
+	 */
+	public int getAliveCount() {
+		int n = 0;
+		for (Player p : PLAYERS.values())
+			if (p.getIsAlive()) n++;
+		return n;
+	}
+	/**
+	 * Retourne le nombre de pas restants avant la fin de l'échauffement
+	 * @return Nombre de pas, 0 après l'échauffement
+	 */
+	public long getWarmupTicksLeft() {
+		return phase == Phase.WARMUP ? Math.max(0, SETTINGS.getWarmupTicks() - tick) : 0;
+	}
+
+
+	/**
+	 * Fait avancer la simulation d'un pas
+	 */
+	public void tick() {
+		applyCommands();
+
+		if (phase != Phase.ENDED && !paused) {
+			tick++;
+
+			if (phase == Phase.WARMUP && tick >= SETTINGS.getWarmupTicks())
+				startBattle();
+
+			for (Player p : PLAYERS.values())
+				if (p.getIsAlive()) movePlayer(p);
+
+			resolveMelee();
+			updateBullets();
+
+			if (phase == Phase.BATTLE) {
+				updateZone();
+				applyLava();
+			}
+
+			resolveEliminations();
+
+			for (Player p : PLAYERS.values())
+				p.getWeapon().update();
+
+			checkEnd();
+		}
+
+		publishSnapshot();
+	}
+
+	/**
+	 * Applique toutes les commandes en attente
+	 */
+	private void applyCommands() {
+		Command c;
+		while ((c = COMMANDS.poll()) != null) {
+			if (c instanceof Command.Control control) applyControl(control.type());
+			else if (phase == Phase.ENDED || paused) continue;
+			else if (c instanceof Command.Move move) applyMove(move);
+			else if (c instanceof Command.Attack attack) applyAttack(attack);
+		}
+	}
+
+	/**
+	 * Applique une commande de contrôle
+	 * @param type Type de contrôle
+	 */
+	private void applyControl(Command.ControlType type) {
+		if (phase == Phase.ENDED) return;
+
+		switch (type) {
+		case PAUSE:
+			if (!paused) {
+				paused = true;
+				addEvent(GameEvent.global(GameEvent.Type.PAUSED, tick, 0));
+			}
+			break;
+		case RESUME:
+			if (paused) {
+				paused = false;
+				addEvent(GameEvent.global(GameEvent.Type.RESUMED, tick, 0));
+			}
+			break;
+		case STOP:
+			stopped = true;
+			paused = false;
+			endGame();
+			break;
+		}
+	}
+
+	/**
+	 * Applique une commande de déplacement
+	 * @param move Commande
+	 */
+	private void applyMove(Command.Move move) {
+		Player p = PLAYERS.get(move.playerId());
+		if (p == null || !p.getIsAlive()) return;
+
+		if (move.speed() <= 0) p.stop();
+		else if (Direction.isValid(move.direction())) p.setMoveIntent(move.direction(), move.speed(), tick);
+	}
+
+	/**
+	 * Applique une commande d'attaque
+	 * @param attack Commande
+	 */
+	private void applyAttack(Command.Attack attack) {
+		Player p = PLAYERS.get(attack.playerId());
+		if (p == null || !p.getIsAlive()) return;
+
+		if (attack.form() == ATTACK_MELEE) {
+			if (p.getWeapon().startSwing())
+				addEvent(new GameEvent(GameEvent.Type.SWING, tick, p.getID(), -1, 0, p.getX(), p.getY(), DamageCause.MELEE));
+		} else if (attack.form() == ATTACK_SHOOT) {
+			if (p.getWeapon().tryShoot())
+				shoot(p);
+		}
+	}
+
+	/**
+	 * Fait tirer un joueur dans la direction de son regard
+	 * @param p Joueur
+	 */
+	private void shoot(Player p) {
+		int d = p.getViewDirection();
+		float offset = Math.max(p.getRadiusX(), p.getRadiusY()) + BULLET_RADIUS + 1;
+		float bx = p.getX() + Direction.dx(d) * offset, by = p.getY() + Direction.dy(d) * offset;
+		Bullet b = new Bullet(nextBulletId++, p.getID(), bx, by, d);
+
+		addEvent(new GameEvent(GameEvent.Type.SHOT, tick, p.getID(), -1, 0, bx, by, DamageCause.BULLET));
+
+		if (!MAP.getBounds().contains(bx, by) || MAP.obstacleIntersecting(b.getRepresentation(), true) != null) {
+			addEvent(new GameEvent(GameEvent.Type.BULLET_BLOCKED, tick, p.getID(), -1, 0, bx, by, DamageCause.BULLET));
+			return;
+		}
+
 		BULLETS.add(b);
 	}
 
 	/**
-	 * Retire une balle du plateau de jeu
-	 * @param b Objet représentant la balle
-	 * 
-	 * @see Board#BULLETS
+	 * Démarre la phase de combat
 	 */
-	public synchronized void destroyBullet(Bullet b) {
-		BULLETS.remove(b);
+	private void startBattle() {
+		phase = Phase.BATTLE;
+		BULLETS.clear();
+		SAFE_ZONE.start();
+		addEvent(GameEvent.global(GameEvent.Type.BATTLE_STARTED, tick, 0));
 	}
 
 	/**
-	 * Génère les zones de la carte
-	 * 
-	 * @see Board#AREAS
-	 * @see IConfig#AREAS_HEIGHT
-	 * @see IConfig#AREAS_WIDTH
+	 * Déplace un joueur selon son intention, axe par axe, en glissant le long des obstacles
+	 * @param p Joueur
 	 */
-	public void generateAreas() {
-		// Création des zones
-		for (int i = 0; i < AREAS_HEIGHT; i++)
-			for (int j = 0; j < AREAS_WIDTH; j++)
-				AREAS[i][j] = new Zone(j, i);
+	private void movePlayer(Player p) {
+		float speed = p.currentSpeed(tick);
+		if (speed <= 0) {
+			p.setMoving(false);
+			return;
+		}
 
-		// Affectation des voisins de chaque zone
-		for (int i = 0; i < AREAS_HEIGHT; i++)
-			for (int j = 0; j < AREAS_WIDTH; j++)
-				AREAS[i][j].collectNeigbors(AREAS);
+		int d = p.getMoveDirection();
+		float step = speed * TICK_DURATION;
+		float ox = p.getX(), oy = p.getY();
+		float vx = Direction.dx(d), vy = Direction.dy(d);
+
+		float nx = vx == 0 ? ox : resolveAxis(p, ox + vx * step, oy, true, vx);
+		float ny = vy == 0 ? oy : resolveAxis(p, nx, oy + vy * step, false, vy);
+
+		p.setPosition(nx, ny);
+		p.setMoving(nx != ox || ny != oy);
+		MAP.updatePlayerArea(p);
 	}
 
 	/**
-	 * Déplace un joueur
-	 * 
-	 * @param id Identifiant du joueur
-	 * @param direction Direction du déplacement
-	 * @param speed Vitesse du déplacement
-	 * 
-	 * @see Board#PLAYERS
+	 * Calcule la position atteignable sur un axe en s'arrêtant au contact du premier obstacle
+	 * @param p Joueur
+	 * @param cx Abscisse visée
+	 * @param cy Ordonnée visée
+	 * @param horizontal true pour l'axe horizontal
+	 * @param sign Sens du déplacement sur l'axe
+	 * @return Coordonnée atteinte sur l'axe
 	 */
-	public synchronized void movePlayer(int id, int direction, int speed) {
-		if (PLAYERS[id] != null)
-			PLAYERS[id].move(direction, speed);
+	private float resolveAxis(Player p, float cx, float cy, boolean horizontal, float sign) {
+		float rx = p.getRadiusX(), ry = p.getRadiusY();
+		float origin = horizontal ? p.getX() : p.getY();
+
+		if (horizontal) cx = clamp(cx, rx, MAP_WIDTH - rx);
+		else cy = clamp(cy, ry, MAP_HEIGHT - ry);
+
+		for (int attempt = 0; attempt < 4; attempt++) {
+			Rectangle blocker = findBlocker(p, p.getRepresentationAt(cx, cy));
+			if (blocker == null) return horizontal ? cx : cy;
+
+			float contact;
+			if (horizontal) contact = sign > 0 ? blocker.getX1() - rx : blocker.getX2() + rx;
+			else contact = sign > 0 ? blocker.getY1() - ry : blocker.getY2() + ry;
+
+			// Le joueur chevauchait déjà l'obstacle : il ne bouge pas sur cet axe
+			if ((sign > 0 && contact < origin) || (sign < 0 && contact > origin)) return origin;
+
+			if (horizontal) cx = contact;
+			else cy = contact;
+		}
+
+		return origin;
 	}
 
 	/**
-	 *  Stoppe les threads liés au plateau de jeu
-	 *  
-	 *  @see Board#SANDBOX_THREAD
-	 *  @see Board#LAVA_MOVER_THREAD
-	 *  @see Board#PLAYERS_HANDLER_THREAD
+	 * Cherche un obstacle ou un joueur vivant chevauchant un rectangle
+	 * @param self Joueur qui se déplace (ignoré)
+	 * @param r Rectangle testé
+	 * @return Rectangle de l'élément bloquant, ou null
 	 */
-	public synchronized void stopThreads() {
-		SANDBOX_THREAD.interrupt();
-		LAVA_MOVER_THREAD.interrupt();
-		PLAYERS_HANDLER_THREAD.interrupt();
+	private Rectangle findBlocker(Player self, Rectangle r) {
+		Obstacle o = MAP.obstacleIntersecting(r, false);
+		if (o != null) return o.getRepresentation();
+
+		for (Player other : MAP.playersNear(r.expand(Math.max(PLAYER_RADIUS_X, PLAYER_RADIUS_Y))))
+			if (other != self && other.getIsAlive() && other.getRepresentation().intersect(r))
+				return other.getRepresentation();
+
+		return null;
 	}
 
 	/**
-	 * Traite une tableau d'octets représentant des actions à réaliser aux joueurs
-	 * @param data Tableau d'octets représentant les actions
-	 * 
-	 * @see Board#movePlayer(int, int, int)
-	 * @see Board#drawPlayerWeapon(int)
-	 * @see Board#shootBulletPlayer(int)
-	 * @see Board#MOVE_ACTION
-	 * @see Board#ATTACK_ACTION
+	 * Applique les coups d'épée en cours (chaque cible est touchée au plus une fois par coup)
 	 */
-	public synchronized void treatData(byte[] data) {
-		int dataSize = data.length,
-			it = 0;
-		
-		// Traitement de toutes les actions
-		while (it < dataSize) {
-			int playerId = data[it++],
-				actionType = data[it++];
-			
-			if (actionType == MOVE_ACTION) {
-				// Déplacement
-				int direction = data[it++],
-					speed = data[it++];
-				movePlayer(playerId, direction, speed);
-			} else if (actionType == ATTACK_ACTION) {
-				// Attaque
-				int typeAttaque = data[it++];
-				
-				// 2 types d'attaque (distance et corps-à-corps)
-				if (typeAttaque == 1) drawPlayerWeapon(playerId);
-				else if (typeAttaque == 2) shootBulletPlayer(playerId);
+	private void resolveMelee() {
+		for (Player p : PLAYERS.values()) {
+			if (!p.getIsAlive() || !p.getWeapon().isSwinging()) continue;
+
+			Rectangle reach = Rectangle.centered(p.getX(), p.getY(), MELEE_RANGE, MELEE_RANGE);
+			for (Player target : MAP.playersNear(reach.expand(PLAYER_RADIUS_X))) {
+				if (target == p || !target.getIsAlive() || !Weapon.isInReach(p, target)) continue;
+				if (!p.getWeapon().registerHit(target.getID())) continue;
+
+				int damage = phase == Phase.BATTLE ? target.reduceLifePoints(MELEE_DAMAGE, p.getID(), DamageCause.MELEE, tick) : 0;
+				addEvent(new GameEvent(GameEvent.Type.HIT, tick, p.getID(), target.getID(), damage,
+					target.getX(), target.getY(), DamageCause.MELEE));
 			}
 		}
-		
-		if (dataSize > 0) setIsWindowDirty(true);
 	}
-	
-	// id, vivant, vie, position, score
-	
+
 	/**
-	 * Retourne les états des joueurs
-	 * @return Ensemble de données représentant les états des joueurs
+	 * Fait avancer les projectiles par petits pas et résout leurs collisions
 	 */
-	public synchronized byte[] getPlayersStates() {
-		byte[] data = new byte[(PLAYERS_IDS.size() + DEADS_IDS.size()) * 7];
-		int it = 0;
-		
-		if (PLAYERS_IDS.size() == 1) {
-			Integer id = PLAYERS_IDS.get(0);
-			// Identifiant
-			data[it++] = id.byteValue();
-			// Vie
-			data[it++] = 2;
-			// Points de vie
-			data[it++] = (byte)PLAYERS[id].getLifePoints();
-			// Position
-			// // X
-			int posX = (int)PLAYERS[id].getPosition().getX();
-			short x = (short)(posX & 0xFFFF);
-			data[it++] = (byte)(x >> 8);
-			data[it++] = (byte)x;
-			// // Y
-			int posY = (int)PLAYERS[id].getPosition().getY();
-			short y = (short)(posY & 0xFFFF);
-			data[it++] = (byte)(y >> 8);
-			data[it++] = (byte)(y);
-		} else {
-			// Joueurs vivants
-			for (Integer id : PLAYERS_IDS) {
-				// Identifiant
-				data[it++] = id.byteValue();
-				// Vie
-				data[it++] = (byte)(PLAYERS[id].getIsAlive() ? 1 : 0);
-				// Points de vie
-				data[it++] = (byte)PLAYERS[id].getLifePoints();
-				// Position
-				// // X
-				int posX = (int)PLAYERS[id].getPosition().getX();
-				short x = (short)(posX & 0xFFFF);
-				data[it++] = (byte)(x >> 8);
-				data[it++] = (byte)x;
-				// // Y
-				int posY = (int)PLAYERS[id].getPosition().getY();
-				short y = (short)(posY & 0xFFFF);
-				data[it++] = (byte)(y >> 8);
-				data[it++] = (byte)(y);
+	private void updateBullets() {
+		float distance = BULLET_SPEED * TICK_DURATION;
+		int substeps = Math.max(1, (int)Math.ceil(distance / BULLET_SUBSTEP));
+		float substep = distance / substeps;
+
+		Iterator<Bullet> it = BULLETS.iterator();
+		while (it.hasNext()) {
+			Bullet b = it.next();
+
+			for (int s = 0; s < substeps && b.isActive(); s++) {
+				b.advance(substep);
+				stepBullet(b);
+			}
+
+			if (!b.isActive()) it.remove();
+		}
+	}
+
+	/**
+	 * Résout les collisions d'un projectile à sa position actuelle
+	 * @param b Projectile
+	 */
+	private void stepBullet(Bullet b) {
+		if (!MAP.getBounds().contains(b.getX(), b.getY())) {
+			b.destroy();
+			addEvent(new GameEvent(GameEvent.Type.BULLET_BLOCKED, tick, b.getOwnerId(), -1, 0,
+				clamp(b.getX(), 0, MAP_WIDTH), clamp(b.getY(), 0, MAP_HEIGHT), DamageCause.BULLET));
+			return;
+		}
+
+		Rectangle r = b.getRepresentation();
+		if (MAP.obstacleIntersecting(r, true) != null) {
+			b.destroy();
+			addEvent(new GameEvent(GameEvent.Type.BULLET_BLOCKED, tick, b.getOwnerId(), -1, 0, b.getX(), b.getY(), DamageCause.BULLET));
+			return;
+		}
+
+		for (Player target : MAP.playersNear(r.expand(PLAYER_RADIUS_X))) {
+			if (target.getID() == b.getOwnerId() || !target.getIsAlive() || !target.getRepresentation().intersect(r)) continue;
+
+			int damage = phase == Phase.BATTLE ? target.reduceLifePoints(BULLET_DAMAGE, b.getOwnerId(), DamageCause.BULLET, tick) : 0;
+			addEvent(new GameEvent(GameEvent.Type.HIT, tick, b.getOwnerId(), target.getID(), damage,
+				b.getX(), b.getY(), DamageCause.BULLET));
+			b.destroy();
+			return;
+		}
+
+		if (b.isOutOfRange()) b.destroy();
+	}
+
+	/**
+	 * Fait avancer la zone sûre
+	 */
+	private void updateZone() {
+		switch (SAFE_ZONE.update()) {
+		case SHRINK_STARTED:
+			addEvent(GameEvent.global(GameEvent.Type.ZONE_SHRINKING, tick, SAFE_ZONE.getWaveIndex() + 1));
+			break;
+		case SHRINK_ENDED:
+		case CLOSED:
+			addEvent(GameEvent.global(GameEvent.Type.ZONE_SHRUNK, tick, SAFE_ZONE.getWaveIndex() + 1));
+			break;
+		default:
+		}
+	}
+
+	/**
+	 * Inflige les dégâts de lave aux joueurs hors de la zone sûre
+	 */
+	private void applyLava() {
+		float damage = SAFE_ZONE.getLavaDamagePerSecond() * TICK_DURATION;
+
+		for (Player p : PLAYERS.values()) {
+			if (!p.getIsAlive()) continue;
+
+			boolean outside = !SAFE_ZONE.isSafe(p.getX(), p.getY());
+			p.setInLava(outside);
+			if (outside) {
+				int whole = p.accumulateLava(damage);
+				if (whole > 0) p.reduceLifePoints(whole, -1, DamageCause.LAVA, tick);
 			}
 		}
-		
-		// Joueurs éliminés
-		for (Integer id : DEADS_IDS) {
-			// Identifiant
-			data[it++] = id.byteValue();
-			// Vie
-			data[it++] = (byte)(DEADS[id].getIsAlive() ? 1 : 0);
-			// Points de vie
-			data[it++] = (byte)DEADS[id].getLifePoints();
-			// Position
-			// // X
-			int posX = (int)DEADS[id].getPosition().getX();
-			short x = (short)(posX & 0xFFFF);
-			data[it++] = (byte)(x >> 8);
-			data[it++] = (byte)x;
-			// // Y
-			int posY = (int)DEADS[id].getPosition().getY();
-			short y = (short)(posY & 0xFFFF);
-			data[it++] = (byte)(y >> 8);
-			data[it++] = (byte)(y);
+	}
+
+	/**
+	 * Élimine les joueurs qui n'ont plus de points de vie ; les joueurs éliminés au même pas partagent le même classement
+	 */
+	private void resolveEliminations() {
+		List<Player> dying = new ArrayList<>();
+		for (Player p : PLAYERS.values())
+			if (p.isDying()) dying.add(p);
+
+		if (dying.isEmpty()) return;
+
+		int rank = getAliveCount() - dying.size() + 1;
+		for (Player p : dying) {
+			int killer = (p.getLastDamageCause() != DamageCause.LAVA) ? p.getLastAttacker() : -1;
+			Player k = killer >= 0 ? PLAYERS.get(killer) : null;
+			if (k != null) k.addKill();
+			else killer = -1;
+
+			p.kill(++eliminations, rank, tick);
+			MAP.removePlayer(p);
+
+			KILL_FEED.addLast(new KillFeedEntry(tick, killer, p.getID(), p.getLastDamageCause()));
+			while (KILL_FEED.size() > KILL_FEED_SIZE) KILL_FEED.removeFirst();
+			addEvent(new GameEvent(GameEvent.Type.ELIMINATION, tick, killer, p.getID(), rank, p.getX(), p.getY(), p.getLastDamageCause()));
 		}
-		
-		return data;
 	}
 
 	/**
-	 * Élimine un joueur
-	 * @param p Objet représentant le joueur
-	 * 
-	 * @see Board#PLAYERS
-	 * @see Board#PLAYERS_IDS
-	 * @see Board#DEADS
-	 * @see Board#DEADS_IDS
-	 * @see Board#isDone
+	 * Termine la partie quand il reste au plus un joueur en vie
+	 * (une partie à un seul joueur se termine à son élimination)
 	 */
-	public synchronized void killPlayer(Player p) {
-		PLAYERS[p.getID()] = null;
-		PLAYERS_IDS.remove((Integer)p.getID());
-		DEADS[p.getID()] = p;
-		DEADS_IDS.add(p.getID());
-		p.getZone().deletePlayer(p.getID());
-		p.getZone().addDead(p.getID(), p);
-		
-		if (PLAYERS_IDS.size() == 1)
-			isDone = true;
+	private void checkEnd() {
+		if (phase != Phase.BATTLE) return;
+
+		int alive = getAliveCount(), total = PLAYERS.size();
+		if ((total >= 2 && alive <= 1) || alive == 0)
+			endGame();
 	}
 
 	/**
-	 * Fais dégainer l'arme d'un joueur
-	 * @param id Identifiant du joueur
-	 * 
-	 * @see Board#PLAYERS
+	 * Termine la partie : le dernier survivant gagne ; s'il en reste plusieurs (arrêt), ils partagent la première place
 	 */
-	public synchronized void drawPlayerWeapon(int id) {
-		if (PLAYERS[id] != null)
-			PLAYERS[id].drawWeapon();
+	private void endGame() {
+		if (phase == Phase.ENDED) return;
+
+		List<Player> survivors = new ArrayList<>();
+		for (Player p : PLAYERS.values())
+			if (p.getIsAlive()) survivors.add(p);
+
+		winnerId = survivors.size() == 1 ? survivors.get(0).getID() : -1;
+		for (Player p : survivors) {
+			p.setRank(1);
+			p.stop();
+			p.setMoving(false);
+			p.getWeapon().cancelSwing();
+		}
+
+		phase = Phase.ENDED;
+		BULLETS.clear();
+		addEvent(new GameEvent(GameEvent.Type.GAME_OVER, tick, winnerId, -1, survivors.size(), 0, 0, null));
 	}
 
 	/**
-	 * Fais tirer une balle à un joueur
-	 * @param id Identifiant du joueur
-	 * 
-	 * @see Board#PLAYERS
+	 * Ajoute un événement en attente
+	 * @param e Événement
 	 */
-	public synchronized void shootBulletPlayer(int id) {
-		if (PLAYERS[id] != null)
-			PLAYERS[id].shoot();
+	private void addEvent(GameEvent e) {
+		if (EVENTS.size() >= MAX_PENDING_EVENTS) EVENTS.remove(0);
+		EVENTS.add(e);
 	}
 
 	/**
-	 * Démarre le mode bac à sable
-	 * 
-	 * @see Board#SANDBOX_THREAD
+	 * Publie l'image immuable de l'état courant
 	 */
-	public synchronized void startSandbox() {
-		SANDBOX_THREAD.start();
-	}
-	
-	/**
-	 * Démarre le jeu
-	 * 
-	 * @see Board#LAVA_MOVER_THREAD
-	 * @see Board#PLAYERS_HANDLER_THREAD
-	 */
-	public synchronized void startGame() {
-		startSandbox();
-		LAVA_MOVER_THREAD.start();
-		PLAYERS_HANDLER_THREAD.start();
-	}
+	private void publishSnapshot() {
+		List<PlayerState> players = new ArrayList<>(PLAYERS.size());
+		for (Player p : PLAYERS.values()) {
+			Weapon w = p.getWeapon();
+			players.add(new PlayerState(p.getID(), p.getPseudo(), p.isBot(), p.getX(), p.getY(), p.getLifePoints(),
+				p.getIsAlive(), p.getID() == winnerId, p.getKills(), p.getRank(), p.getViewDirection(), p.isMoving(),
+				w.getSwingProgress(), p.getLastHitTick(), p.isInLava(), w.getMeleeCooldownLeft(), w.getShootCooldownLeft(),
+				p.getLastAttacker(), p.getEliminationOrder()));
+		}
 
-
-	/**
-	 * Réalise l'affichage du plateau de jeu
-	 * 
-	 * @see Board#MAP
-	 * @see Board#PLAYERS
-	 * @see Board#DEADS
-	 * @see Board#BULLETS
-	 */
-	public synchronized void draw() {
-		MAP.draw();
-
-		// Dessin des joueurs
-		for (Integer id : PLAYERS_IDS)
-			if (PLAYERS[id] != null) PLAYERS[id].draw();
-
-		// Dessin des morts
-		for (Integer id : DEADS_IDS)
-			if (DEADS[id] != null) DEADS[id].draw();
-
-		// Dessin des balles
+		List<BulletState> bullets = new ArrayList<>(BULLETS.size());
 		for (Bullet b : BULLETS)
-			b.draw();
+			bullets.add(new BulletState(b.getID(), b.getOwnerId(), b.getX(), b.getY(), b.getDx(), b.getDy()));
+
+		int secondsLeft;
+		if (phase == Phase.WARMUP) secondsLeft = (int)((getWarmupTicksLeft() + TICKS_PER_SECOND - 1) / TICKS_PER_SECOND);
+		else if (phase == Phase.BATTLE) secondsLeft = SAFE_ZONE.getSecondsLeft();
+		else secondsLeft = 0;
+
+		snapshot = new BoardSnapshot(tick, phase, paused, stopped, getAliveCount(), PLAYERS.size(), winnerId,
+			SAFE_ZONE.getCurrent(), SAFE_ZONE.getNext(), SAFE_ZONE.getStage(), secondsLeft,
+			SAFE_ZONE.getWaveIndex() + 1, SAFE_ZONE.getWaveCount(), SAFE_ZONE.getLavaDamagePerSecond(),
+			players, bullets, new ArrayList<>(KILL_FEED));
+	}
+
+	/**
+	 * Téléporte un joueur (utilisé par les tests pour préparer une situation)
+	 * @param id Identifiant du joueur
+	 * @param x Nouvelle abscisse
+	 * @param y Nouvelle ordonnée
+	 */
+	void teleport(int id, float x, float y) {
+		Player p = PLAYERS.get(id);
+		if (p == null) return;
+		p.setPosition(x, y);
+		if (p.getIsAlive()) MAP.updatePlayerArea(p);
+		publishSnapshot();
+	}
+
+	/**
+	 * Borne une valeur
+	 * @param v Valeur
+	 * @param min Minimum
+	 * @param max Maximum
+	 * @return Valeur bornée
+	 */
+	private static float clamp(float v, float min, float max) {
+		return Math.max(min, Math.min(max, v));
 	}
 }

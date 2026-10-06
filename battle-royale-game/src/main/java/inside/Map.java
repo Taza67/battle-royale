@@ -1,127 +1,302 @@
 package inside;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Random;
+import java.util.function.Predicate;
 
 import inside.geometry.Rectangle;
 import inside.geometry.Vertice;
-import outside.graphic.GraphicUtilities;
 
+/**
+ * Classe représentant la carte du jeu : ses limites, ses obstacles et la grille de zones
+ * qui accélère la recherche des éléments proches
+ * @author mourtaza
+ *
+ * @see Zone
+ * @see Obstacle
+ */
 public class Map implements IConfig {
-	private Rectangle mapRepresentation;
-	public volatile Rectangle lavaRepresentation;
+	/**
+	 * Marge laissée entre les obstacles générés et le bord de la carte
+	 */
+	private static final float BORDER_MARGIN = 30;
+	/**
+	 * Nombre maximal d'essais pour placer un élément aléatoirement
+	 */
+	private static final int MAX_ATTEMPTS = 400;
+
+	/**
+	 * Rectangle représentant les limites de la carte
+	 */
+	private final Rectangle BOUNDS;
+	/**
+	 * Obstacles de la carte
+	 */
 	private final List<Obstacle> OBSTACLES;
-	private final List<Land> LANDS;
+	/**
+	 * Grille de zones, indexée par [ligne][colonne]
+	 */
 	private final Zone[][] AREAS;
 
 
-	// Constructeurs
-	public Map(Zone[][] areas) {
-		mapRepresentation = new Rectangle(
-			new Vertice(MAP_WIDTH / 2f, MAP_HEIGHT / 2f),
-			new Vertice(0, 0),
-			MAP_WIDTH, MAP_HEIGHT);
-		lavaRepresentation = new Rectangle(
-			new Vertice(MAP_WIDTH / 2f, MAP_HEIGHT / 2f),
-			new Vertice(0, 0),
-			MAP_WIDTH, MAP_HEIGHT);
-		OBSTACLES = new ArrayList<>();
-		LANDS = new ArrayList<>();
-		AREAS = areas;
-		generateObstacles();
-		// generateLands();
-	}
-
-
-	// Accesseurs
-	public List<Obstacle> getOBSTACLES() {
-		return OBSTACLES;
-	}
-	public Zone getArea(int i, int j) throws IndexOutOfBoundsException {
-		return AREAS[i][j];
-	}
-	public Rectangle getMapRepresentation() { return mapRepresentation; }
-
-
 	/**
-	 * Génère les obstacles
-	 * 
-	 * @see IConfig#OBSTACLES_NUMBER
-	 * @see Map#AREAS
-	 * @see Map#OBSTACLES
-	 * @see IConfig#OBSTACLE_RADIUS_X
-	 * @see IConfig#OBSTACLE_RADIUS_Y
-	 * @see IConfig#ONE_ZONE_HEIGHT
-	 * @see IConfig#ONE_ZONE_WIDTH
+	 * Construit une carte avec les obstacles donnés
+	 * @param obstacles Obstacles de la carte
 	 */
-	public void generateObstacles() {
-		for (int i = 0; i < OBSTACLES_NUMBER; i++) {
-			// Création d'un joueur placé aléatoirement
-			Obstacle o = new Obstacle(this, Obstacle.TypeObstacle.random(),
-				Element.getFreePosition(
-					OBSTACLES, new ArrayList<Integer>() ,null, OBSTACLE_RADIUS_X, OBSTACLE_RADIUS_Y
-				)
-			);
+	public Map(List<Obstacle> obstacles) {
+		BOUNDS = new Rectangle(0, 0, MAP_WIDTH, MAP_HEIGHT);
+		OBSTACLES = new ArrayList<>(obstacles);
+		AREAS = new Zone[AREAS_HEIGHT][AREAS_WIDTH];
 
-			// Ajout de l'obstacle à la zone adéquate
-			int zoneX = (int)(o.getPosition().getX() / ONE_ZONE_WIDTH),
-				zoneY = (int)(o.getPosition().getY() / ONE_ZONE_HEIGHT);
-			AREAS[zoneY][zoneX].addObstacle(o);
-			o.setZone(AREAS[zoneY][zoneX]);
+		for (int i = 0; i < AREAS_HEIGHT; i++)
+			for (int j = 0; j < AREAS_WIDTH; j++)
+				AREAS[i][j] = new Zone(j, i);
 
-			// Ajout de l'obstacle à la liste
-			OBSTACLES.add(o);
-		}
-	}
-	
-	/**
-	 * Génère les sols
-	 * 
-	 * @see IConfig#LANDS_NUMBER
-	 * @see TypeLand
-	 * @see Map#LANDS
-	 */
-	public void generateLands() {
-		for (int i = 0; i < LANDS_NUMBER; i++) {
-			// Création du sol
-			Land l = new Land(
-				this, Land.TypeLand.BUSH, Vertice.random(50, MAP_WIDTH - 100, 50, MAP_HEIGHT - 100)
-			);
-			
-			// Ajout du sol à la liste des sols
-			LANDS.add(l);
-		}
-	}
-	
-	
-
-	// Réduit le rectangle représentant la map ou le champ de bataille
-//	public void reduceMapRepresentation(float coef) {
-//		mapRepresentation.scale(1.0f - coef);
-//	}
-	public synchronized void reduceMapRepresentation(float red) {
-		mapRepresentation.scale(red);
-	}
-
-
-	// Méthodes graphiques
-	// Dessine le champ de bataille
-	public synchronized void draw() {
-		// Dessin de la lave
-		GraphicUtilities.drawPolygon(lavaRepresentation, COLOR_LAVA);
-
-		// Dessin du sol
-		GraphicUtilities.drawPolygon(mapRepresentation, COLOR_WHITE);
-		GraphicUtilities.drawRectangleTexture(mapRepresentation, TEXTURE_BATTLEFIELD);
-
-		// Dessin des obstacles
 		for (Obstacle o : OBSTACLES)
-			o.draw();
+			for (Zone z : areasOverlapping(o.getRepresentation()))
+				z.addObstacle(o);
+	}
 
-		// Dessin des sols
-//		for (Land s : LANDS) {
-//			s.draw();
-//			System.out.println(s.getRepresentation());
-//		}
+	/**
+	 * Génère une carte aléatoire
+	 * @param random Générateur aléatoire
+	 * @param obstaclesNumber Nombre d'obstacles souhaité
+	 * @return Nouvelle carte
+	 */
+	public static Map generate(Random random, int obstaclesNumber) {
+		List<Obstacle> obstacles = new ArrayList<>();
+
+		for (int i = 0; i < obstaclesNumber; i++) {
+			for (int attempt = 0; attempt < MAX_ATTEMPTS / 4; attempt++) {
+				Obstacle.TypeObstacle type = randomType(random);
+				Obstacle candidate = Obstacle.random(type, random, 0, 0);
+				float rx = candidate.getRadiusX(), ry = candidate.getRadiusY();
+				Vertice p = Vertice.random(random,
+					BORDER_MARGIN + rx, MAP_WIDTH - BORDER_MARGIN - rx,
+					BORDER_MARGIN + ry, MAP_HEIGHT - BORDER_MARGIN - ry);
+				Obstacle o = new Obstacle(type, p.getX(), p.getY(), rx, ry);
+				Rectangle inflated = o.getRepresentation().expand(OBSTACLES_GAP);
+
+				boolean free = true;
+				for (Obstacle other : obstacles)
+					if (other.getRepresentation().intersect(inflated)) {
+						free = false;
+						break;
+					}
+
+				if (free) {
+					obstacles.add(o);
+					break;
+				}
+			}
+		}
+
+		return new Map(obstacles);
+	}
+
+	/**
+	 * Tire un type d'obstacle (forêts plus fréquentes, lacs plus rares)
+	 * @param random Générateur aléatoire
+	 * @return Type d'obstacle
+	 */
+	private static Obstacle.TypeObstacle randomType(Random random) {
+		float r = random.nextFloat();
+		if (r < 0.4f) return Obstacle.TypeObstacle.FORET;
+		if (r < 0.75f) return Obstacle.TypeObstacle.ROCHER;
+		return Obstacle.TypeObstacle.EAU;
+	}
+
+
+	/**
+	 * Retourne les limites de la carte
+	 * @return Rectangle de la carte
+	 */
+	public Rectangle getBounds() { return BOUNDS; }
+	/**
+	 * Retourne les obstacles de la carte
+	 * @return Liste non modifiable
+	 */
+	public List<Obstacle> getOBSTACLES() { return Collections.unmodifiableList(OBSTACLES); }
+
+	/**
+	 * Retourne une zone de la grille ; les indices hors limites sont ramenés sur le bord
+	 * @param i Ligne
+	 * @param j Colonne
+	 * @return Zone
+	 */
+	public Zone getArea(int i, int j) {
+		return AREAS[clamp(i, AREAS_HEIGHT)][clamp(j, AREAS_WIDTH)];
+	}
+
+	/**
+	 * Retourne la zone contenant un point (les points hors de la carte donnent la zone du bord la plus proche)
+	 * @param x Abscisse
+	 * @param y Ordonnée
+	 * @return Zone
+	 */
+	public Zone getAreaAt(float x, float y) {
+		return getArea(rowOf(y), columnOf(x));
+	}
+
+	/**
+	 * Retourne la colonne de la grille correspondant à une abscisse
+	 * @param x Abscisse
+	 * @return Colonne, entre 0 et AREAS_WIDTH - 1
+	 */
+	public static int columnOf(float x) {
+		return clamp((int)Math.floor(x / ONE_ZONE_WIDTH), AREAS_WIDTH);
+	}
+
+	/**
+	 * Retourne la ligne de la grille correspondant à une ordonnée
+	 * @param y Ordonnée
+	 * @return Ligne, entre 0 et AREAS_HEIGHT - 1
+	 */
+	public static int rowOf(float y) {
+		return clamp((int)Math.floor(y / ONE_ZONE_HEIGHT), AREAS_HEIGHT);
+	}
+
+	/**
+	 * Ramène un indice dans [0, size - 1]
+	 * @param v Indice
+	 * @param size Taille
+	 * @return Indice borné
+	 */
+	private static int clamp(int v, int size) {
+		return Math.max(0, Math.min(size - 1, v));
+	}
+
+	/**
+	 * Retourne les zones chevauchant un rectangle
+	 * @param r Rectangle
+	 * @return Liste des zones
+	 */
+	public List<Zone> areasOverlapping(Rectangle r) {
+		List<Zone> zones = new ArrayList<>();
+		int c1 = columnOf(r.getX1()), c2 = columnOf(r.getX2()),
+			r1 = rowOf(r.getY1()), r2 = rowOf(r.getY2());
+
+		for (int i = r1; i <= r2; i++)
+			for (int j = c1; j <= c2; j++)
+				zones.add(AREAS[i][j]);
+
+		return zones;
+	}
+
+	/**
+	 * Retourne le premier obstacle chevauchant un rectangle
+	 * @param r Rectangle
+	 * @param bulletBlockersOnly true pour ignorer les obstacles traversés par les balles
+	 * @return Obstacle trouvé ou null
+	 */
+	public Obstacle obstacleIntersecting(Rectangle r, boolean bulletBlockersOnly) {
+		for (Zone z : areasOverlapping(r))
+			for (Obstacle o : z.getOBSTACLES())
+				if ((!bulletBlockersOnly || o.getTYPE().blocksBullets()) && o.getRepresentation().intersect(r))
+					return o;
+
+		return null;
+	}
+
+	/**
+	 * Vérifie si un rectangle est dans la carte et ne touche aucun obstacle
+	 * @param r Rectangle
+	 * @return true si l'emplacement est libre
+	 */
+	public boolean isFree(Rectangle r) {
+		return BOUNDS.contain(r) && obstacleIntersecting(r, false) == null;
+	}
+
+	/**
+	 * Vérifie qu'aucun obstacle arrêtant les balles ne se trouve entre deux points
+	 * @param x1 Abscisse de départ
+	 * @param y1 Ordonnée de départ
+	 * @param x2 Abscisse d'arrivée
+	 * @param y2 Ordonnée d'arrivée
+	 * @return true si la ligne de tir est dégagée
+	 */
+	public boolean hasLineOfSight(float x1, float y1, float x2, float y2) {
+		float dx = x2 - x1, dy = y2 - y1;
+		float length = (float)Math.sqrt(dx * dx + dy * dy);
+		int steps = Math.max(1, (int)Math.ceil(length / 6f));
+
+		for (int s = 0; s <= steps; s++) {
+			float t = s / (float)steps;
+			Rectangle probe = Rectangle.centered(x1 + dx * t, y1 + dy * t, 1, 1);
+			if (obstacleIntersecting(probe, true) != null)
+				return false;
+		}
+
+		return true;
+	}
+
+	/**
+	 * Retourne les joueurs vivants référencés dans les zones chevauchant un rectangle
+	 * @param r Rectangle de recherche
+	 * @return Liste des joueurs
+	 */
+	public List<Player> playersNear(Rectangle r) {
+		List<Player> players = new ArrayList<>();
+		for (Zone z : areasOverlapping(r))
+			players.addAll(z.getPLAYERS());
+		return players;
+	}
+
+	/**
+	 * Place un joueur dans la zone correspondant à sa position
+	 * @param p Joueur
+	 */
+	void updatePlayerArea(Player p) {
+		Zone target = getAreaAt(p.getX(), p.getY());
+		Zone current = p.getZone();
+
+		if (current == target) return;
+		if (current != null) current.deletePlayer(p);
+		target.addPlayer(p);
+		p.setZone(target);
+	}
+
+	/**
+	 * Retire un joueur de la grille
+	 * @param p Joueur
+	 */
+	void removePlayer(Player p) {
+		if (p.getZone() != null) p.getZone().deletePlayer(p);
+		p.setZone(null);
+	}
+
+	/**
+	 * Cherche une position libre pour un élément
+	 * @param random Générateur aléatoire
+	 * @param radiusX Rayon horizontal de l'élément
+	 * @param radiusY Rayon vertical de l'élément
+	 * @param area Zone de recherche
+	 * @param acceptable Condition supplémentaire sur l'emplacement (peut être null)
+	 * @return Position libre, ou la meilleure position trouvée sans la condition supplémentaire
+	 */
+	public Vertice findFreePosition(Random random, float radiusX, float radiusY, Rectangle area, Predicate<Rectangle> acceptable) {
+		Rectangle searchArea = area.expand(-Math.max(radiusX, radiusY));
+		Vertice fallback = null;
+
+		for (int attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+			Vertice p = Vertice.random(random, searchArea.getX1(), searchArea.getX2(), searchArea.getY1(), searchArea.getY2());
+			Rectangle r = Rectangle.centered(p.getX(), p.getY(), radiusX, radiusY);
+
+			if (!isFree(r)) continue;
+			if (acceptable == null || acceptable.test(r)) return p;
+			if (fallback == null) fallback = p;
+		}
+
+		if (fallback != null) return fallback;
+
+		// Recherche exhaustive sur une grille fine
+		for (float y = radiusY; y <= MAP_HEIGHT - radiusY; y += 4)
+			for (float x = radiusX; x <= MAP_WIDTH - radiusX; x += 4)
+				if (isFree(Rectangle.centered(x, y, radiusX, radiusY)))
+					return new Vertice(x, y);
+
+		return new Vertice(MAP_WIDTH / 2f, MAP_HEIGHT / 2f);
 	}
 }

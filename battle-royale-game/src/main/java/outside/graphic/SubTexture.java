@@ -1,69 +1,38 @@
 package outside.graphic;
 
-import java.awt.image.BufferedImage;
-import java.nio.ByteBuffer;
+/**
+ * Région rectangulaire d'une texture (coordonnées de texture normalisées)
+ * @param texture Texture source
+ * @param u1 Abscisse de texture gauche
+ * @param v1 Ordonnée de texture haute
+ * @param u2 Abscisse de texture droite
+ * @param v2 Ordonnée de texture basse
+ * @param width Largeur en pixels
+ * @param height Hauteur en pixels
+ * @author mourtaza
+ */
+public record SubTexture(Texture texture, float u1, float v1, float u2, float v2, int width, int height) {
+	/**
+	 * Construit une région à partir de coordonnées en pixels
+	 * @param t Texture source
+	 * @param x Abscisse du coin haut-gauche
+	 * @param y Ordonnée du coin haut-gauche
+	 * @param w Largeur
+	 * @param h Hauteur
+	 * @return Région
+	 */
+	public static SubTexture of(Texture t, int x, int y, int w, int h) {
+		float tw = t.getWidth(), th = t.getHeight();
+		// Décalage d'un demi-pixel pour éviter de déborder sur les tuiles voisines
+		return new SubTexture(t, (x + 0.5f) / tw, (y + 0.5f) / th, (x + w - 0.5f) / tw, (y + h - 0.5f) / th, w, h);
+	}
 
-import static org.lwjgl.opengl.GL11.*;
-
-import org.lwjgl.BufferUtils;
-
-public class SubTexture {
-    private float X, Y, WIDTH, HEIGHT;
-	private final BufferedImage subtexture;
-	private int subTextureId;
-
-    
-    // Constructeurs
-    public SubTexture(TextureAtlas ta, int x, int y, int w, int h) {
-    	X = x;
-    	Y = y;
-    	WIDTH = w;
-    	HEIGHT = h;
-    	subtexture = ta.getAtlas().getSubimage(x, y, w, h);
-    	loadTexture(subtexture);
-    }
-
-    
-    // Accesseurs
-    public float getX() { return X; }
-    public float getY() { return Y; }
-    public float getWIDTH() { return WIDTH; }
-    public float getHEIGHT() { return HEIGHT; }
-    public int getSubTextureID() { return subTextureId; }
-    
-    
-    // Méthodes
-    // Charge l'image en tant que texture
-    private void loadTexture(BufferedImage image) {
-        int width = image.getWidth();
-        int height = image.getHeight();
-        int[] pixels = new int[width * height];
-        image.getRGB(0, 0, width, height, pixels, 0, width);
-
-        ByteBuffer buffer = BufferUtils.createByteBuffer(width * height * 4);
-        for (int y = 0; y < height; y++) {
-            for (int x = 0; x < width; x++) {
-                int pixel = pixels[y * width + x];
-                buffer.put((byte) ((pixel >> 16) & 0xFF));
-                buffer.put((byte) ((pixel >> 8) & 0xFF));
-                buffer.put((byte) (pixel & 0xFF));
-                buffer.put((byte) ((pixel >> 24) & 0xFF));
-            }
-        }
-        buffer.flip();
-
-        int ti = glGenTextures();
-        glBindTexture(GL_TEXTURE_2D, ti);
-
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, buffer);
-
-        subTextureId = ti;
-    }
-
-    
+	/**
+	 * Construit une région couvrant toute la texture
+	 * @param t Texture
+	 * @return Région
+	 */
+	public static SubTexture whole(Texture t) {
+		return new SubTexture(t, 0, 0, 1, 1, t.getWidth(), t.getHeight());
+	}
 }
