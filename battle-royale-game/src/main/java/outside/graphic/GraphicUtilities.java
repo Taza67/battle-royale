@@ -300,6 +300,30 @@ public final class GraphicUtilities {
 	}
 
 	/**
+	 * Dessine un fondu sur les quatre bords d'un rectangle (vignettage, mousse, assombrissement)
+	 * @param r Rectangle dont les bords sont fondu
+	 * @param depth Profondeur du fondu
+	 * @param c Couleur au niveau du bord (transparente au bout du fondu)
+	 * @param inside true pour un fondu vers l'intérieur du rectangle, false vers l'extérieur
+	 */
+	public static void edgeFade(Rectangle r, float depth, Color c, boolean inside) {
+		Color none = c.withAlpha(0);
+		float x1 = r.getX1(), y1 = r.getY1(), x2 = r.getX2(), y2 = r.getY2();
+		float cy = r.getCenterY(), h = r.getHeight();
+		if (inside) {
+			gradientRect(x1, y1, x2, y1 + depth, c, none);
+			gradientRect(x1, y2 - depth, x2, y2, none, c);
+			gradientLine(x1, cy, x1 + depth, cy, h, c, none);
+			gradientLine(x2, cy, x2 - depth, cy, h, c, none);
+		} else {
+			gradientRect(x1, y1 - depth, x2, y1, none, c);
+			gradientRect(x1, y2, x2, y2 + depth, c, none);
+			gradientLine(x1, cy, x1 - depth, cy, h, c, none);
+			gradientLine(x2, cy, x2 + depth, cy, h, c, none);
+		}
+	}
+
+	/**
 	 * Dessine un halo radial centré
 	 * @param glow Texture de halo
 	 * @param cx Abscisse du centre
