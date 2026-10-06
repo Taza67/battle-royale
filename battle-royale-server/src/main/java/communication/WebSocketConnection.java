@@ -44,16 +44,7 @@ final class WebSocketConnection implements ClientConnection {
 	 */
 	static final String SEND_FAILED = "Échec d'envoi";
 
-	private static final Logger LOG = Logger.getLogger(WebSocketConnection.class.getName());
-	/**
-	 * Threads partagés qui lancent les envois et les fermetures, pour ne jamais appeler
-	 * Tomcat depuis un verrou applicatif ni bloquer un thread de Tomcat
-	 */
-	private static final ExecutorService DISPATCHER = Executors.newCachedThreadPool(r -> {
-		Thread t = new Thread(r, "websocket-dispatcher");
-		t.setDaemon(true);
-		return t;
-	});
+	private static final Logger LOGGER = Logger.getLogger(WebSocketConnection.class.getName());
 
 	/**
 	 * Message en attente d'envoi
@@ -69,6 +60,11 @@ final class WebSocketConnection implements ClientConnection {
 	}
 
 	private final Session session;
+	/**
+	 * Threads partagés qui lancent les envois et les fermetures, pour ne jamais appeler
+	 * Tomcat depuis un verrou applicatif ni bloquer un thread de Tomcat
+	 */
+	private final ExecutorService dispatcher;
 	private final String id;
 	private final ArrayDeque<Outgoing> queue = new ArrayDeque<>();
 	private final AtomicBoolean pinging = new AtomicBoolean();
@@ -76,11 +72,25 @@ final class WebSocketConnection implements ClientConnection {
 	private CloseReason closeRequest;
 
 	/**
+	 * Crée le pool de threads qui lance les envois et les fermetures
+	 * @return Pool de threads démons
+	 */
+	static ExecutorService newDispatcher() {
+		return Executors.newCachedThreadPool(r -> {
+			Thread t = new Thread(r, "websocket-dispatcher");
+			t.setDaemon(true);
+			return t;
+		});
+	}
+
+	/**
 	 * Construit la connexion et borne la durée des envois sur la session
 	 * @param session Session WebSocket associée
+	 * @param dispatcher Pool de threads lançant les envois et les fermetures
 	 */
-	WebSocketConnection(Session session) {
+	WebSocketConnection(Session session, ExecutorService dispatcher) {
 		this.session = session;
+		this.dispatcher = dispatcher;
 		this.id = "ws-" + session.getId();
 		session.getAsyncRemote().setSendTimeout(SEND_TIMEOUT_MILLIS);
 		session.getUserProperties().put(Constants.BLOCKING_SEND_TIMEOUT_PROPERTY, Long.valueOf(SEND_TIMEOUT_MILLIS));
@@ -124,11 +134,11 @@ final class WebSocketConnection implements ClientConnection {
 	void ping() {
 		if (!isOpen() || !pinging.compareAndSet(false, true))
 			return;
-		DISPATCHER.execute(() -> {
+		dispatcher.execute(() -> {
 			try {
 				session.getAsyncRemote().sendPing(ByteBuffer.allocate(0));
 			} catch (IOException | RuntimeException e) {
-				LOG.log(Level.FINE, "Ping impossible vers " + id, e);
+				LOGGER.log(Level.FINE, "Ping impossible vers " + id, e);
 				fail(e);
 			} finally {
 				pinging.set(false);
@@ -149,7 +159,7 @@ final class WebSocketConnection implements ClientConnection {
 				return;
 			sending = true;
 		}
-		DISPATCHER.execute(this::transmitNext);
+		dispatcher.execute(this::transmitNext);
 	}
 
 	/**
@@ -178,11 +188,11 @@ final class WebSocketConnection implements ClientConnection {
 			}
 		}
 		if (overflow != null) {
-			LOG.warning(() -> "Client " + id + " trop lent, fermeture de la connexion");
+			LOGGER.warning(() -> "Client " + id + " trop lent, fermeture de la connexion");
 			closeLater(overflow);
 			return;
 		}
-		DISPATCHER.execute(this::transmitNext);
+		dispatcher.execute(this::transmitNext);
 	}
 
 	/**
@@ -207,7 +217,7 @@ final class WebSocketConnection implements ClientConnection {
 		try {
 			session.getAsyncRemote().sendText(next.json, this::sent);
 		} catch (RuntimeException e) {
-			LOG.log(Level.FINE, "Envoi impossible vers " + id, e);
+			LOGGER.log(Level.FINE, "Envoi impossible vers " + id, e);
 			fail(e);
 		}
 	}
@@ -218,7 +228,7 @@ final class WebSocketConnection implements ClientConnection {
 	 */
 	private void sent(SendResult result) {
 		if (!result.isOK()) {
-			LOG.log(Level.FINE, "Échec d'envoi vers " + id, result.getException());
+			LOGGER.log(Level.FINE, "Échec d'envoi vers " + id, result.getException());
 			fail(result.getException());
 			return;
 		}
@@ -240,7 +250,7 @@ final class WebSocketConnection implements ClientConnection {
 					: new CloseReason(CloseReason.CloseCodes.UNEXPECTED_CONDITION, SEND_FAILED);
 			close = closeRequest;
 		}
-		LOG.info(() -> "Connexion " + id + " fermée : " + close.getReasonPhrase());
+		LOGGER.info(() -> "Connexion " + id + " fermée : " + close.getReasonPhrase());
 		closeLater(close);
 	}
 
@@ -249,7 +259,7 @@ final class WebSocketConnection implements ClientConnection {
 	 * @param reason Code et raison de la fermeture
 	 */
 	private void closeLater(CloseReason reason) {
-		DISPATCHER.execute(() -> closeNow(reason));
+		dispatcher.execute(() -> closeNow(reason));
 	}
 
 	/**
@@ -261,7 +271,7 @@ final class WebSocketConnection implements ClientConnection {
 			if (session.isOpen())
 				session.close(reason);
 		} catch (IOException | IllegalStateException e) {
-			LOG.log(Level.FINE, "Fermeture de " + id, e);
+			LOGGER.log(Level.FINE, "Fermeture de " + id, e);
 		}
 	}
 }

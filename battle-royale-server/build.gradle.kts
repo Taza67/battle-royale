@@ -5,6 +5,7 @@ plugins {
 val tomcatVersion = "9.0.122"
 
 dependencies {
+    implementation(project(":battle-royale-protocol"))
     implementation("org.apache.tomcat.embed:tomcat-embed-core:$tomcatVersion")
     implementation("org.apache.tomcat.embed:tomcat-embed-websocket:$tomcatVersion")
     implementation("com.google.code.gson:gson:2.11.0")

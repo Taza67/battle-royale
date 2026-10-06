@@ -13,6 +13,7 @@ panneau admin ─WebSocket/JSON┘
 ```
 
 Constantes partagées : carte de `1280 × 720` pixels, `100` points de vie maximum,
+au plus `100` joueurs par manche,
 directions numérotées dans le sens trigonométrique avec l'axe Y vers le bas :
 `0` est, `1` nord-est, `2` nord, `3` nord-ouest, `4` ouest, `5` sud-ouest, `6` sud, `7` sud-est.
 
@@ -65,15 +66,16 @@ au bout de `250 ms` sans nouvelle commande.
 
 ### État
 
-En-tête de `23` octets :
+En-tête de `23` octets. Sauf mention contraire, les champs d'un octet sont
+**non signés** (0-255) ; l'encodeur borne ses valeurs à cet intervalle :
 
 | Champ | Type |
 | --- | --- |
 | phase (`0` échauffement, `1` combat, `2` terminé) | `byte` |
-| joueurs vivants | `byte` |
-| joueurs au total | `byte` |
-| identifiant du vainqueur (`-1` si aucun) | `byte` |
-| points de vie maximum | `byte` |
+| joueurs vivants | `byte` (non signé) |
+| joueurs au total | `byte` (non signé) |
+| identifiant du vainqueur (`-1` si aucun) | `byte` (signé) |
+| points de vie maximum | `byte` (non signé) |
 | zone sûre actuelle `x1`, `y1`, `x2`, `y2` | `4 × short` |
 | prochaine zone sûre `x1`, `y1`, `x2`, `y2` | `4 × short` |
 | secondes avant la prochaine étape | `short` |
@@ -82,12 +84,12 @@ Puis `9` octets par joueur :
 
 | Champ | Type |
 | --- | --- |
-| identifiant | `byte` |
+| identifiant | `byte` (non signé) |
 | statut (`0` éliminé, `1` vivant, `2` vainqueur) | `byte` |
-| points de vie | `byte` |
+| points de vie | `byte` (non signé) |
 | position `x`, `y` | `2 × short` |
-| éliminations | `byte` |
-| classement final (`0` tant que le joueur est en vie) | `byte` |
+| éliminations | `byte` (non signé) |
+| classement final (`0` tant que le joueur est en vie) | `byte` (non signé) |
 
 ## Clients web ⇄ serveur web (WebSocket)
 

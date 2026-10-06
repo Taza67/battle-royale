@@ -16,6 +16,8 @@ import java.util.function.Consumer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import protocol.GameProtocol;
+
 /**
  * Lien TCP avec le jeu pour une manche : un thread dédié se connecte, réalise la poignée
  * de main puis échange actions et états toutes les 50 ms, en relayant pause, reprise et arrêt
@@ -26,28 +28,34 @@ import java.util.logging.Logger;
 public final class GameLink {
 	/**
 	 * Code annonçant le démarrage d'une partie
+	 * @see GameProtocol#START
 	 */
-	public static final int CODE_START = 0;
+	public static final int CODE_START = GameProtocol.START;
 	/**
 	 * Code de mise en pause
+	 * @see GameProtocol#PAUSE
 	 */
-	public static final int CODE_PAUSE = -1;
+	public static final int CODE_PAUSE = GameProtocol.PAUSE;
 	/**
 	 * Code d'arrêt demandé par l'administrateur
+	 * @see GameProtocol#STOP
 	 */
-	public static final int CODE_STOP = -2;
+	public static final int CODE_STOP = GameProtocol.STOP;
 	/**
 	 * Code de reprise après une pause
+	 * @see GameProtocol#RESUME
 	 */
-	public static final int CODE_RESUME = -3;
+	public static final int CODE_RESUME = GameProtocol.RESUME;
 	/**
 	 * Type d'action : déplacement
+	 * @see GameProtocol#ACTION_MOVE
 	 */
-	public static final byte ACTION_MOVE = 0;
+	public static final byte ACTION_MOVE = (byte) GameProtocol.ACTION_MOVE;
 	/**
 	 * Type d'action : attaque
+	 * @see GameProtocol#ACTION_ATTACK
 	 */
-	public static final byte ACTION_ATTACK = 1;
+	public static final byte ACTION_ATTACK = (byte) GameProtocol.ACTION_ATTACK;
 	/**
 	 * Raison d'échec : connexion impossible
 	 */
@@ -65,7 +73,7 @@ public final class GameLink {
 	 */
 	public static final long STOP_TIMEOUT_MILLIS = 2000;
 
-	private static final Logger LOG = Logger.getLogger(GameLink.class.getName());
+	private static final Logger LOGGER = Logger.getLogger(GameLink.class.getName());
 	private static final AtomicInteger COUNTER = new AtomicInteger();
 
 	/**
@@ -215,29 +223,29 @@ public final class GameLink {
 				in = new DataInputStream(new BufferedInputStream(s.getInputStream()));
 				out = new DataOutputStream(new BufferedOutputStream(s.getOutputStream()));
 			} catch (IOException e) {
-				LOG.warning(() -> "Connexion au jeu impossible (" + address() + ") : " + e);
+				LOGGER.warning(() -> "Connexion au jeu impossible (" + address() + ") : " + e);
 				fire(l -> l.onStartFailed(this, UNREACHABLE));
 				return;
 			}
-			LOG.info(() -> "Connecté au jeu " + address() + ", " + roster.size() + " joueur(s)");
+			LOGGER.info(() -> "Connecté au jeu " + address() + ", " + roster.size() + " joueur(s)");
 
 			boolean accepted;
 			try {
 				sendHandshake(out);
 				accepted = in.readBoolean();
 			} catch (IOException e) {
-				LOG.warning(() -> "Poignée de main avec le jeu interrompue : " + e);
+				LOGGER.warning(() -> "Poignée de main avec le jeu interrompue : " + e);
 				fire(l -> l.onStartFailed(this, NO_HANDSHAKE));
 				return;
 			}
 			if (!accepted) {
-				LOG.warning("Le jeu a refusé la partie");
+				LOGGER.warning("Le jeu a refusé la partie");
 				fire(l -> l.onStartFailed(this, REFUSED));
 				return;
 			}
-			LOG.info("Partie acceptée par le jeu");
+			LOGGER.info("Partie acceptée par le jeu");
 			if (isStopRequested()) {
-				LOG.info("Arrêt demandé pendant la poignée de main : l'arrêt est transmis sans annoncer le début de la manche");
+				LOGGER.info("Arrêt demandé pendant la poignée de main : l'arrêt est transmis sans annoncer le début de la manche");
 			} else {
 				fire(l -> l.onStarted(this));
 			}
@@ -245,7 +253,7 @@ public final class GameLink {
 			exchange(in, out);
 		} finally {
 			closeQuietly(s);
-			LOG.fine(() -> "Lien avec le jeu fermé après " + exchanges + " échange(s)");
+			LOGGER.fine(() -> "Lien avec le jeu fermé après " + exchanges + " échange(s)");
 		}
 	}
 
@@ -280,7 +288,7 @@ public final class GameLink {
 					case STOP:
 						out.writeInt(CODE_STOP);
 						out.flush();
-						LOG.info("Arrêt transmis au jeu");
+						LOGGER.info("Arrêt transmis au jeu");
 						GameSnapshot last = awaitFinalState(in, out);
 						fire(l -> l.onStopped(this, last));
 						return;
@@ -288,14 +296,14 @@ public final class GameLink {
 						out.writeInt(CODE_PAUSE);
 						out.flush();
 						paused = true;
-						LOG.info("Pause transmise au jeu");
+						LOGGER.info("Pause transmise au jeu");
 						break;
 					case RESUME:
 						out.writeInt(CODE_RESUME);
 						out.flush();
 						paused = false;
 						nextTick = System.nanoTime();
-						LOG.info("Reprise transmise au jeu");
+						LOGGER.info("Reprise transmise au jeu");
 						break;
 					case TICK:
 						long now = System.nanoTime();
@@ -305,7 +313,7 @@ public final class GameLink {
 						sendActions(out);
 						Reply reply = readReply(in);
 						if (!reply.running()) {
-							LOG.info("Fin de partie annoncée par le jeu");
+							LOGGER.info("Fin de partie annoncée par le jeu");
 							fire(l -> l.onFinished(this, reply.snapshot()));
 							return;
 						}
@@ -320,18 +328,18 @@ public final class GameLink {
 				stopping = stopRequested;
 			}
 			if (stopping) {
-				LOG.info(() -> "Connexion fermée pendant l'arrêt : " + e);
+				LOGGER.info(() -> "Connexion fermée pendant l'arrêt : " + e);
 				GameSnapshot last = latest;
 				fire(l -> l.onStopped(this, last));
 			} else {
 				String reason = e instanceof SocketTimeoutException
 					? "Le jeu ne répond plus"
 					: "Connexion au jeu perdue";
-				LOG.log(Level.WARNING, reason + " après " + exchanges + " échange(s)", e);
+				LOGGER.log(Level.WARNING, reason + " après " + exchanges + " échange(s)", e);
 				fire(l -> l.onLinkLost(this, reason));
 			}
 		} catch (RuntimeException e) {
-			LOG.log(Level.SEVERE, "Boucle d'échange interrompue par une erreur inattendue", e);
+			LOGGER.log(Level.SEVERE, "Boucle d'échange interrompue par une erreur inattendue", e);
 			fire(l -> l.onLinkLost(this, "Erreur interne du lien avec le jeu"));
 		}
 	}
@@ -394,7 +402,7 @@ public final class GameLink {
 		while (true) {
 			long now = System.nanoTime();
 			if (now >= deadline) {
-				LOG.warning(() -> "Le jeu n'a pas terminé la manche " + STOP_TIMEOUT_MILLIS + " ms après l'arrêt");
+				LOGGER.warning(() -> "Le jeu n'a pas terminé la manche " + STOP_TIMEOUT_MILLIS + " ms après l'arrêt");
 				return latest;
 			}
 			if (nextTick > now) {
@@ -408,11 +416,11 @@ public final class GameLink {
 			}
 			nextTick = now + tickNanos;
 			socket.setSoTimeout((int) Math.max(1, TimeUnit.NANOSECONDS.toMillis(deadline - now)));
-			out.writeInt(0);
+			out.writeInt(GameProtocol.EMPTY_ACTIONS);
 			out.flush();
 			Reply reply = readReply(in);
 			if (!reply.running()) {
-				LOG.info("État final reçu après l'arrêt");
+				LOGGER.info("État final reçu après l'arrêt");
 				return reply.snapshot() != null ? reply.snapshot() : latest;
 			}
 		}
@@ -428,14 +436,14 @@ public final class GameLink {
 		try {
 			payload = actions.drainActions(TimeUnit.NANOSECONDS.toMillis(System.nanoTime()));
 		} catch (RuntimeException e) {
-			LOG.log(Level.SEVERE, "Impossible de récupérer les actions des joueurs", e);
+			LOGGER.log(Level.SEVERE, "Impossible de récupérer les actions des joueurs", e);
 			payload = new byte[0];
 		}
 		out.writeInt(payload.length);
 		out.write(payload);
 		out.flush();
 		final int sent = payload.length;
-		LOG.finest(() -> "Échange " + (exchanges + 1) + " : " + sent + " octet(s) d'actions");
+		LOGGER.finest(() -> "Échange " + (exchanges + 1) + " : " + sent + " octet(s) d'actions");
 	}
 
 	/**
@@ -465,7 +473,7 @@ public final class GameLink {
 			snapshot = GameSnapshot.decode(data);
 			latest = snapshot;
 		} catch (ProtocolException e) {
-			LOG.warning(() -> "État ignoré : " + e.getMessage());
+			LOGGER.warning(() -> "État ignoré : " + e.getMessage());
 		}
 		return new Reply(snapshot, running);
 	}
@@ -478,7 +486,7 @@ public final class GameLink {
 		try {
 			event.accept(listener);
 		} catch (RuntimeException e) {
-			LOG.log(Level.SEVERE, "Erreur lors du traitement d'un événement du jeu", e);
+			LOGGER.log(Level.SEVERE, "Erreur lors du traitement d'un événement du jeu", e);
 		}
 	}
 
@@ -500,7 +508,7 @@ public final class GameLink {
 		try {
 			s.close();
 		} catch (IOException e) {
-			LOG.fine(() -> "Fermeture de la connexion au jeu : " + e);
+			LOGGER.fine(() -> "Fermeture de la connexion au jeu : " + e);
 		}
 	}
 }

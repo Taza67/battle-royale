@@ -9,6 +9,7 @@ import java.security.CodeSource;
 import java.util.Comparator;
 import java.util.Map;
 import java.util.WeakHashMap;
+import java.util.concurrent.ExecutorService;
 import java.util.logging.Handler;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -52,11 +53,15 @@ public class ServerLauncher {
 			System.setProperty(LOG_FORMAT, "%1$tF %1$tT %4$-7s [%3$s] %5$s%6$s%n");
 	}
 
-	private static final Logger LOG = Logger.getLogger(ServerLauncher.class.getName());
+	private static final Logger LOGGER = Logger.getLogger(ServerLauncher.class.getName());
 	/**
 	 * Répertoires de travail de chaque instance de Tomcat démarrée, pour leur suppression à l'arrêt
 	 */
 	private static final Map<Tomcat, Path> BASE_DIRS = new WeakHashMap<>();
+	/**
+	 * Ressources partagées du point d'accès de chaque instance de Tomcat, libérées avec lui
+	 */
+	private static final Map<Tomcat, EndpointResources> ENDPOINT_RESOURCES = new WeakHashMap<>();
 	/**
 	 * Journal parent de toutes les classes du serveur, conservé pour garder son niveau
 	 */
@@ -70,16 +75,16 @@ public class ServerLauncher {
 	public static void main(String[] args) throws LifecycleException {
 		configureLogging(System.getProperty(LOG_LEVEL, "INFO"));
 		ServerConfig config = ServerConfig.fromSystemProperties();
-		LOG.config(config::toString);
+		LOGGER.config(config::toString);
 		if (config.adminPassword() == null)
-			LOG.warning(() -> "Aucun mot de passe administrateur (propriété " + ServerConfig.ADMIN_PASSWORD + ") : "
+			LOGGER.warning(() -> "Aucun mot de passe administrateur (propriété " + ServerConfig.ADMIN_PASSWORD + ") : "
 				+ "la place d'administrateur revient à la première session qui la réclame");
 
 		GameSession game = new GameSession(config.game(), config.adminPassword());
 		Tomcat tomcat = start(config.port(), resolveWebappDirectory(config.webapp()), game);
 		Runtime.getRuntime().addShutdownHook(new Thread(() -> stop(tomcat, game), "battle-royale-shutdown"));
 
-		LOG.info(() -> "Serveur web prêt : http://localhost:" + config.port() + CONTEXT_PATH + "/gamepad/ (jeu attendu sur "
+		LOGGER.info(() -> "Serveur web prêt : http://localhost:" + config.port() + CONTEXT_PATH + "/gamepad/ (jeu attendu sur "
 			+ config.game().host() + ":" + config.game().port() + ", mot de passe administrateur "
 			+ (config.adminPassword() == null ? "non requis" : "requis") + ")");
 		tomcat.getServer().await();
@@ -136,7 +141,12 @@ public class ServerLauncher {
 				throw new IllegalStateException("Conteneur WebSocket indisponible");
 			if (container instanceof BackgroundProcess process)
 				process.setProcessPeriod(1);
-			((ServerContainer) container).addEndpoint(WebSocketServer.config(game));
+			EndpointResources resources = new EndpointResources(
+				new Heartbeat(Heartbeat.PING_INTERVAL_MILLIS), WebSocketConnection.newDispatcher());
+			synchronized (ENDPOINT_RESOURCES) {
+				ENDPOINT_RESOURCES.put(tomcat, resources);
+			}
+			((ServerContainer) container).addEndpoint(WebSocketServer.config(game, resources.heartbeat, resources.dispatcher));
 		} catch (DeploymentException | RuntimeException e) {
 			destroyQuietly(tomcat, baseDir);
 			if (e instanceof IllegalStateException ise)
@@ -197,12 +207,20 @@ public class ServerLauncher {
 				baseDir = BASE_DIRS.remove(tomcat);
 			}
 		}
+		EndpointResources resources;
+		synchronized (ENDPOINT_RESOURCES) {
+			resources = ENDPOINT_RESOURCES.remove(tomcat);
+		}
+		if (resources != null) {
+			resources.heartbeat.close();
+			resources.dispatcher.shutdownNow();
+		}
 		try {
 			if (tomcat.getServer().getState().isAvailable())
 				tomcat.stop();
 			tomcat.destroy();
 		} catch (LifecycleException e) {
-			LOG.log(Level.WARNING, "Arrêt de Tomcat incomplet", e);
+			LOGGER.log(Level.WARNING, "Arrêt de Tomcat incomplet", e);
 		}
 		deleteTree(baseDir);
 	}
@@ -219,11 +237,24 @@ public class ServerLauncher {
 				try {
 					Files.deleteIfExists(p);
 				} catch (IOException e) {
-					LOG.fine(() -> "Suppression impossible de " + p + " : " + e);
+					LOGGER.fine(() -> "Suppression impossible de " + p + " : " + e);
 				}
 			});
 		} catch (IOException e) {
-			LOG.fine(() -> "Nettoyage du répertoire " + dir + " incomplet : " + e);
+			LOGGER.fine(() -> "Nettoyage du répertoire " + dir + " incomplet : " + e);
+		}
+	}
+
+	/**
+	 * Ressources partagées par les connexions d'un point d'accès
+	 */
+	private static final class EndpointResources {
+		private final Heartbeat heartbeat;
+		private final ExecutorService dispatcher;
+
+		EndpointResources(Heartbeat heartbeat, ExecutorService dispatcher) {
+			this.heartbeat = heartbeat;
+			this.dispatcher = dispatcher;
 		}
 	}
 

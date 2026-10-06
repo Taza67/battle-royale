@@ -12,6 +12,8 @@ import java.util.List;
 import java.util.Set;
 import java.util.logging.Logger;
 
+import protocol.GameProtocol;
+
 import inside.Board.PlayerSpec;
 import inside.BoardSnapshot;
 import inside.BoardSnapshot.PlayerState;
@@ -27,40 +29,49 @@ import inside.geometry.Rectangle;
 public final class Protocol {
 	/**
 	 * Code envoyé par le serveur au début de la poignée de main
+	 * @see GameProtocol#START
 	 */
-	public static final int START = 0;
+	public static final int START = GameProtocol.START;
 	/**
 	 * Code de pause
+	 * @see GameProtocol#PAUSE
 	 */
-	public static final int PAUSE = -1;
+	public static final int PAUSE = GameProtocol.PAUSE;
 	/**
 	 * Code d'arrêt demandé par l'administrateur
+	 * @see GameProtocol#STOP
 	 */
-	public static final int STOP = -2;
+	public static final int STOP = GameProtocol.STOP;
 	/**
 	 * Code de reprise
+	 * @see GameProtocol#RESUME
 	 */
-	public static final int RESUME = -3;
+	public static final int RESUME = GameProtocol.RESUME;
 	/**
 	 * Type d'action : déplacement
+	 * @see GameProtocol#ACTION_MOVE
 	 */
-	public static final int ACTION_MOVE = 0;
+	public static final int ACTION_MOVE = GameProtocol.ACTION_MOVE;
 	/**
 	 * Type d'action : attaque
+	 * @see GameProtocol#ACTION_ATTACK
 	 */
-	public static final int ACTION_ATTACK = 1;
+	public static final int ACTION_ATTACK = GameProtocol.ACTION_ATTACK;
 	/**
 	 * Taille de l'en-tête de l'état, en octets
+	 * @see GameProtocol#HEADER_SIZE
 	 */
-	public static final int HEADER_SIZE = 23;
+	public static final int HEADER_SIZE = GameProtocol.HEADER_SIZE;
 	/**
 	 * Taille de l'état d'un joueur, en octets
+	 * @see GameProtocol#PLAYER_SIZE
 	 */
-	public static final int PLAYER_SIZE = 9;
+	public static final int PLAYER_SIZE = GameProtocol.PLAYER_SIZE;
 	/**
 	 * Taille maximale acceptée pour un bloc d'actions
+	 * @see GameProtocol#MAX_ACTIONS_SIZE
 	 */
-	public static final int MAX_ACTIONS_SIZE = 1 << 16;
+	public static final int MAX_ACTIONS_SIZE = GameProtocol.MAX_ACTIONS_SIZE;
 
 	private static final Logger LOGGER = Logger.getLogger(Protocol.class.getName());
 
@@ -92,7 +103,7 @@ public final class Protocol {
 		if (start != START) throw new ProtocolException("Code de démarrage inattendu : " + start);
 
 		int n = in.readInt();
-		if (n < 0 || n > MAX_PLAYERS) throw new ProtocolException("Nombre de joueurs invalide : " + n);
+		if (n < 0 || n > GameProtocol.MAX_PLAYERS) throw new ProtocolException("Nombre de joueurs invalide : " + n);
 
 		List<PlayerSpec> players = new ArrayList<>(n);
 		for (int i = 0; i < n; i++) {
@@ -112,7 +123,7 @@ public final class Protocol {
 		if (players.isEmpty()) return "aucun joueur";
 		Set<Integer> ids = new HashSet<>();
 		for (PlayerSpec p : players) {
-			if (p.id() < 0 || p.id() >= MAX_PLAYERS) return "identifiant invalide : " + p.id();
+			if (p.id() < 0 || p.id() >= GameProtocol.MAX_PLAYERS) return "identifiant invalide : " + p.id();
 			if (!ids.add(p.id())) return "identifiant en double : " + p.id();
 			String refusal = checkPseudo(p.pseudo());
 			if (refusal != null) return refusal + " (joueur " + p.id() + ")";
@@ -250,12 +261,12 @@ public final class Protocol {
 	}
 
 	/**
-	 * Borne une valeur dans l'intervalle d'un octet signé positif
+	 * Borne une valeur dans l'intervalle d'un octet non signé
 	 * @param v Valeur
-	 * @return Valeur entre 0 et 127
+	 * @return Valeur entre 0 et 255
 	 */
 	private static int clampByte(int v) {
-		return Math.max(0, Math.min(Byte.MAX_VALUE, v));
+		return Math.max(0, Math.min(GameProtocol.UNSIGNED_BYTE_MAX, v));
 	}
 
 	/**

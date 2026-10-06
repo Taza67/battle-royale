@@ -85,7 +85,8 @@ public final class ClientMessageParser {
 	 * Nettoie et valide un pseudo
 	 * @param raw Pseudo reçu
 	 * @return Pseudo sans espaces de bord
-	 * @throws InvalidMessageException si le pseudo est vide, trop long ou contient des caractères de contrôle
+	 * @throws InvalidMessageException si le pseudo est vide, trop long, contient des caractères
+	 *         de contrôle ou des caractères que le jeu ne sait pas afficher (hors Latin-1)
 	 */
 	public static String validatePseudo(String raw) throws InvalidMessageException {
 		String pseudo = raw.strip();
@@ -97,6 +98,8 @@ public final class ClientMessageParser {
 			throw new InvalidMessageException("pseudo trop long (" + ClientMessage.MAX_PSEUDO_LENGTH + " caractères au plus)");
 		if (pseudo.codePoints().anyMatch(c -> Character.isISOControl(c) || Character.getType(c) == Character.FORMAT))
 			throw new InvalidMessageException("pseudo contenant des caractères interdits");
+		if (pseudo.codePoints().anyMatch(c -> c > 0xFF))
+			throw new InvalidMessageException("pseudo contenant des caractères non affichables par le jeu");
 		return pseudo;
 	}
 

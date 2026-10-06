@@ -3,6 +3,8 @@ package communication;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.util.concurrent.ExecutorService;
+
 import javax.websocket.CloseReason;
 
 import org.apache.tomcat.websocket.Constants;
@@ -17,8 +19,9 @@ class HeartbeatTest {
 		FakeSession a = new FakeSession("a");
 		FakeSession b = new FakeSession("b");
 		try (Heartbeat heartbeat = new Heartbeat(50)) {
-			heartbeat.register(new WebSocketConnection(a.session));
-			heartbeat.register(new WebSocketConnection(b.session));
+			ExecutorService dispatcher = WebSocketConnection.newDispatcher();
+			heartbeat.register(new WebSocketConnection(a.session, dispatcher));
+			heartbeat.register(new WebSocketConnection(b.session, dispatcher));
 			Thread.sleep(300);
 			assertTrue(a.pings() >= 3 && b.pings() >= 3, a.pings() + " et " + b.pings() + " pings en 300 ms");
 
@@ -34,16 +37,15 @@ class HeartbeatTest {
 	@Test
 	void watchesEverySessionFromItsOpening() {
 		GameSession game = new GameSession(GameLinkSettings.of("localhost", 38231), null);
-		try {
+		try (Heartbeat heartbeat = new Heartbeat(50)) {
 			FakeSession fake = new FakeSession("w");
-			WebSocketServer endpoint = new WebSocketServer(game);
-			int before = Heartbeat.shared().size();
+			WebSocketServer endpoint = new WebSocketServer(game, heartbeat, WebSocketConnection.newDispatcher());
 			endpoint.onOpen(fake.session, null);
 			assertEquals(WebSocketServer.IDLE_TIMEOUT_MILLIS, fake.maxIdleTimeout());
 			assertEquals(WebSocketServer.IDLE_TIMEOUT_MILLIS, fake.userProperties().get(Constants.READ_IDLE_TIMEOUT_MS));
-			assertEquals(before + 1, Heartbeat.shared().size());
+			assertEquals(1, heartbeat.size());
 			endpoint.onClose(fake.session, new CloseReason(CloseReason.CloseCodes.NORMAL_CLOSURE, ""));
-			assertEquals(before, Heartbeat.shared().size());
+			assertEquals(0, heartbeat.size());
 		} finally {
 			game.close();
 		}
