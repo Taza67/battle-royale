@@ -181,6 +181,10 @@ public final class GameSession implements AutoCloseable {
 			}
 			Player existing = playersByKey.get(key(pseudo));
 			if (existing != null) {
+				if (starting && !inPendingRoster(existing)) {
+					reject(c, REGISTRATION_CLOSED);
+					return null;
+				}
 				ClientConnection current = existing.connection();
 				if (current != null && current != c && current.isOpen()) {
 					LOG.info(() -> "Pseudo " + pseudo + " refusé pour " + c.id() + " : session " + current.id() + " ouverte");
@@ -420,37 +424,56 @@ public final class GameSession implements AutoCloseable {
 		if (playersById.isEmpty())
 			return NO_PLAYER;
 
-		boolean removed = false;
-		for (Iterator<Player> it = playersById.values().iterator(); it.hasNext();) {
-			Player p = it.next();
-			if (!p.isConnected()) {
-				it.remove();
-				playersByKey.remove(key(p.getPseudo()));
-				removed = true;
-				LOG.info(() -> p + " retiré : absent au lancement");
-			}
-		}
-		if (playersById.isEmpty()) {
-			if (removed)
-				playersChanged();
-			return NO_CONNECTED_PLAYER;
-		}
-
 		List<Participant> roster = new ArrayList<>();
-		for (Player p : playersById.values()) {
-			p.resetForRound();
-			roster.add(new Participant(p.getId(), p.getPseudo()));
-		}
-		actions = new PendingActions(playersById.keySet());
-		lastSnapshot = null;
-		lastEndJson = null;
+		for (Player p : playersById.values())
+			if (p.isConnected())
+				roster.add(new Participant(p.getId(), p.getPseudo()));
+		if (roster.isEmpty())
+			return NO_CONNECTED_PLAYER;
+
+		actions = new PendingActions(roster.stream().map(Participant::id).toList());
 		starting = true;
 		link = new GameLink(linkSettings, roster, actions, events);
 		link.start();
 		LOG.info(() -> "Lancement d'une manche avec " + roster.size() + " joueur(s) sur "
 			+ linkSettings.host() + ":" + linkSettings.port());
-		playersChanged();
 		return null;
+	}
+
+	/**
+	 * Prépare la session pour la manche acceptée par le jeu : retire les joueurs absents
+	 * au lancement, remet les statistiques à zéro et oublie le résultat précédent
+	 * @param roster Joueurs transmis au jeu
+	 */
+	private void beginRound(List<Participant> roster) {
+		Set<Integer> ids = new HashSet<>();
+		for (Participant p : roster)
+			ids.add(p.id());
+		for (Iterator<Player> it = playersById.values().iterator(); it.hasNext();) {
+			Player p = it.next();
+			if (!ids.contains(p.getId())) {
+				it.remove();
+				playersByKey.remove(key(p.getPseudo()));
+				LOG.info(() -> p + " retiré : absent au lancement");
+			} else {
+				p.resetForRound();
+			}
+		}
+		lastSnapshot = null;
+		lastEndJson = null;
+		awaitingFinalState = false;
+	}
+
+	/**
+	 * Indique si un joueur fait partie de la manche en cours de lancement
+	 * @param player Joueur
+	 * @return true si le joueur a été transmis au jeu
+	 */
+	private boolean inPendingRoster(Player player) {
+		for (Participant p : link.roster())
+			if (p.id() == player.getId())
+				return true;
+		return false;
 	}
 
 	/**
@@ -739,6 +762,7 @@ public final class GameSession implements AutoCloseable {
 				if (l != link || !starting)
 					return;
 				starting = false;
+				beginRound(l.roster());
 				if (admin != null)
 					admin.send(Json.write(ServerMessage.Ack.success(ClientMessage.Command.START.wireName())));
 				changeState(GameState.RUNNING);

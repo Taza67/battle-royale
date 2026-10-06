@@ -25,6 +25,7 @@ import communication.game.GameLinkSettings;
 import communication.game.Participant;
 import communication.game.SnapshotBytes;
 import communication.message.ClientMessage.Command;
+import communication.message.ServerMessage;
 
 class GameSessionTest {
 	private FakeGameServer game;
@@ -32,6 +33,7 @@ class GameSessionTest {
 	private final FakeConnection admin = new FakeConnection("admin");
 	private final FakeConnection taza = new FakeConnection("taza");
 	private final FakeConnection emile = new FakeConnection("emile");
+	private Player emilePlayer;
 
 	@BeforeEach
 	void setUp() throws Exception {
@@ -453,6 +455,85 @@ class GameSessionTest {
 		assertEquals(List.of(new Participant(p0.getId(), "Taza")),
 			game.await(FakeGameServer.Handshake.class, 2000).participants());
 		assertEquals(1, session.playerEntries().size());
+	}
+
+	/** Joue une manche complète avec Taza et Émile, terminée par la victoire d'Émile */
+	private JsonObject playRoundWonByEmile() throws InterruptedException {
+		session.claimAdmin(admin, "");
+		session.join(taza, "Taza");
+		emilePlayer = session.join(emile, "Émile");
+		startRound();
+		game.finish(SnapshotBytes.battle().phase(2).counts(1, 2).winner(1)
+			.player(0, 0, 0, 640, 360, 2, 2)
+			.player(1, 2, 30, 100, 200, 1, 1)
+			.build());
+		JsonObject end = admin.next("end");
+		game.await(FakeGameServer.Closed.class, 2000);
+		return end;
+	}
+
+	private void assertPreviousRoundIntact(JsonObject end) throws InterruptedException {
+		assertEquals(GameState.OVER, session.state());
+		List<ServerMessage.PlayerEntry> entries = session.playerEntries();
+		assertEquals(2, entries.size(), "les absents ne sont retirés qu'au lancement effectif");
+		assertEquals(2, entries.get(0).rank());
+		assertEquals("winner", entries.get(1).status());
+		assertEquals(30, entries.get(1).life());
+
+		FakeConnection back = new FakeConnection("back");
+		assertSame(emilePlayer, session.join(back, "Émile"));
+		assertEquals("over", back.next("welcome").get("state").getAsString());
+		assertEquals(end, back.next("end"));
+		FakeConnection admin2 = new FakeConnection("admin-2");
+		session.releaseAdmin(admin);
+		session.claimAdmin(admin2, "");
+		assertEquals(end, admin2.next("end"));
+	}
+
+	@Test
+	void keepsThePreviousResultsWhenTheGameRefusesTheNextRound() throws Exception {
+		JsonObject end = playRoundWonByEmile();
+		emile.drop();
+		session.disconnect(emile, emilePlayer);
+
+		game.accept(false);
+		session.command(admin, Command.START);
+		ack(admin, "start", false, GameLink.REFUSED);
+		assertPreviousRoundIntact(end);
+	}
+
+	@Test
+	void keepsThePreviousResultsWhenTheNextLaunchIsCancelled() throws Exception {
+		JsonObject end = playRoundWonByEmile();
+		emile.drop();
+		session.disconnect(emile, emilePlayer);
+
+		game.silentHandshake(true);
+		session.command(admin, Command.START);
+		assertEquals(List.of(new Participant(0, "Taza")), game.await(FakeGameServer.Handshake.class, 2000).participants());
+		FakeConnection early = new FakeConnection("early");
+		assertNull(session.join(early, "Émile"), "absent au lancement : pas de retour pendant le démarrage");
+		assertEquals(GameSession.REGISTRATION_CLOSED, early.next("rejected").get("reason").getAsString());
+		session.command(admin, Command.STOP);
+		ack(admin, "start", false, GameSession.START_CANCELLED);
+		ack(admin, "stop", true, null);
+		assertPreviousRoundIntact(end);
+	}
+
+	@Test
+	void forgetsThePreviousRoundOnlyOnceTheGameAccepts() throws Exception {
+		playRoundWonByEmile();
+		emile.drop();
+		session.disconnect(emile, emilePlayer);
+
+		game.state(SnapshotBytes.battle().counts(1, 1).player(0, 1, 100, 1, 1, 0, 0).build());
+		session.command(admin, Command.START);
+		ack(admin, "start", true, null);
+		assertEquals(1, session.playerEntries().size());
+		assertEquals(0, session.playerEntries().get(0).rank());
+		FakeConnection back = new FakeConnection("back");
+		assertNull(session.join(back, "Émile"));
+		assertEquals(GameSession.REGISTRATION_CLOSED, back.next("rejected").get("reason").getAsString());
 	}
 
 	@Test
