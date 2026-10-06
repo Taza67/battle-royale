@@ -72,7 +72,8 @@ public class Texture {
 				throw new IllegalStateException("Impossible de décoder la texture " + path + " : " + STBImage.stbi_failure_reason());
 
 			ByteBuffer copy = BufferUtils.createByteBuffer(decoded.remaining());
-			copy.put(decoded).flip();
+			copy.put(decoded.duplicate()).flip();
+			// stbi_image_free utilise l'adresse à la position courante : le tampon d'origine ne doit pas avoir avancé
 			STBImage.stbi_image_free(decoded);
 			return new Image(copy, w.get(0), h.get(0));
 		}
