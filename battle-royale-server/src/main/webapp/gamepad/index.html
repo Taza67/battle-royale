@@ -2,82 +2,175 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-	<meta http-equiv='cache-control' content='no-cache'>
-	<meta http-equiv='expires' content='0'>
-	<meta http-equiv='pragma' content='no-cache'>
-    <link rel="shortcut icon" type="image/x-icon" href="../favicon.ico">
-
-    <title>Battle Royale</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <!-- Stylesheets -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="theme-color" content="#3b3d2c">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <link rel="icon" type="image/x-icon" href="../favicon.ico">
+    <title>Manette · UJM Battle Royale</title>
+    <link rel="stylesheet" href="../common/stylesheets/commun.css">
     <link rel="stylesheet" href="./stylesheets/style.css">
-    <script src="./scripts/frameworks/nipple.min.js"></script>
+    <script src="./scripts/frameworks/nipple.min.js" defer></script>
+    <script type="module" src="./scripts/main.js"></script>
 </head>
 <body>
-    <div class="fullscreen-request-container" id="fullscreen-request-container">
-        <div class="fullscreen-button-container">
-            <div class="fullscreen-request">Veuillez passer en plein écran svp !</div>
-            <button class="fullscreen-button" id="fullscreen-button">Entrer</button>
-        </div>
-    </div>
-    
-    <div class="registration-container" id="registration-container">
-        <div class="register-container" id="register-container">
-            <img class="register-logo" src="./images/logo.png" alt="Logo du jeu">
-            <h2 class="register-title">Inscription</h2>
-            <form class="register-form" onsubmit="event.preventDefault()">
-                <input type="text" id="pseudo" placeholder="Pseudo...">
-                <input type="button" id="register-button" value="S'inscrire">
+    <div class="connexion" id="connexion" data-etat="connexion"><span class="connexion-texte">Connexion…</span></div>
+
+    <button class="bouton-plein-ecran" id="bouton-plein-ecran-flottant" type="button" title="Passer en plein écran" aria-label="Passer en plein écran" hidden>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/></svg>
+    </button>
+
+    <!-- Inscription -->
+    <section class="ecran" id="ecran-inscription" hidden>
+        <div class="carte boite boite-inscription secousse">
+            <img class="logo" src="./images/logo.png" alt="UJM Battle Royale">
+            <h1 class="carte-titre">Inscription</h1>
+            <form class="formulaire" id="formulaire-inscription" novalidate>
+                <label class="visuellement-cache" for="pseudo">Pseudo</label>
+                <input class="champ" type="text" id="pseudo" name="pseudo" placeholder="Pseudo..." maxlength="16"
+                       autocomplete="nickname" autocapitalize="off" spellcheck="false" enterkeyhint="go"
+                       aria-describedby="aide-pseudo erreur-inscription" required>
+                <p class="aide texte-doux" id="aide-pseudo">1 à 16 caractères</p>
+                <p class="message-erreur" id="erreur-inscription" role="alert"></p>
+                <button class="bouton bouton-principal" type="submit" id="bouton-inscription">S'inscrire</button>
             </form>
         </div>
-    </div>
+    </section>
 
-	<div class="waiting-container" id="waiting-container">
-		<div class="loading-container">
-			<h2 class="loading-title" id="loading-title"></h2>
-		</div>
-	</div>
+    <!-- Attente : connexion, inscription en cours, salle d'attente -->
+    <section class="ecran" id="ecran-attente" hidden>
+        <div class="carte boite boite-attente">
+            <div class="chargement" aria-hidden="true"></div>
+            <h2 class="carte-titre"><span id="titre-attente">Connexion</span><span class="points" aria-hidden="true"></span></h2>
+            <p class="texte-doux" id="texte-attente"></p>
+            <div class="profil-attente" id="profil-attente" hidden>
+                <img class="avatar" data-avatar alt="Votre avatar">
+                <span class="profil-pseudo" data-pseudo></span>
+            </div>
+            <dl class="aide-commandes" id="aide-commandes" hidden>
+                <div><dt>Joystick</dt><dd>Flèches / ZQSD</dd></div>
+                <div><dt>A · Tir</dt><dd>J / Espace</dd></div>
+                <div><dt>B · Coup</dt><dd>K / Entrée</dd></div>
+            </dl>
+        </div>
+    </section>
 
-    <div class="gamepad-container" id="gamepad-container">
-        <div class="movement-container">
-            <div class="movement-infos-container">
-                <div class="labels-container">
-                    <div>Pseudo</div>
-                    <div>Statut</div>
-                    <div>Vie</div>
-                    <div>Score</div>
+    <!-- Manette -->
+    <section class="ecran ecran-manette" id="ecran-manette" hidden>
+        <div class="manette" id="manette" data-statut="alive">
+            <div class="panneau zone-infos">
+                <div class="ligne-info">
+                    <span class="etiquette">Pseudo</span>
+                    <span class="valeur pseudo-manette" data-pseudo></span>
                 </div>
-                <div class="datas-container">
-                    <div id="pseudo-container"></div>
-                    <div id="status-container">VIVANT</div>
-                    <div id="health-bar" class="health-bar" ><div class="health-status" id="health-status"></div></div>
-                    <div id="score-container">0 JOUEUR(S)</div>
+                <div class="ligne-info">
+                    <span class="etiquette">Statut</span>
+                    <span class="valeur statut" id="info-statut" data-statut="alive">VIVANT</span>
+                </div>
+                <div class="ligne-info ligne-vie">
+                    <span class="etiquette">Vie</span>
+                    <div class="barre-vie" id="barre-vie" role="meter" aria-label="Points de vie" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100" data-niveau="haut">
+                        <div class="barre-vie-remplissage" id="barre-vie-remplissage"></div>
+                        <span class="barre-vie-texte" id="texte-vie">100 / 100</span>
+                    </div>
                 </div>
             </div>
-            <div class="joystick-container">
-                <div id="joystick"></div>
+
+            <div class="panneau zone-joystick">
+                <div class="joystick" id="joystick" aria-label="Joystick de déplacement"></div>
+            </div>
+
+            <div class="panneau zone-carte">
+                <div class="bandeau">
+                    <span class="puce-phase" id="info-phase" data-phase="warmup">ÉCHAUFFEMENT</span>
+                    <span class="bandeau-compte"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2.5M9 2h6"/></svg><span id="info-compte">–</span></span>
+                    <span class="bandeau-vivants"><span class="etiquette">Vivants</span> <b id="info-vivants">0 / 0</b></span>
+                </div>
+                <div class="cadre-carte" id="cadre-carte">
+                    <canvas id="minicarte" aria-label="Mini-carte"></canvas>
+                    <div class="alerte-lave" id="alerte-lave" hidden>DANS LA LAVE !</div>
+                    <div class="message-carte" id="message-carte" hidden></div>
+                </div>
+                <div class="pied-carte">
+                    <button class="bouton-plein-ecran" id="bouton-plein-ecran-manette" type="button" title="Passer en plein écran" aria-label="Passer en plein écran" hidden>
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/></svg>
+                    </button>
+                    <span class="titre-jeu">UJM BATTLE ROYALE</span>
+                    <div class="connexion connexion-compacte" id="connexion-manette" data-etat="connexion"><span class="connexion-texte">Connexion…</span></div>
+                </div>
+            </div>
+
+            <div class="panneau zone-profil">
+                <img class="avatar" data-avatar alt="Votre avatar">
+                <div class="compteurs">
+                    <div><span class="etiquette">Élim.</span><b id="info-kills">0</b></div>
+                    <div><span class="etiquette">Rang</span><b id="info-rang">–</b></div>
+                </div>
+            </div>
+
+            <div class="panneau zone-boutons">
+                <button class="bouton-jeu bouton-jeu-a" id="bouton-a" type="button" data-forme="2" aria-label="A : tir">A<small>Tir</small></button>
+                <button class="bouton-jeu bouton-jeu-b" id="bouton-b" type="button" data-forme="1" aria-label="B : corps-à-corps">B<small>Coup</small></button>
             </div>
         </div>
-        <div class="game-container">
-            <canvas id="minimap"></canvas>
-            <div id="game-title">UJM BATTLE ROYALE</div>
+
+        <div class="flash-degats" id="flash-degats" aria-hidden="true"></div>
+
+        <div class="superposition" id="superposition-pause" hidden>
+            <div class="carte boite boite-superposition">
+                <h2 class="carte-titre">Pause</h2>
+                <p class="texte-doux">La partie reprendra dès que l'administrateur la relancera<span class="points" aria-hidden="true"></span></p>
+            </div>
         </div>
-        <div class="actions-container">
-            <div class="buttons-container">
-                <button class="game-button" id="game-button-A">A</button>
-                <button class="game-button" id="game-button-B">B</button>
+
+        <div class="superposition" id="superposition-connexion" hidden>
+            <div class="carte boite boite-superposition">
+                <div class="chargement" aria-hidden="true"></div>
+                <h2 class="carte-titre">Connexion perdue</h2>
+                <p class="texte-doux">Reconnexion en cours<span class="points" aria-hidden="true"></span></p>
             </div>
-            <div class="buttons-infos-container">
-                <img id="avatar-container" src="" alt="Votre avatar">
+        </div>
+    </section>
+
+    <!-- Fin de partie -->
+    <section class="ecran" id="ecran-fin" hidden>
+        <div class="carte boite boite-fin">
+            <h1 class="carte-titre titre-fin" id="titre-fin">Partie terminée</h1>
+            <div class="fin-contenu">
+                <div class="fin-resume">
+                    <div class="bloc-vainqueur" id="bloc-vainqueur" hidden>
+                        <img class="avatar" id="avatar-vainqueur" alt="">
+                        <div>
+                            <span class="etiquette">Vainqueur</span>
+                            <b class="pseudo-vainqueur" id="pseudo-vainqueur"></b>
+                        </div>
+                    </div>
+                    <div class="fin-moi">
+                        <img class="avatar avatar-petit" data-avatar alt="">
+                        <div><span class="etiquette">Votre rang</span><b id="fin-rang">–</b><span class="texte-doux" id="fin-total"></span></div>
+                        <div><span class="etiquette">Éliminations</span><b id="fin-kills">0</b></div>
+                    </div>
+                </div>
+                <div class="fin-classement">
+                    <table class="tableau-classement" id="tableau-fin">
+                        <thead><tr><th>Rang</th><th>Joueur</th><th>Élim.</th></tr></thead>
+                        <tbody id="corps-classement"></tbody>
+                    </table>
+                    <p class="texte-doux classement-vide" id="classement-vide" hidden>Classement indisponible.</p>
+                </div>
             </div>
+            <p class="texte-doux fin-attente">En attente d'une nouvelle manche<span class="points" aria-hidden="true"></span></p>
+        </div>
+    </section>
+
+    <!-- Demande de plein écran -->
+    <div class="superposition superposition-plein-ecran" id="invitation-plein-ecran" hidden>
+        <div class="carte boite boite-superposition secousse">
+            <h2 class="carte-titre">Plein écran</h2>
+            <p>Pour mieux jouer, passez en plein écran et tenez votre téléphone à l'horizontale.</p>
+            <button class="bouton bouton-principal" type="button" id="bouton-plein-ecran">Passer en plein écran</button>
+            <button class="bouton bouton-secondaire" type="button" id="bouton-sans-plein-ecran">Continuer sans plein écran</button>
         </div>
     </div>
-    
-    <!-- Scripts -->
-    <script type="module" src="./scripts/dynamicStyle.js"></script>
-    <script type="module" src="./scripts/client.js"></script>
-    <script type="module" src="./scripts/gamepad.js"></script>
-    <script type="module" src="./scripts/registration.js"></script>
-    <script type="module" src="./scripts/main.js"></script>
 </body>
 </html>
