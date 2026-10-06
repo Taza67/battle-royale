@@ -123,7 +123,7 @@ public class Effects {
 				burst(e.x(), e.y(), 18, 70, 1.2f, 6, Color.rgb(0x333333).withAlpha(0.8f), false);
 				if (e.targetId() == localId)
 					showBanner("Vous êtes éliminé", rankText(e.amount()) + " sur " + s.total(), Color.RED, 3.5);
-				else if (e.actorId() == localId && victim != null)
+				else if (localId >= 0 && e.actorId() == localId && victim != null)
 					showBanner("Élimination !", victim.pseudo(), Color.GOLD, 1.6);
 				break;
 			}
