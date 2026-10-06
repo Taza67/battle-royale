@@ -224,7 +224,12 @@ public class SimulationLoop implements Runnable, AutoCloseable, IConfig {
 		List<GameEvent> events = board.drainEvents();
 		if (events.isEmpty()) return;
 		Events batch = new Events(session, events, board.getSnapshot());
-		while (!EVENTS.offer(batch)) EVENTS.poll();
+		int dropped = 0;
+		while (!EVENTS.offer(batch))
+			if (EVENTS.poll() != null) dropped++;
+		if (dropped > 0)
+			LOGGER.warning(dropped + " lot(s) d'événements abandonné(s) : l'affichage est en retard de plus de "
+				+ MAX_EVENT_BATCHES / TICKS_PER_SECOND + " s");
 	}
 
 	/**
