@@ -122,15 +122,15 @@ public class BotController {
 	/**
 	 * Plateau piloté
 	 */
-	private final Board BOARD;
+	private final Board board;
 	/**
 	 * Générateur aléatoire des robots
 	 */
-	private final Random RANDOM;
+	private final Random random;
 	/**
 	 * Mémoire de chaque robot
 	 */
-	private final Map<Integer, Memory> MEMORIES = new HashMap<>();
+	private final Map<Integer, Memory> memories = new HashMap<>();
 
 
 	/**
@@ -139,18 +139,18 @@ public class BotController {
 	 * @param seed Graine aléatoire
 	 */
 	public BotController(Board board, long seed) {
-		BOARD = board;
-		RANDOM = new Random(seed ^ 0x5DEECE66DL);
+		this.board = board;
+		random = new Random(seed ^ 0x5DEECE66DL);
 	}
 
 	/**
 	 * Fait décider les robots dont c'est le tour (à appeler avant chaque pas de simulation)
 	 */
 	public void update() {
-		if (BOARD.isOver() || BOARD.isPaused()) return;
+		if (board.isOver() || board.isPaused()) return;
 
-		long now = BOARD.getTick();
-		for (Player bot : BOARD.getPlayers()) {
+		long now = board.getTick();
+		for (Player bot : board.getPlayers()) {
 			if (!bot.isBot() || !bot.getIsAlive()) continue;
 			if ((now + bot.getID()) % DECISION_TICKS != 0) continue;
 			decide(bot, now);
@@ -163,10 +163,10 @@ public class BotController {
 	 * @param now Pas courant
 	 */
 	private void decide(Player bot, long now) {
-		Memory m = MEMORIES.computeIfAbsent(bot.getID(), id -> {
+		Memory m = memories.computeIfAbsent(bot.getID(), id -> {
 			Memory mem = new Memory();
-			mem.turn = RANDOM.nextBoolean() ? 1 : -1;
-			mem.aggression = 0.2f + 0.8f * RANDOM.nextFloat();
+			mem.turn = random.nextBoolean() ? 1 : -1;
+			mem.aggression = 0.2f + 0.8f * random.nextFloat();
 			mem.lastX = bot.getX();
 			mem.lastY = bot.getY();
 			return mem;
@@ -178,9 +178,9 @@ public class BotController {
 			return;
 		}
 
-		SafeZone zone = BOARD.getSafeZone();
+		SafeZone zone = board.getSafeZone();
 		Rectangle safe = safeTarget(zone);
-		boolean battle = BOARD.getPhase() == Phase.BATTLE;
+		boolean battle = board.getPhase() == Phase.BATTLE;
 
 		// 1. Retour dans la zone sûre
 		if (battle && !safe.expand(-ZONE_MARGIN / 2).contains(bot.getX(), bot.getY())) {
@@ -209,7 +209,7 @@ public class BotController {
 			return;
 		}
 
-		boolean finish = enemy.getLifePoints() < bot.getLifePoints() || BOARD.getAliveCount() <= HUNT_ALIVE;
+		boolean finish = enemy.getLifePoints() < bot.getLifePoints() || board.getAliveCount() <= HUNT_ALIVE;
 
 		// 3. Les tireurs gardent leurs distances et cherchent l'alignement
 		if (m.aggression < MARKSMAN_AGGRESSION && !finish && distance > MELEE_RANGE * 0.9f) {
@@ -223,7 +223,7 @@ public class BotController {
 			int d = Direction.fromVector(dx, dy);
 			m.stuck = 0;
 			move(bot, d, 1);
-			if (bot.getWeapon().canSwing()) BOARD.enqueue(new Command.Attack(bot.getID(), ATTACK_MELEE));
+			if (bot.getWeapon().canSwing()) board.enqueue(new Command.Attack(bot.getID(), ATTACK_MELEE));
 			return;
 		}
 
@@ -270,14 +270,14 @@ public class BotController {
 	 */
 	private boolean tryShoot(Player bot, float dx, float dy, float distance) {
 		if (!bot.getWeapon().canShoot() || distance > BULLET_RANGE * 0.9f) return false;
-		if (RANDOM.nextFloat() > SHOOT_PROBABILITY) return false;
+		if (random.nextFloat() > SHOOT_PROBABILITY) return false;
 
 		int d = Direction.fromVector(dx, dy);
 		if (d < 0 || Direction.angleTo(d, dx, dy) > SHOOT_TOLERANCE) return false;
-		if (!BOARD.getMap().hasLineOfSight(bot.getX(), bot.getY(), bot.getX() + dx, bot.getY() + dy)) return false;
+		if (!board.getMap().hasLineOfSight(bot.getX(), bot.getY(), bot.getX() + dx, bot.getY() + dy)) return false;
 
 		move(bot, d, 1);
-		BOARD.enqueue(new Command.Attack(bot.getID(), ATTACK_SHOOT));
+		board.enqueue(new Command.Attack(bot.getID(), ATTACK_SHOOT));
 		return true;
 	}
 
@@ -293,9 +293,9 @@ public class BotController {
 		if (now >= m.wanderUntil || dx * dx + dy * dy < 400 || !safe.contains(m.wanderX, m.wanderY)) {
 			Rectangle area = safe.expand(-ZONE_MARGIN);
 			if (area.getWidth() <= 0 || area.getHeight() <= 0) area = safe;
-			m.wanderX = area.getX1() + RANDOM.nextFloat() * area.getWidth();
-			m.wanderY = area.getY1() + RANDOM.nextFloat() * area.getHeight();
-			m.wanderUntil = now + TICKS_PER_SECOND * (2 + RANDOM.nextInt(4));
+			m.wanderX = area.getX1() + random.nextFloat() * area.getWidth();
+			m.wanderY = area.getY1() + random.nextFloat() * area.getHeight();
+			m.wanderUntil = now + TICKS_PER_SECOND * (2 + random.nextInt(4));
 		}
 		goTo(bot, m, m.wanderX, m.wanderY, 2);
 	}
@@ -311,7 +311,7 @@ public class BotController {
 	private void goTo(Player bot, Memory m, float tx, float ty, int speed) {
 		int wanted = Direction.fromVector(tx - bot.getX(), ty - bot.getY());
 		if (wanted < 0) {
-			BOARD.enqueue(new Command.Move(bot.getID(), 0, 0));
+			board.enqueue(new Command.Move(bot.getID(), 0, 0));
 			return;
 		}
 
@@ -337,7 +337,7 @@ public class BotController {
 	private boolean isClear(Player bot, int d) {
 		float nx = bot.getX() + Direction.dx(d) * LOOK_AHEAD, ny = bot.getY() + Direction.dy(d) * LOOK_AHEAD;
 		Rectangle r = bot.getRepresentationAt(nx, ny);
-		return BOARD.getMap().getBounds().contain(r) && BOARD.getMap().isFree(r);
+		return board.getMap().getBounds().contain(r) && board.getMap().isFree(r);
 	}
 
 	/**
@@ -361,7 +361,7 @@ public class BotController {
 		m.stuck = 0;
 		m.turn = -m.turn;
 
-		int start = RANDOM.nextInt(DIRECTIONS_NUMBER);
+		int start = random.nextInt(DIRECTIONS_NUMBER);
 		for (int k = 0; k < DIRECTIONS_NUMBER; k++) {
 			int d = Direction.rotate(start, k);
 			if (isClear(bot, d)) {
@@ -392,11 +392,11 @@ public class BotController {
 	 */
 	private Player target(Player bot, Memory m, long now) {
 		if (now - bot.getLastHitTick() < RETALIATION_TICKS && bot.getLastAttacker() >= 0) {
-			Player attacker = BOARD.getPlayer(bot.getLastAttacker());
+			Player attacker = board.getPlayer(bot.getLastAttacker());
 			if (attacker != null && attacker.getIsAlive()) return attacker;
 		}
 		// Les robots sont d'abord prudents, puis de plus en plus agressifs à mesure que la zone se resserre
-		float pressure = Math.min(1, 0.15f + 0.2f * BOARD.getSafeZone().getWaveIndex());
+		float pressure = Math.min(1, 0.15f + 0.2f * board.getSafeZone().getWaveIndex());
 		return nearestEnemy(bot, VISION_RANGE * pressure * (0.35f + 0.65f * m.aggression));
 	}
 
@@ -408,11 +408,11 @@ public class BotController {
 	 */
 	private Player nearestEnemy(Player bot, float range) {
 		// En fin de partie, les robots traquent les derniers survivants où qu'ils soient
-		boolean hunt = BOARD.getAliveCount() <= HUNT_ALIVE;
+		boolean hunt = board.getAliveCount() <= HUNT_ALIVE;
 		Player best = null;
 		float bestDistance = hunt ? Float.MAX_VALUE : range * range;
-		Iterable<Player> candidates = hunt ? BOARD.getPlayers()
-			: BOARD.getMap().playersNear(Rectangle.centered(bot.getX(), bot.getY(), range, range));
+		Iterable<Player> candidates = hunt ? board.getPlayers()
+			: board.getMap().playersNear(Rectangle.centered(bot.getX(), bot.getY(), range, range));
 		for (Player p : candidates) {
 			if (p == bot || !p.getIsAlive()) continue;
 			float dx = p.getX() - bot.getX(), dy = p.getY() - bot.getY();
@@ -432,6 +432,6 @@ public class BotController {
 	 * @param speed Niveau de vitesse
 	 */
 	private void move(Player bot, int d, int speed) {
-		if (d >= 0) BOARD.enqueue(new Command.Move(bot.getID(), d, speed));
+		if (d >= 0) board.enqueue(new Command.Move(bot.getID(), d, speed));
 	}
 }
