@@ -1,5 +1,6 @@
 package inside;
 
+import static inside.IConfig.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.util.List;
@@ -12,7 +13,7 @@ import inside.SafeZone.Stage;
 import inside.SafeZone.Transition;
 import inside.geometry.Rectangle;
 
-class SafeZoneTest implements IConfig {
+class SafeZoneTest {
 	private static final Rectangle BOUNDS = new Rectangle(0, 0, MAP_WIDTH, MAP_HEIGHT);
 
 	@Test
@@ -90,7 +91,7 @@ class SafeZoneTest implements IConfig {
 	@Test
 	void laveInfligeDesDegatsHorsDeLaZone() {
 		List<ZoneWave> waves = List.of(new ZoneWave(0.1f, 0.1f, 0.2f, 30), new ZoneWave(100, 1, 0.1f, 30));
-		Board b = new Board(new GameSettings(0, 5, 0, waves), new Map(List.of()), Boards.specs(2));
+		Board b = new Board(new GameSettings(0, 5, 0, waves), new GameMap(List.of()), Boards.specs(2));
 		Boards.run(b, 30);
 		Rectangle safe = b.getSafeZone().getCurrent();
 

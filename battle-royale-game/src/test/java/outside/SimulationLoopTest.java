@@ -1,5 +1,6 @@
 package outside;
 
+import static inside.IConfig.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.util.List;
@@ -18,7 +19,7 @@ import inside.IConfig;
 import inside.Phase;
 
 @Timeout(20)
-class SimulationLoopTest implements IConfig {
+class SimulationLoopTest {
 	private static final long T = SimulationLoop.TICK_NANOS;
 	private SimulationLoop loop;
 

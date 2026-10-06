@@ -1,5 +1,6 @@
 package outside.communication;
 
+import static inside.IConfig.*;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.junit.jupiter.api.Assumptions.assumeFalse;
 
@@ -35,7 +36,7 @@ import inside.Phase;
  * Faux serveur web qui se connecte au serveur TCP du jeu (ports 38200 à 38219 uniquement)
  */
 @Timeout(20)
-class GameServerTest implements IConfig {
+class GameServerTest {
 	private GameServer server;
 	private final AtomicReference<Board> board = new AtomicReference<>();
 	private final List<String> statuses = new CopyOnWriteArrayList<>();

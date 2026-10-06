@@ -1,5 +1,6 @@
 package inside;
 
+import static inside.IConfig.*;
 import static inside.Boards.*;
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -10,12 +11,12 @@ import org.junit.jupiter.api.Test;
 import inside.Obstacle.TypeObstacle;
 import inside.geometry.Rectangle;
 
-class CombatTest implements IConfig {
+class CombatTest {
 
 	/**
 	 * Deux joueurs face à face, combat commencé
 	 */
-	private static Board duel(Map map, float x0, float x1) {
+	private static Board duel(GameMap map, float x0, float x1) {
 		Board b = map == null ? empty(2, 0) : on(map, 2, 0);
 		b.tick();
 		b.teleport(0, x0, 360);
@@ -33,7 +34,7 @@ class CombatTest implements IConfig {
 		run(b, MELEE_ACTIVE_TICKS + 2);
 
 		assertEquals(MAX_LIFE_POINTS - MELEE_DAMAGE, b.getPlayer(1).getLifePoints());
-		assertTrue(b.getPlayer(1).getIsAlive());
+		assertTrue(b.getPlayer(1).isAlive());
 		assertEquals(0, b.getPlayer(1).getLastAttacker());
 	}
 
@@ -115,7 +116,7 @@ class CombatTest implements IConfig {
 	void rochersEtForetsArretentLesProjectilesMaisPasLEau() {
 		Rectangle between = new Rectangle(290, 300, 310, 420);
 		for (TypeObstacle t : TypeObstacle.values()) {
-			Board b = duel(new Map(List.of(new Obstacle(t, between))), 200, 400);
+			Board b = duel(new GameMap(List.of(new Obstacle(t, between))), 200, 400);
 			b.enqueue(new Command.Attack(0, ATTACK_SHOOT));
 			List<GameEvent> events = run(b, TICKS_PER_SECOND);
 
@@ -165,7 +166,7 @@ class CombatTest implements IConfig {
 
 		assertTrue(b.isOver());
 		Player loser = b.getPlayer(1), winner = b.getPlayer(0);
-		assertFalse(loser.getIsAlive());
+		assertFalse(loser.isAlive());
 		assertEquals(0, loser.getLifePoints());
 		assertEquals(2, loser.getRank());
 		assertEquals(1, loser.getEliminationOrder());
@@ -217,7 +218,7 @@ class CombatTest implements IConfig {
 		b.tick();
 		b.getPlayer(2).reduceLifePoints(MAX_LIFE_POINTS, 0, DamageCause.BULLET, b.getTick());
 		b.tick();
-		assertFalse(b.getPlayer(2).getIsAlive());
+		assertFalse(b.getPlayer(2).isAlive());
 
 		float x = b.getPlayer(2).getX();
 		b.enqueue(new Command.Move(2, EAST, 4));

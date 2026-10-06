@@ -1,5 +1,6 @@
 package outside.communication;
 
+import static inside.IConfig.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.io.ByteArrayInputStream;
@@ -19,10 +20,10 @@ import inside.Command;
 import inside.DamageCause;
 import inside.GameSettings;
 import inside.IConfig;
-import inside.Map;
+import inside.GameMap;
 import inside.geometry.Rectangle;
 
-class ProtocolTest implements IConfig {
+class ProtocolTest {
 
 	private static DataInputStream input(byte[] bytes) {
 		return new DataInputStream(new ByteArrayInputStream(bytes));
@@ -87,7 +88,7 @@ class ProtocolTest implements IConfig {
 	@Test
 	void dispositionDesOctetsDeLEtat() throws IOException {
 		List<PlayerSpec> specs = List.of(new PlayerSpec(4, "A", false), new PlayerSpec(9, "B", false), new PlayerSpec(12, "C", false));
-		Board b = new Board(new GameSettings(0, 1, 0, GameSettings.DEFAULT_WAVES), new Map(List.of()), specs);
+		Board b = new Board(new GameSettings(0, 1, 0, GameSettings.DEFAULT_WAVES), new GameMap(List.of()), specs);
 		b.tick();
 		b.getPlayer(12).reduceLifePoints(MAX_LIFE_POINTS, 4, DamageCause.BULLET, b.getTick());
 		b.getPlayer(9).reduceLifePoints(37, 4, DamageCause.MELEE, b.getTick());
@@ -133,7 +134,7 @@ class ProtocolTest implements IConfig {
 
 	@Test
 	void etatFinalEtReponse() throws IOException {
-		Board b = new Board(new GameSettings(0, 1, 0, GameSettings.DEFAULT_WAVES), new Map(List.of()),
+		Board b = new Board(new GameSettings(0, 1, 0, GameSettings.DEFAULT_WAVES), new GameMap(List.of()),
 			List.of(new PlayerSpec(0, "A", false), new PlayerSpec(1, "B", false)));
 		b.tick();
 		b.getPlayer(1).reduceLifePoints(MAX_LIFE_POINTS, 0, DamageCause.BULLET, b.getTick());

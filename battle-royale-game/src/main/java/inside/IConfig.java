@@ -108,7 +108,7 @@ public interface IConfig {
 	 */
 	int AREAS_WIDTH = 10, AREAS_HEIGHT = 10;
 	/**
-	 * Dimensions d'une zone de la grille
+	 * Dimensions d'une case de la grille
 	 * @see IConfig#AREAS_WIDTH
 	 * @see IConfig#AREAS_HEIGHT
 	 */

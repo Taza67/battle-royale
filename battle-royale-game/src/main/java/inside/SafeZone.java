@@ -1,5 +1,6 @@
 package inside;
 
+import static inside.IConfig.*;
 import java.util.List;
 import java.util.Random;
 import java.util.function.Predicate;
@@ -16,13 +17,13 @@ import inside.geometry.Vertice;
  *
  * @see GameSettings.ZoneWave
  */
-public class SafeZone implements IConfig {
+public class SafeZone {
 	/**
 	 * Étapes possibles de la zone
 	 */
 	public enum Stage {
 		/**
-		 * Zone pas encore active (échauffement)
+		 * GridCell pas encore active (échauffement)
 		 */
 		INACTIVE,
 		/**
@@ -69,21 +70,21 @@ public class SafeZone implements IConfig {
 	/**
 	 * Vagues de la zone
 	 */
-	private final List<ZoneWave> WAVES;
+	private final List<ZoneWave> waves;
 	/**
 	 * Générateur aléatoire de la partie
 	 */
-	private final Random RANDOM;
+	private final Random random;
 	/**
 	 * Condition sur le centre de la prochaine zone (par exemple, pas dans un obstacle)
 	 */
-	private final Predicate<Vertice> PREFERRED_CENTER;
+	private final Predicate<Vertice> preferredCenter;
 	/**
 	 * Zone sûre actuelle
 	 */
 	private Rectangle current;
 	/**
-	 * Zone au début du rétrécissement en cours
+	 * GridCell au début du rétrécissement en cours
 	 */
 	private Rectangle start;
 	/**
@@ -116,14 +117,14 @@ public class SafeZone implements IConfig {
 	 * @param preferredCenter Condition sur le centre des prochaines zones (peut être null)
 	 */
 	public SafeZone(Rectangle bounds, List<ZoneWave> waves, Random random, Predicate<Vertice> preferredCenter) {
-		WAVES = List.copyOf(waves);
-		RANDOM = random;
-		PREFERRED_CENTER = preferredCenter;
+		this.waves = List.copyOf(waves);
+		this.random = random;
+		this.preferredCenter = preferredCenter;
 		current = bounds;
 		start = bounds;
 		// La première cible est tirée dès la construction pour que getNext() soit
 		// valable pendant l'échauffement ; start() se contente de l'activer
-		target = WAVES.isEmpty() ? bounds : pickTarget(bounds, WAVES.get(0).targetScale());
+		target = waves.isEmpty() ? bounds : pickTarget(bounds, waves.get(0).targetScale());
 	}
 
 
@@ -154,7 +155,7 @@ public class SafeZone implements IConfig {
 	 * Retourne le nombre de vagues
 	 * @return Nombre de vagues
 	 */
-	public int getWaveCount() { return WAVES.size(); }
+	public int getWaveCount() { return waves.size(); }
 
 	/**
 	 * Retourne le nombre de secondes avant la prochaine étape
@@ -172,7 +173,7 @@ public class SafeZone implements IConfig {
 	 */
 	public int getLavaDamagePerSecond() {
 		if (waveIndex < 0) return 0;
-		return WAVES.get(Math.min(waveIndex, WAVES.size() - 1)).lavaDamagePerSecond();
+		return waves.get(Math.min(waveIndex, waves.size() - 1)).lavaDamagePerSecond();
 	}
 
 	/**
@@ -194,7 +195,7 @@ public class SafeZone implements IConfig {
 		waveIndex = 0;
 		stage = Stage.WAITING;
 		stageTicks = 0;
-		stageDuration = Math.max(1, toTicks(WAVES.get(0).waitSeconds()));
+		stageDuration = Math.max(1, toTicks(waves.get(0).waitSeconds()));
 		// La cible de la première vague a déjà été tirée à la construction
 	}
 
@@ -212,7 +213,7 @@ public class SafeZone implements IConfig {
 			stage = Stage.SHRINKING;
 			start = current;
 			stageTicks = 0;
-			stageDuration = toTicks(WAVES.get(waveIndex).shrinkSeconds());
+			stageDuration = toTicks(waves.get(waveIndex).shrinkSeconds());
 			// Un rétrécissement instantané (0 s) émet quand même SHRINK_STARTED :
 			// il se terminera au pas suivant, la paire d'événements reste équilibrée
 			return Transition.SHRINK_STARTED;
@@ -224,7 +225,7 @@ public class SafeZone implements IConfig {
 		}
 
 		current = target;
-		if (waveIndex + 1 < WAVES.size()) {
+		if (waveIndex + 1 < waves.size()) {
 			waveIndex++;
 			beginWait();
 			return Transition.SHRINK_ENDED;
@@ -238,7 +239,7 @@ public class SafeZone implements IConfig {
 	 * Commence l'attente de la vague en cours et tire la prochaine zone
 	 */
 	private void beginWait() {
-		ZoneWave wave = WAVES.get(waveIndex);
+		ZoneWave wave = waves.get(waveIndex);
 		stage = Stage.WAITING;
 		stageTicks = 0;
 		stageDuration = Math.max(1, toTicks(wave.waitSeconds()));
@@ -247,7 +248,7 @@ public class SafeZone implements IConfig {
 
 	/**
 	 * Tire une zone de la taille demandée à l'intérieur d'une zone
-	 * @param inside Zone englobante
+	 * @param inside GridCell englobante
 	 * @param scale Taille visée, proportionnellement à la carte
 	 * @return Nouvelle zone incluse dans la zone englobante
 	 */
@@ -257,10 +258,10 @@ public class SafeZone implements IConfig {
 		Rectangle candidate = null;
 
 		for (int attempt = 0; attempt < TARGET_ATTEMPTS; attempt++) {
-			float x1 = inside.getX1() + RANDOM.nextFloat() * (inside.getWidth() - w),
-				  y1 = inside.getY1() + RANDOM.nextFloat() * (inside.getHeight() - h);
+			float x1 = inside.getX1() + random.nextFloat() * (inside.getWidth() - w),
+				  y1 = inside.getY1() + random.nextFloat() * (inside.getHeight() - h);
 			candidate = new Rectangle(x1, y1, x1 + w, y1 + h);
-			if (PREFERRED_CENTER == null || PREFERRED_CENTER.test(candidate.getCenter()))
+			if (preferredCenter == null || preferredCenter.test(candidate.getCenter()))
 				break;
 		}
 

@@ -1,9 +1,12 @@
 package inside;
 
+import static inside.IConfig.*;
 import java.util.HashMap;
+import java.util.Map;
 import java.util.Random;
 
 import inside.geometry.Rectangle;
+import inside.geometry.Vertice;
 
 /**
  * Classe pilotant les joueurs contrôlés par l'ordinateur.
@@ -20,7 +23,7 @@ import inside.geometry.Rectangle;
  * </ul>
  * @author mourtaza
  */
-public class BotController implements IConfig {
+public class BotController {
 	/**
 	 * Nombre de pas entre deux décisions d'un robot (≈ cadence de la manette web)
 	 */
@@ -65,6 +68,50 @@ public class BotController implements IConfig {
 	 * Marge gardée à l'intérieur de la zone sûre
 	 */
 	private static final float ZONE_MARGIN = 24;
+	/**
+	 * Fraction de la portée de vision en dessous de laquelle un robot affaibli fuit
+	 */
+	private static final float FLEE_RANGE_FACTOR = 0.6f;
+	/**
+	 * Portée de tir effective retenue par les robots (marge sur la portée réelle)
+	 */
+	private static final float SHOOT_RANGE = BULLET_RANGE * 0.9f;
+	/**
+	 * Portée de contact à l'épée retenue par les robots (marge sur la portée réelle)
+	 */
+	private static final float CONTACT_RANGE = MELEE_RANGE * 0.9f;
+	/**
+	 * Distance au carré sous laquelle un robot est arrivé à son point d'errance (20 px)
+	 */
+	private static final float WANDER_ARRIVAL_SQ = 400;
+	/**
+	 * Déplacement au carré en dessous duquel un robot est considéré bloqué (0,5 px)
+	 */
+	private static final float STUCK_MIN_MOVE_SQ = 0.25f;
+	/**
+	 * Nombre de décisions sans progression avant de déclencher un dégagement
+	 */
+	private static final int STUCK_LIMIT = 8;
+	/**
+	 * Durée d'un dégagement, en pas de simulation
+	 */
+	private static final int ESCAPE_TICKS = TICKS_PER_SECOND / 2;
+	/**
+	 * Durée de base d'une errance, en secondes
+	 */
+	private static final int WANDER_MIN_SECONDS = 2;
+	/**
+	 * Amplitude aléatoire ajoutée à la durée d'errance, en secondes
+	 */
+	private static final int WANDER_SPREAD_SECONDS = 4;
+	/**
+	 * Pression de chasse de base et gain par vague de la zone sûre
+	 */
+	private static final float PRESSURE_BASE = 0.15f, PRESSURE_PER_WAVE = 0.2f;
+	/**
+	 * Champ de perception de base et part modulée par le tempérament
+	 */
+	private static final float PERCEPTION_BASE = 0.35f, PERCEPTION_AGGRESSION = 0.65f;
 
 	/**
 	 * Prénoms des robots
@@ -120,15 +167,15 @@ public class BotController implements IConfig {
 	/**
 	 * Plateau piloté
 	 */
-	private final Board BOARD;
+	private final Board board;
 	/**
 	 * Générateur aléatoire des robots
 	 */
-	private final Random RANDOM;
+	private final Random random;
 	/**
 	 * Mémoire de chaque robot
 	 */
-	private final java.util.Map<Integer, Memory> MEMORIES = new HashMap<>();
+	private final Map<Integer, Memory> memories = new HashMap<>();
 
 
 	/**
@@ -137,20 +184,20 @@ public class BotController implements IConfig {
 	 * @param seed Graine aléatoire
 	 */
 	public BotController(Board board, long seed) {
-		BOARD = board;
-		RANDOM = new Random(seed ^ 0x5DEECE66DL);
+		this.board = board;
+		random = new Random(seed ^ 0x5DEECE66DL);
 	}
 
 	/**
 	 * Fait décider les robots dont c'est le tour (à appeler avant chaque pas de simulation)
 	 */
 	public void update() {
-		if (BOARD.isOver() || BOARD.isPaused()) return;
+		if (board.isOver() || board.isPaused()) return;
 
-		long now = BOARD.getTick();
-		for (Player bot : BOARD.getPlayers()) {
-			if (!bot.isBot() || !bot.getIsAlive()) continue;
-			if ((now + bot.getID()) % DECISION_TICKS != 0) continue;
+		long now = board.getTick();
+		for (Player bot : board.getPlayers()) {
+			if (!bot.isBot() || !bot.isAlive()) continue;
+			if ((now + bot.getId()) % DECISION_TICKS != 0) continue;
 			decide(bot, now);
 		}
 	}
@@ -161,10 +208,10 @@ public class BotController implements IConfig {
 	 * @param now Pas courant
 	 */
 	private void decide(Player bot, long now) {
-		Memory m = MEMORIES.computeIfAbsent(bot.getID(), id -> {
+		Memory m = memories.computeIfAbsent(bot.getId(), id -> {
 			Memory mem = new Memory();
-			mem.turn = RANDOM.nextBoolean() ? 1 : -1;
-			mem.aggression = 0.2f + 0.8f * RANDOM.nextFloat();
+			mem.turn = random.nextBoolean() ? 1 : -1;
+			mem.aggression = 0.2f + 0.8f * random.nextFloat();
 			mem.lastX = bot.getX();
 			mem.lastY = bot.getY();
 			return mem;
@@ -176,9 +223,9 @@ public class BotController implements IConfig {
 			return;
 		}
 
-		SafeZone zone = BOARD.getSafeZone();
+		SafeZone zone = board.getSafeZone();
 		Rectangle safe = safeTarget(zone);
-		boolean battle = BOARD.getPhase() == Phase.BATTLE;
+		boolean battle = board.getPhase() == Phase.BATTLE;
 
 		// 1. Retour dans la zone sûre
 		if (battle && !safe.expand(-ZONE_MARGIN / 2).contains(bot.getX(), bot.getY())) {
@@ -196,32 +243,28 @@ public class BotController implements IConfig {
 		float distance = (float)Math.sqrt(dx * dx + dy * dy);
 
 		// 2. Fuite quand le robot est affaibli
-		if (bot.getLifePoints() < FLEE_LIFE && enemy.getLifePoints() >= bot.getLifePoints() && distance < VISION_RANGE * 0.6f) {
-			float fx = bot.getX() - dx, fy = bot.getY() - dy;
-			if (!safe.expand(-ZONE_MARGIN).contains(fx, fy)) {
-				fx = safe.getCenterX();
-				fy = safe.getCenterY();
-			}
-			goTo(bot, m, fx, fy, 4);
+		if (bot.getLifePoints() < FLEE_LIFE && enemy.getLifePoints() >= bot.getLifePoints() && distance < VISION_RANGE * FLEE_RANGE_FACTOR) {
+			Vertice fallback = fallBackInside(safe, bot.getX() - dx, bot.getY() - dy);
+			goTo(bot, m, fallback.getX(), fallback.getY(), 4);
 			tryShoot(bot, dx, dy, distance);
 			return;
 		}
 
-		boolean finish = enemy.getLifePoints() < bot.getLifePoints() || BOARD.getAliveCount() <= HUNT_ALIVE;
+		boolean finish = enemy.getLifePoints() < bot.getLifePoints() || board.getAliveCount() <= HUNT_ALIVE;
 
 		// 3. Les tireurs gardent leurs distances et cherchent l'alignement
-		if (m.aggression < MARKSMAN_AGGRESSION && !finish && distance > MELEE_RANGE * 0.9f) {
+		if (m.aggression < MARKSMAN_AGGRESSION && !finish && distance > CONTACT_RANGE) {
 			if (tryShoot(bot, dx, dy, distance)) return;
 			keepDistance(bot, m, safe, dx, dy, distance);
 			return;
 		}
 
 		// 4. Corps à corps
-		if (distance < MELEE_RANGE * 0.9f) {
+		if (distance < CONTACT_RANGE) {
 			int d = Direction.fromVector(dx, dy);
 			m.stuck = 0;
 			move(bot, d, 1);
-			if (bot.getWeapon().canSwing()) BOARD.enqueue(new Command.Attack(bot.getID(), ATTACK_MELEE));
+			if (bot.getWeapon().canSwing()) board.enqueue(new Command.Attack(bot.getId(), ATTACK_MELEE));
 			return;
 		}
 
@@ -251,11 +294,19 @@ public class BotController implements IConfig {
 			tx = bot.getX() + dx;
 			ty = bot.getY();
 		}
-		if (!safe.expand(-ZONE_MARGIN).contains(tx, ty)) {
-			tx = safe.getCenterX();
-			ty = safe.getCenterY();
-		}
-		goTo(bot, m, tx, ty, 3);
+		Vertice target = fallBackInside(safe, tx, ty);
+		goTo(bot, m, target.getX(), target.getY(), 3);
+	}
+
+	/**
+	 * Ramène un point à l'intérieur de la zone sûre : s'il est dehors, vise le centre de la zone
+	 * @param safe Zone sûre visée
+	 * @param x Abscisse du point
+	 * @param y Ordonnée du point
+	 * @return Point garanti dans la zone sûre
+	 */
+	private static Vertice fallBackInside(Rectangle safe, float x, float y) {
+		return safe.expand(-ZONE_MARGIN).contains(x, y) ? new Vertice(x, y) : safe.getCenter();
 	}
 
 	/**
@@ -267,15 +318,15 @@ public class BotController implements IConfig {
 	 * @return true si un tir a été commandé
 	 */
 	private boolean tryShoot(Player bot, float dx, float dy, float distance) {
-		if (!bot.getWeapon().canShoot() || distance > BULLET_RANGE * 0.9f) return false;
-		if (RANDOM.nextFloat() > SHOOT_PROBABILITY) return false;
+		if (!bot.getWeapon().canShoot() || distance > SHOOT_RANGE) return false;
+		if (random.nextFloat() > SHOOT_PROBABILITY) return false;
 
 		int d = Direction.fromVector(dx, dy);
 		if (d < 0 || Direction.angleTo(d, dx, dy) > SHOOT_TOLERANCE) return false;
-		if (!BOARD.getMap().hasLineOfSight(bot.getX(), bot.getY(), bot.getX() + dx, bot.getY() + dy)) return false;
+		if (!board.getMap().hasLineOfSight(bot.getX(), bot.getY(), bot.getX() + dx, bot.getY() + dy)) return false;
 
 		move(bot, d, 1);
-		BOARD.enqueue(new Command.Attack(bot.getID(), ATTACK_SHOOT));
+		board.enqueue(new Command.Attack(bot.getId(), ATTACK_SHOOT));
 		return true;
 	}
 
@@ -288,12 +339,12 @@ public class BotController implements IConfig {
 	 */
 	private void wander(Player bot, Memory m, long now, Rectangle safe) {
 		float dx = m.wanderX - bot.getX(), dy = m.wanderY - bot.getY();
-		if (now >= m.wanderUntil || dx * dx + dy * dy < 400 || !safe.contains(m.wanderX, m.wanderY)) {
+		if (now >= m.wanderUntil || dx * dx + dy * dy < WANDER_ARRIVAL_SQ || !safe.contains(m.wanderX, m.wanderY)) {
 			Rectangle area = safe.expand(-ZONE_MARGIN);
 			if (area.getWidth() <= 0 || area.getHeight() <= 0) area = safe;
-			m.wanderX = area.getX1() + RANDOM.nextFloat() * area.getWidth();
-			m.wanderY = area.getY1() + RANDOM.nextFloat() * area.getHeight();
-			m.wanderUntil = now + TICKS_PER_SECOND * (2 + RANDOM.nextInt(4));
+			m.wanderX = area.getX1() + random.nextFloat() * area.getWidth();
+			m.wanderY = area.getY1() + random.nextFloat() * area.getHeight();
+			m.wanderUntil = now + TICKS_PER_SECOND * (WANDER_MIN_SECONDS + random.nextInt(WANDER_SPREAD_SECONDS));
 		}
 		goTo(bot, m, m.wanderX, m.wanderY, 2);
 	}
@@ -309,7 +360,7 @@ public class BotController implements IConfig {
 	private void goTo(Player bot, Memory m, float tx, float ty, int speed) {
 		int wanted = Direction.fromVector(tx - bot.getX(), ty - bot.getY());
 		if (wanted < 0) {
-			BOARD.enqueue(new Command.Move(bot.getID(), 0, 0));
+			board.enqueue(new Command.Move(bot.getId(), 0, 0));
 			return;
 		}
 
@@ -335,7 +386,7 @@ public class BotController implements IConfig {
 	private boolean isClear(Player bot, int d) {
 		float nx = bot.getX() + Direction.dx(d) * LOOK_AHEAD, ny = bot.getY() + Direction.dy(d) * LOOK_AHEAD;
 		Rectangle r = bot.getRepresentationAt(nx, ny);
-		return BOARD.getMap().getBounds().contain(r) && BOARD.getMap().isFree(r);
+		return board.getMap().getBounds().contain(r) && board.getMap().isFree(r);
 	}
 
 	/**
@@ -350,21 +401,21 @@ public class BotController implements IConfig {
 		m.lastX = bot.getX();
 		m.lastY = bot.getY();
 
-		if (!wantsToMove || dx * dx + dy * dy > 0.25f) {
+		if (!wantsToMove || dx * dx + dy * dy > STUCK_MIN_MOVE_SQ) {
 			m.stuck = 0;
 			return;
 		}
 
-		if (++m.stuck < 8) return;
+		if (++m.stuck < STUCK_LIMIT) return;
 		m.stuck = 0;
 		m.turn = -m.turn;
 
-		int start = RANDOM.nextInt(DIRECTIONS_NUMBER);
+		int start = random.nextInt(DIRECTIONS_NUMBER);
 		for (int k = 0; k < DIRECTIONS_NUMBER; k++) {
 			int d = Direction.rotate(start, k);
 			if (isClear(bot, d)) {
 				m.escapeDirection = d;
-				m.escapeUntil = now + TICKS_PER_SECOND / 2;
+				m.escapeUntil = now + ESCAPE_TICKS;
 				return;
 			}
 		}
@@ -390,12 +441,12 @@ public class BotController implements IConfig {
 	 */
 	private Player target(Player bot, Memory m, long now) {
 		if (now - bot.getLastHitTick() < RETALIATION_TICKS && bot.getLastAttacker() >= 0) {
-			Player attacker = BOARD.getPlayer(bot.getLastAttacker());
-			if (attacker != null && attacker.getIsAlive()) return attacker;
+			Player attacker = board.getPlayer(bot.getLastAttacker());
+			if (attacker != null && attacker.isAlive()) return attacker;
 		}
 		// Les robots sont d'abord prudents, puis de plus en plus agressifs à mesure que la zone se resserre
-		float pressure = Math.min(1, 0.15f + 0.2f * BOARD.getSafeZone().getWaveIndex());
-		return nearestEnemy(bot, VISION_RANGE * pressure * (0.35f + 0.65f * m.aggression));
+		float pressure = Math.min(1, PRESSURE_BASE + PRESSURE_PER_WAVE * board.getSafeZone().getWaveIndex());
+		return nearestEnemy(bot, VISION_RANGE * pressure * (PERCEPTION_BASE + PERCEPTION_AGGRESSION * m.aggression));
 	}
 
 	/**
@@ -406,13 +457,13 @@ public class BotController implements IConfig {
 	 */
 	private Player nearestEnemy(Player bot, float range) {
 		// En fin de partie, les robots traquent les derniers survivants où qu'ils soient
-		boolean hunt = BOARD.getAliveCount() <= HUNT_ALIVE;
+		boolean hunt = board.getAliveCount() <= HUNT_ALIVE;
 		Player best = null;
 		float bestDistance = hunt ? Float.MAX_VALUE : range * range;
-		Iterable<Player> candidates = hunt ? BOARD.getPlayers()
-			: BOARD.getMap().playersNear(Rectangle.centered(bot.getX(), bot.getY(), range, range));
+		Iterable<Player> candidates = hunt ? board.getPlayers()
+			: board.getMap().playersNear(Rectangle.centered(bot.getX(), bot.getY(), range, range));
 		for (Player p : candidates) {
-			if (p == bot || !p.getIsAlive()) continue;
+			if (p == bot || !p.isAlive()) continue;
 			float dx = p.getX() - bot.getX(), dy = p.getY() - bot.getY();
 			float d = dx * dx + dy * dy;
 			if (d < bestDistance) {
@@ -430,6 +481,6 @@ public class BotController implements IConfig {
 	 * @param speed Niveau de vitesse
 	 */
 	private void move(Player bot, int d, int speed) {
-		if (d >= 0) BOARD.enqueue(new Command.Move(bot.getID(), d, speed));
+		if (d >= 0) board.enqueue(new Command.Move(bot.getId(), d, speed));
 	}
 }

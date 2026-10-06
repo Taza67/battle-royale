@@ -1,5 +1,6 @@
 package inside;
 
+import static inside.IConfig.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 import org.junit.jupiter.api.Test;
@@ -7,7 +8,7 @@ import org.junit.jupiter.api.Test;
 import inside.geometry.Rectangle;
 import inside.geometry.Vertice;
 
-class GeometryTest implements IConfig {
+class GeometryTest {
 	private static final float EPS = 1e-4f;
 
 	@Test
@@ -61,13 +62,13 @@ class GeometryTest implements IConfig {
 
 	@Test
 	void grilleBorneeAuxBordsDeLaCarte() {
-		assertEquals(0, Map.columnOf(-5));
-		assertEquals(AREAS_WIDTH - 1, Map.columnOf(MAP_WIDTH));
-		assertEquals(AREAS_WIDTH - 1, Map.columnOf(MAP_WIDTH + 100));
-		assertEquals(0, Map.rowOf(-0.1f));
-		assertEquals(AREAS_HEIGHT - 1, Map.rowOf(MAP_HEIGHT));
+		assertEquals(0, GameMap.columnOf(-5));
+		assertEquals(AREAS_WIDTH - 1, GameMap.columnOf(MAP_WIDTH));
+		assertEquals(AREAS_WIDTH - 1, GameMap.columnOf(MAP_WIDTH + 100));
+		assertEquals(0, GameMap.rowOf(-0.1f));
+		assertEquals(AREAS_HEIGHT - 1, GameMap.rowOf(MAP_HEIGHT));
 
-		Map map = new Map(java.util.List.of());
+		GameMap map = new GameMap(java.util.List.of());
 		assertNotNull(map.getAreaAt(MAP_WIDTH, MAP_HEIGHT));
 		assertNotNull(map.getAreaAt(0, 0));
 		assertFalse(map.areasOverlapping(new Rectangle(-50, -50, MAP_WIDTH + 50, MAP_HEIGHT + 50)).isEmpty());

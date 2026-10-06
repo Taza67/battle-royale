@@ -1,5 +1,8 @@
 package inside;
 
+import static inside.IConfig.*;
+import static inside.Clamps.clamp;
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -10,14 +13,14 @@ import inside.geometry.Rectangle;
 import inside.geometry.Vertice;
 
 /**
- * Classe représentant la carte du jeu : ses limites, ses obstacles et la grille de zones
+ * Classe représentant la carte du jeu : ses limites, ses obstacles et la grille de cases
  * qui accélère la recherche des éléments proches
  * @author mourtaza
  *
- * @see Zone
+ * @see GridCell
  * @see Obstacle
  */
-public class Map implements IConfig {
+public class GameMap {
 	/**
 	 * Marge laissée entre les obstacles générés et le bord de la carte
 	 */
@@ -26,37 +29,53 @@ public class Map implements IConfig {
 	 * Nombre maximal d'essais pour placer un élément aléatoirement
 	 */
 	private static final int MAX_ATTEMPTS = 400;
+	/**
+	 * Nombre d'essais pour placer un obstacle généré
+	 */
+	private static final int OBSTACLE_ATTEMPTS = MAX_ATTEMPTS / 4;
+	/**
+	 * Pas des sondes de ligne de vue, en pixels
+	 */
+	private static final float LINE_OF_SIGHT_STEP = 6;
+	/**
+	 * Pas de la recherche exhaustive d'emplacement libre, en pixels
+	 */
+	private static final float FALLBACK_SEARCH_STEP = 4;
+	/**
+	 * Probabilités cumulées des types d'obstacle générés (forêt fréquente, rocher courant, eau rare)
+	 */
+	private static final float FOREST_PROBABILITY = 0.4f, ROCK_PROBABILITY = 0.75f;
 
 	/**
 	 * Rectangle représentant les limites de la carte
 	 */
-	private final Rectangle BOUNDS;
+	private final Rectangle bounds;
 	/**
 	 * Obstacles de la carte
 	 */
-	private final List<Obstacle> OBSTACLES;
+	private final List<Obstacle> obstacles;
 	/**
-	 * Grille de zones, indexée par [ligne][colonne]
+	 * Grille de cases, indexée par [ligne][colonne]
 	 */
-	private final Zone[][] AREAS;
+	private final GridCell[][] cells;
 
 
 	/**
 	 * Construit une carte avec les obstacles donnés
 	 * @param obstacles Obstacles de la carte
 	 */
-	public Map(List<Obstacle> obstacles) {
-		BOUNDS = new Rectangle(0, 0, MAP_WIDTH, MAP_HEIGHT);
-		OBSTACLES = new ArrayList<>(obstacles);
-		AREAS = new Zone[AREAS_HEIGHT][AREAS_WIDTH];
+	public GameMap(List<Obstacle> obstacles) {
+		bounds = new Rectangle(0, 0, MAP_WIDTH, MAP_HEIGHT);
+		this.obstacles = new ArrayList<>(obstacles);
+		cells = new GridCell[AREAS_HEIGHT][AREAS_WIDTH];
 
 		for (int i = 0; i < AREAS_HEIGHT; i++)
 			for (int j = 0; j < AREAS_WIDTH; j++)
-				AREAS[i][j] = new Zone(j, i);
+				cells[i][j] = new GridCell(j, i);
 
-		for (Obstacle o : OBSTACLES)
-			for (Zone z : areasOverlapping(o.getRepresentation()))
-				z.addObstacle(o);
+		for (Obstacle o : obstacles)
+			for (GridCell cell : areasOverlapping(o.getRepresentation()))
+				cell.addObstacle(o);
 	}
 
 	/**
@@ -65,11 +84,11 @@ public class Map implements IConfig {
 	 * @param obstaclesNumber Nombre d'obstacles souhaité
 	 * @return Nouvelle carte
 	 */
-	public static Map generate(Random random, int obstaclesNumber) {
+	public static GameMap generate(Random random, int obstaclesNumber) {
 		List<Obstacle> obstacles = new ArrayList<>();
 
 		for (int i = 0; i < obstaclesNumber; i++) {
-			for (int attempt = 0; attempt < MAX_ATTEMPTS / 4; attempt++) {
+			for (int attempt = 0; attempt < OBSTACLE_ATTEMPTS; attempt++) {
 				Obstacle.TypeObstacle type = randomType(random);
 				Obstacle candidate = Obstacle.random(type, random, 0, 0);
 				float rx = candidate.getRadiusX(), ry = candidate.getRadiusY();
@@ -93,7 +112,7 @@ public class Map implements IConfig {
 			}
 		}
 
-		return new Map(obstacles);
+		return new GameMap(obstacles);
 	}
 
 	/**
@@ -103,8 +122,8 @@ public class Map implements IConfig {
 	 */
 	private static Obstacle.TypeObstacle randomType(Random random) {
 		float r = random.nextFloat();
-		if (r < 0.4f) return Obstacle.TypeObstacle.FORET;
-		if (r < 0.75f) return Obstacle.TypeObstacle.ROCHER;
+		if (r < FOREST_PROBABILITY) return Obstacle.TypeObstacle.FORET;
+		if (r < ROCK_PROBABILITY) return Obstacle.TypeObstacle.ROCHER;
 		return Obstacle.TypeObstacle.EAU;
 	}
 
@@ -113,30 +132,30 @@ public class Map implements IConfig {
 	 * Retourne les limites de la carte
 	 * @return Rectangle de la carte
 	 */
-	public Rectangle getBounds() { return BOUNDS; }
+	public Rectangle getBounds() { return bounds; }
 	/**
 	 * Retourne les obstacles de la carte
 	 * @return Liste non modifiable
 	 */
-	public List<Obstacle> getOBSTACLES() { return Collections.unmodifiableList(OBSTACLES); }
+	public List<Obstacle> getObstacles() { return Collections.unmodifiableList(obstacles); }
 
 	/**
-	 * Retourne une zone de la grille ; les indices hors limites sont ramenés sur le bord
+	 * Retourne une case de la grille ; les indices hors limites sont ramenés sur le bord
 	 * @param i Ligne
 	 * @param j Colonne
-	 * @return Zone
+	 * @return GridCell
 	 */
-	public Zone getArea(int i, int j) {
-		return AREAS[clamp(i, AREAS_HEIGHT)][clamp(j, AREAS_WIDTH)];
+	public GridCell getArea(int i, int j) {
+		return cells[clamp(i, 0, AREAS_HEIGHT - 1)][clamp(j, 0, AREAS_WIDTH - 1)];
 	}
 
 	/**
-	 * Retourne la zone contenant un point (les points hors de la carte donnent la zone du bord la plus proche)
+	 * Retourne la case contenant un point (les points hors de la carte donnent la case du bord la plus proche)
 	 * @param x Abscisse
 	 * @param y Ordonnée
-	 * @return Zone
+	 * @return GridCell
 	 */
-	public Zone getAreaAt(float x, float y) {
+	public GridCell getAreaAt(float x, float y) {
 		return getArea(rowOf(y), columnOf(x));
 	}
 
@@ -146,7 +165,7 @@ public class Map implements IConfig {
 	 * @return Colonne, entre 0 et AREAS_WIDTH - 1
 	 */
 	public static int columnOf(float x) {
-		return clamp((int)Math.floor(x / ONE_ZONE_WIDTH), AREAS_WIDTH);
+		return clamp((int)Math.floor(x / ONE_ZONE_WIDTH), 0, AREAS_WIDTH - 1);
 	}
 
 	/**
@@ -155,17 +174,7 @@ public class Map implements IConfig {
 	 * @return Ligne, entre 0 et AREAS_HEIGHT - 1
 	 */
 	public static int rowOf(float y) {
-		return clamp((int)Math.floor(y / ONE_ZONE_HEIGHT), AREAS_HEIGHT);
-	}
-
-	/**
-	 * Ramène un indice dans [0, size - 1]
-	 * @param v Indice
-	 * @param size Taille
-	 * @return Indice borné
-	 */
-	private static int clamp(int v, int size) {
-		return Math.max(0, Math.min(size - 1, v));
+		return clamp((int)Math.floor(y / ONE_ZONE_HEIGHT), 0, AREAS_HEIGHT - 1);
 	}
 
 	/**
@@ -173,16 +182,16 @@ public class Map implements IConfig {
 	 * @param r Rectangle
 	 * @return Liste des zones
 	 */
-	public List<Zone> areasOverlapping(Rectangle r) {
-		List<Zone> zones = new ArrayList<>();
+	public List<GridCell> areasOverlapping(Rectangle r) {
+		List<GridCell> areas = new ArrayList<>();
 		int c1 = columnOf(r.getX1()), c2 = columnOf(r.getX2()),
 			r1 = rowOf(r.getY1()), r2 = rowOf(r.getY2());
 
 		for (int i = r1; i <= r2; i++)
 			for (int j = c1; j <= c2; j++)
-				zones.add(AREAS[i][j]);
+				areas.add(cells[i][j]);
 
-		return zones;
+		return areas;
 	}
 
 	/**
@@ -192,9 +201,9 @@ public class Map implements IConfig {
 	 * @return Obstacle trouvé ou null
 	 */
 	public Obstacle obstacleIntersecting(Rectangle r, boolean bulletBlockersOnly) {
-		for (Zone z : areasOverlapping(r))
-			for (Obstacle o : z.getOBSTACLES())
-				if ((!bulletBlockersOnly || o.getTYPE().blocksBullets()) && o.getRepresentation().intersect(r))
+		for (GridCell cell : areasOverlapping(r))
+			for (Obstacle o : cell.getObstacles())
+				if ((!bulletBlockersOnly || o.getType().blocksBullets()) && o.getRepresentation().intersect(r))
 					return o;
 
 		return null;
@@ -206,7 +215,7 @@ public class Map implements IConfig {
 	 * @return true si l'emplacement est libre
 	 */
 	public boolean isFree(Rectangle r) {
-		return BOUNDS.contain(r) && obstacleIntersecting(r, false) == null;
+		return bounds.contain(r) && obstacleIntersecting(r, false) == null;
 	}
 
 	/**
@@ -220,7 +229,7 @@ public class Map implements IConfig {
 	public boolean hasLineOfSight(float x1, float y1, float x2, float y2) {
 		float dx = x2 - x1, dy = y2 - y1;
 		float length = (float)Math.sqrt(dx * dx + dy * dy);
-		int steps = Math.max(1, (int)Math.ceil(length / 6f));
+		int steps = Math.max(1, (int)Math.ceil(length / LINE_OF_SIGHT_STEP));
 
 		for (int s = 0; s <= steps; s++) {
 			float t = s / (float)steps;
@@ -239,8 +248,8 @@ public class Map implements IConfig {
 	 */
 	public List<Player> playersNear(Rectangle r) {
 		List<Player> players = new ArrayList<>();
-		for (Zone z : areasOverlapping(r))
-			players.addAll(z.getPLAYERS());
+		for (GridCell cell : areasOverlapping(r))
+			players.addAll(cell.getPlayers());
 		return players;
 	}
 
@@ -249,8 +258,8 @@ public class Map implements IConfig {
 	 * @param p Joueur
 	 */
 	void updatePlayerArea(Player p) {
-		Zone target = getAreaAt(p.getX(), p.getY());
-		Zone current = p.getZone();
+		GridCell target = getAreaAt(p.getX(), p.getY());
+		GridCell current = p.getZone();
 
 		if (current == target) return;
 		if (current != null) current.deletePlayer(p);
@@ -300,8 +309,8 @@ public class Map implements IConfig {
 		if (best != null) return best;
 
 		// Recherche exhaustive sur une grille fine, bornée à la zone demandée
-		for (float y = searchArea.getY1(); y <= searchArea.getY2(); y += 4)
-			for (float x = searchArea.getX1(); x <= searchArea.getX2(); x += 4) {
+		for (float y = searchArea.getY1(); y <= searchArea.getY2(); y += FALLBACK_SEARCH_STEP)
+			for (float x = searchArea.getX1(); x <= searchArea.getX2(); x += FALLBACK_SEARCH_STEP) {
 				Rectangle r = Rectangle.centered(x, y, radiusX, radiusY);
 				if (!isFree(r)) continue;
 

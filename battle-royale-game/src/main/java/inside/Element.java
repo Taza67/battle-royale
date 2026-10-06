@@ -1,5 +1,6 @@
 package inside;
 
+import static inside.IConfig.*;
 import inside.geometry.Rectangle;
 import inside.geometry.Vertice;
 
@@ -9,7 +10,7 @@ import inside.geometry.Vertice;
  *
  * @see IConfig
  */
-public abstract class Element implements IConfig {
+public abstract class Element {
 	/**
 	 * Position du centre de l'élément
 	 */

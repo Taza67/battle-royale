@@ -1,5 +1,6 @@
 package inside;
 
+import static inside.IConfig.*;
 import static inside.Boards.*;
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -10,7 +11,7 @@ import org.junit.jupiter.api.Test;
 import inside.Obstacle.TypeObstacle;
 import inside.geometry.Rectangle;
 
-class MovementTest implements IConfig {
+class MovementTest {
 	private static final float FULL_SPEED = Player.pixelsPerSecond(MAX_SPEED_LEVEL);
 
 	@Test
@@ -74,7 +75,7 @@ class MovementTest implements IConfig {
 	@Test
 	void glissementLeLongDUnObstacle() {
 		Rectangle rock = new Rectangle(330, 250, 380, 470);
-		Board b = on(new Map(List.of(new Obstacle(TypeObstacle.ROCHER, rock))), 1, NO_BATTLE);
+		Board b = on(new GameMap(List.of(new Obstacle(TypeObstacle.ROCHER, rock))), 1, NO_BATTLE);
 		b.teleport(0, 315, 360);
 		hold(b, 0, NORTH_EAST, MAX_SPEED_LEVEL, 30);
 
@@ -87,7 +88,7 @@ class MovementTest implements IConfig {
 	@Test
 	void lEauBloqueAussiLesJoueurs() {
 		Rectangle water = new Rectangle(330, 250, 380, 470);
-		Board b = on(new Map(List.of(new Obstacle(TypeObstacle.EAU, water))), 1, NO_BATTLE);
+		Board b = on(new GameMap(List.of(new Obstacle(TypeObstacle.EAU, water))), 1, NO_BATTLE);
 		b.teleport(0, 300, 360);
 		hold(b, 0, EAST, MAX_SPEED_LEVEL, 30);
 		assertEquals(water.getX1() - PLAYER_RADIUS_X, b.getPlayer(0).getX(), 1e-3f);
@@ -143,7 +144,7 @@ class MovementTest implements IConfig {
 					assertTrue(b.getMap().isFree(p.getRepresentation()), "joueur dans un obstacle (graine " + seed + ")");
 					for (Player q : players)
 						if (p != q) assertFalse(p.getRepresentation().intersect(q.getRepresentation()),
-							n + " joueurs, graine " + seed + " : " + p.getID() + " chevauche " + q.getID());
+							n + " joueurs, graine " + seed + " : " + p.getId() + " chevauche " + q.getId());
 				}
 			}
 		}
@@ -157,10 +158,10 @@ class MovementTest implements IConfig {
 				float x = p.getX(), y = p.getY();
 				boolean moved = false;
 				for (int d = 0; d < 8 && !moved; d += 2) {
-					hold(b, p.getID(), d, MAX_SPEED_LEVEL, 3);
+					hold(b, p.getId(), d, MAX_SPEED_LEVEL, 3);
 					moved = p.getX() != x || p.getY() != y;
 				}
-				assertTrue(moved, "joueur " + p.getID() + " bloqué dans toutes les directions (graine " + seed + ")");
+				assertTrue(moved, "joueur " + p.getId() + " bloqué dans toutes les directions (graine " + seed + ")");
 			}
 		}
 	}

@@ -1,5 +1,6 @@
 package outside;
 
+import static inside.IConfig.*;
 import inside.Board;
 import inside.Command;
 import inside.IConfig;
@@ -9,7 +10,7 @@ import inside.IConfig;
  * Les touches maintenues donnent un déplacement continu ; relâcher toutes les flèches arrête le joueur.
  * @author mourtaza
  */
-public class KeyboardInput implements IConfig {
+public class KeyboardInput {
 	/**
 	 * État des touches utiles
 	 * @param up Haut

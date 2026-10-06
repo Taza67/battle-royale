@@ -1,5 +1,6 @@
 package outside;
 
+import static inside.IConfig.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.io.BufferedReader;
@@ -18,7 +19,7 @@ import inside.IConfig;
 import outside.communication.NetworkUtilities;
 import outside.graphic.Viewport;
 
-class LaunchOptionsTest implements IConfig {
+class LaunchOptionsTest {
 
 	@Test
 	void valeursParDefaut() {

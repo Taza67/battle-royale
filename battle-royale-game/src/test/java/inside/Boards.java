@@ -1,5 +1,6 @@
 package inside;
 
+import static inside.IConfig.*;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -9,7 +10,7 @@ import inside.GameSettings.ZoneWave;
 /**
  * Outils de préparation des plateaux pour les tests
  */
-final class Boards implements IConfig {
+final class Boards {
 	/**
 	 * Zone qui ne bouge pas pendant les tests (attente très longue)
 	 */
@@ -30,7 +31,7 @@ final class Boards implements IConfig {
 	 * @return Plateau
 	 */
 	static Board empty(int players, float warmupSeconds) {
-		return on(new Map(List.of()), players, warmupSeconds);
+		return on(new GameMap(List.of()), players, warmupSeconds);
 	}
 
 	/**
@@ -40,7 +41,7 @@ final class Boards implements IConfig {
 	 * @param warmupSeconds Durée de l'échauffement
 	 * @return Plateau
 	 */
-	static Board on(Map map, int players, float warmupSeconds) {
+	static Board on(GameMap map, int players, float warmupSeconds) {
 		return new Board(new GameSettings(warmupSeconds, 42, 0, STILL_ZONE), map, specs(players));
 	}
 

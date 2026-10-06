@@ -1,5 +1,8 @@
 package inside;
 
+import static inside.Clamps.clamp;
+
+import static inside.IConfig.*;
 /**
  * Classe représentant un joueur sur le plateau de jeu
  * @author mourtaza
@@ -15,19 +18,19 @@ public class Player extends Element {
 	/**
 	 * Identifiant du joueur
 	 */
-	private final int ID;
+	private final int id;
 	/**
 	 * Pseudo du joueur
 	 */
-	private final String PSEUDO;
+	private final String pseudo;
 	/**
 	 * Indique si le joueur est contrôlé par l'ordinateur
 	 */
-	private final boolean BOT;
+	private final boolean bot;
 	/**
 	 * Équipement du joueur
 	 */
-	private final Weapon WEAPON;
+	private final Weapon weapon;
 	/**
 	 * Points de vie du joueur
 	 */
@@ -97,9 +100,9 @@ public class Player extends Element {
 	 */
 	private long eliminationTick = -1;
 	/**
-	 * Zone de la grille dans laquelle est référencé le joueur
+	 * Case de la grille dans laquelle est référencé le joueur
 	 */
-	private Zone zone;
+	private GridCell zone;
 
 
 	/**
@@ -112,10 +115,10 @@ public class Player extends Element {
 	 */
 	public Player(int id, String pseudo, boolean bot, float x, float y) {
 		super(x, y, PLAYER_RADIUS_X, PLAYER_RADIUS_Y);
-		ID = id;
-		PSEUDO = pseudo;
-		BOT = bot;
-		WEAPON = new Weapon();
+		this.id = id;
+		this.pseudo = pseudo;
+		this.bot = bot;
+		weapon = new Weapon();
 		lifePoints = MAX_LIFE_POINTS;
 		isAlive = true;
 		viewDirection = (x > MAP_WIDTH / 2f) ? WEST : EAST;
@@ -129,29 +132,29 @@ public class Player extends Element {
 	 * @return Vitesse en pixels par seconde
 	 */
 	public static float pixelsPerSecond(int speed) {
-		return SPEEDS[Math.max(0, Math.min(MAX_SPEED_LEVEL, speed))];
+		return SPEEDS[clamp(speed, 0, MAX_SPEED_LEVEL)];
 	}
 
 	/**
 	 * Retourne l'identifiant du joueur
 	 * @return Identifiant
 	 */
-	public int getID() { return ID; }
+	public int getId() { return id; }
 	/**
 	 * Retourne le pseudo du joueur
 	 * @return Pseudo
 	 */
-	public String getPseudo() { return PSEUDO; }
+	public String getPseudo() { return pseudo; }
 	/**
 	 * Indique si le joueur est contrôlé par l'ordinateur
 	 * @return true pour un bot
 	 */
-	public boolean isBot() { return BOT; }
+	public boolean isBot() { return bot; }
 	/**
 	 * Retourne l'équipement du joueur
 	 * @return Équipement
 	 */
-	public Weapon getWeapon() { return WEAPON; }
+	public Weapon getWeapon() { return weapon; }
 	/**
 	 * Retourne les points de vie du joueur
 	 * @return Points de vie
@@ -161,7 +164,7 @@ public class Player extends Element {
 	 * Indique si le joueur est en vie
 	 * @return true si le joueur est en vie
 	 */
-	public boolean getIsAlive() { return isAlive; }
+	public boolean isAlive() { return isAlive; }
 	/**
 	 * Retourne la direction du regard
 	 * @return Direction (0 à 7)
@@ -229,16 +232,16 @@ public class Player extends Element {
 	 */
 	public long getEliminationTick() { return eliminationTick; }
 	/**
-	 * Retourne la zone de la grille du joueur
-	 * @return Zone
+	 * Retourne la case de la grille du joueur
+	 * @return GridCell
 	 */
-	public Zone getZone() { return zone; }
+	public GridCell getZone() { return zone; }
 
 	/**
-	 * Change la zone de la grille du joueur
+	 * Change la case de la grille du joueur
 	 * @param z Nouvelle zone
 	 */
-	void setZone(Zone z) { zone = z; }
+	void setZone(GridCell z) { zone = z; }
 	/**
 	 * Change le classement final
 	 * @param r Classement
@@ -264,7 +267,7 @@ public class Player extends Element {
 	 */
 	public void setMoveIntent(int direction, int speed, long now) {
 		if (!isAlive || !Direction.isValid(direction)) return;
-		moveSpeed = Math.max(0, Math.min(MAX_SPEED_LEVEL, speed));
+		moveSpeed = clamp(speed, 0, MAX_SPEED_LEVEL);
 		if (moveSpeed > 0) {
 			moveDirection = direction;
 			viewDirection = direction;
@@ -314,7 +317,7 @@ public class Player extends Element {
 		lifePoints -= applied;
 		lastDamageCause = cause;
 		lastHitTick = now;
-		if (attackerId >= 0 && attackerId != ID) {
+		if (attackerId >= 0 && attackerId != id) {
 			lastAttacker = attackerId;
 			lastAttackTick = now;
 		}
@@ -363,11 +366,11 @@ public class Player extends Element {
 		eliminationOrder = order;
 		rank = finalRank;
 		eliminationTick = now;
-		WEAPON.cancelSwing();
+		weapon.cancelSwing();
 	}
 
 	@Override
 	public String toString() {
-		return "Joueur N°" + ID + " (" + PSEUDO + ") - Position (" + x + ", " + y + ") - Vie " + lifePoints;
+		return "Joueur N°" + id + " (" + pseudo + ") - Position (" + x + ", " + y + ") - Vie " + lifePoints;
 	}
 }

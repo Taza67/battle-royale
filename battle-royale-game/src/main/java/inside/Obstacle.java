@@ -1,5 +1,6 @@
 package inside;
 
+import static inside.IConfig.*;
 import java.util.Random;
 
 import inside.geometry.Rectangle;
@@ -26,11 +27,11 @@ public class Obstacle extends Element {
 		/**
 		 * Numéro de texture associée à l'obstacle
 		 */
-		private final int TEXTURE_NUMBER;
+		private final int textureNumber;
 		/**
 		 * Indique si l'obstacle arrête les balles
 		 */
-		private final boolean BLOCKS_BULLETS;
+		private final boolean blocksBullets;
 
 		/**
 		 * Construit une instance de type d'obstacle
@@ -38,21 +39,21 @@ public class Obstacle extends Element {
 		 * @param blocksBullets true si l'obstacle arrête les balles
 		 */
 		TypeObstacle(int texNum, boolean blocksBullets) {
-			TEXTURE_NUMBER = texNum;
-			BLOCKS_BULLETS = blocksBullets;
+			textureNumber = texNum;
+			this.blocksBullets = blocksBullets;
 		}
 
 		/**
 		 * Retourne le numéro de texture
 		 * @return Numéro de texture
 		 */
-		public int getTEXTURE_NUMBER() { return TEXTURE_NUMBER; }
+		public int getTextureNumber() { return textureNumber; }
 
 		/**
 		 * Indique si l'obstacle arrête les balles
 		 * @return true si les balles sont détruites à son contact
 		 */
-		public boolean blocksBullets() { return BLOCKS_BULLETS; }
+		public boolean blocksBullets() { return blocksBullets; }
 
 		/**
 		 * Retourne un type d'obstacle aléatoire
@@ -68,7 +69,7 @@ public class Obstacle extends Element {
 	 * Type de l'obstacle
 	 * @see TypeObstacle
 	 */
-	private final TypeObstacle TYPE;
+	private final TypeObstacle type;
 
 
 	/**
@@ -81,7 +82,7 @@ public class Obstacle extends Element {
 	 */
 	public Obstacle(TypeObstacle t, float x, float y, float radiusX, float radiusY) {
 		super(x, y, radiusX, radiusY);
-		TYPE = t;
+		type = t;
 	}
 
 	/**
@@ -138,11 +139,11 @@ public class Obstacle extends Element {
 	 * Retourne le type de l'obstacle
 	 * @return Type de l'obstacle
 	 */
-	public TypeObstacle getTYPE() { return TYPE; }
+	public TypeObstacle getType() { return type; }
 
 	/**
 	 * Retourne le numéro de texture de l'obstacle
 	 * @return Numéro de texture
 	 */
-	public int getTextureNumber() { return TYPE.getTEXTURE_NUMBER(); }
+	public int getTextureNumber() { return type.getTextureNumber(); }
 }

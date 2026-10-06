@@ -10,7 +10,7 @@ import inside.BoardSnapshot.BulletState;
 import inside.BoardSnapshot.PlayerState;
 import inside.Direction;
 import inside.IConfig;
-import inside.Map;
+import inside.GameMap;
 import inside.Obstacle;
 import inside.SafeZone;
 import inside.geometry.Rectangle;
@@ -57,7 +57,7 @@ public class WorldRenderer implements IConfig {
 	 * @param effects Effets à dessiner au-dessus des joueurs
 	 * @param numberFont Police des nombres de dégâts
 	 */
-	public void render(Map map, BoardSnapshot previous, BoardSnapshot current, float alpha, double time, int localId,
+	public void render(GameMap map, BoardSnapshot previous, BoardSnapshot current, float alpha, double time, int localId,
 			Effects effects, Font numberFont) {
 		PREVIOUS_PLAYERS.clear();
 		PREVIOUS_BULLETS.clear();
@@ -67,7 +67,7 @@ public class WorldRenderer implements IConfig {
 		}
 
 		renderGround();
-		if (map != null) renderObstacles(map.getOBSTACLES(), time);
+		if (map != null) renderObstacles(map.getObstacles(), time);
 
 		Rectangle zone = lerp(previous != null ? previous.zone() : current.zone(), current.zone(), alpha);
 		renderLava(zone, time, current);
@@ -108,11 +108,11 @@ public class WorldRenderer implements IConfig {
 		float waterOX = (float)(time * 0.030), waterOY = (float)(time * 0.017);
 		for (int pass = 0; pass < 3; pass++) {
 			for (Obstacle o : obstacles) {
-				int order = switch (o.getTYPE()) { case EAU -> 0; case ROCHER -> 1; case FORET -> 2; };
+				int order = switch (o.getType()) { case EAU -> 0; case ROCHER -> 1; case FORET -> 2; };
 				if (order != pass) continue;
 
 				Rectangle r = o.getRepresentation();
-				if (o.getTYPE() == Obstacle.TypeObstacle.EAU) {
+				if (o.getType() == Obstacle.TypeObstacle.EAU) {
 					// Eau : fond profond, texture en tuiles qui défile lentement, liseré de mousse doux
 					fillRect(r.expand(3), Color.rgb(0x0E2E40).withAlpha(0.9f));
 					tiled(TEXTURES.getWater(), r.getX1(), r.getY1(), r.getX2(), r.getY2(), 60, waterOX, waterOY,
