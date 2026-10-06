@@ -302,8 +302,13 @@ class WebSocketEndToEndTest {
 		}
 		assertEquals(1000, guesser.closed.get(3, TimeUnit.SECONDS));
 
-		Client admin = new Client().send(adminJoin("mauvais")).send(adminJoin(TEST_PASSWORD));
-		assertEquals(GameSession.WRONG_PASSWORD, admin.next("rejected").get("reason").getAsString());
+		// La fenêtre est globale : fermer sa session ne réinitialise pas le compteur
+		Client locked = new Client().send(adminJoin("mauvais"));
+		assertEquals(GameSession.WRONG_PASSWORD, locked.next("rejected").get("reason").getAsString());
+		assertEquals(1000, locked.closed.get(3, TimeUnit.SECONDS));
+
+		// Le bon mot de passe reste accepté
+		Client admin = new Client().send(adminJoin(TEST_PASSWORD));
 		admin.next("admin-welcome");
 	}
 

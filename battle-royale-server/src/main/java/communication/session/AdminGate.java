@@ -2,8 +2,9 @@ package communication.session;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
-import java.util.Map;
-import java.util.WeakHashMap;
+import java.util.ArrayDeque;
+import java.util.Deque;
+import java.util.concurrent.TimeUnit;
 import java.util.logging.Logger;
 
 import communication.message.Json;
@@ -15,13 +16,19 @@ import communication.message.ServerMessage;
  * @author mourtaza
  */
 final class AdminGate {
+	/**
+	 * Durée pendant laquelle un mot de passe erroné compte, en millisecondes
+	 */
+	private static final long ATTEMPTS_WINDOW_MILLIS = TimeUnit.MINUTES.toMillis(10);
+
 	private static final Logger LOGGER = Logger.getLogger(AdminGate.class.getName());
 
 	private final String password;
 	/**
-	 * Mots de passe administrateur erronés par connexion ; les connexions fermées sont oubliées
+	 * Fenêtre glissante des mots de passe administrateur erronés : globale au serveur, pour
+	 * que fermer puis rouvrir une session ne réinitialise pas le compteur
 	 */
-	private final Map<ClientConnection, Integer> wrongPasswords = new WeakHashMap<>();
+	private final Deque<Long> failures = new ArrayDeque<>();
 	private ClientConnection admin;
 
 	/**
@@ -76,7 +83,7 @@ final class AdminGate {
 		if (requiresPassword()) {
 			if (password == null || !MessageDigest.isEqual(
 					password.getBytes(StandardCharsets.UTF_8), this.password.getBytes(StandardCharsets.UTF_8))) {
-				recordFailure(c);
+				recordFailure(c, nowMillis);
 				return false;
 			}
 			ClientConnection previous = admin;
@@ -95,17 +102,22 @@ final class AdminGate {
 	}
 
 	/**
-	 * Compte un mot de passe erroné et ferme la connexion au bout du maximum
+	 * Compte un mot de passe erroné dans la fenêtre glissante et ferme la connexion
+	 * au bout du maximum
 	 * @param c Connexion fautive
+	 * @param nowMillis Instant courant en millisecondes
 	 */
-	private void recordFailure(ClientConnection c) {
-		int attempts = wrongPasswords.merge(c, 1, Integer::sum);
-		LOGGER.warning(() -> "Mot de passe administrateur incorrect (" + c.id() + ", tentative " + attempts + ")");
+	private void recordFailure(ClientConnection c, long nowMillis) {
+		while (!failures.isEmpty() && nowMillis - failures.peekFirst() > ATTEMPTS_WINDOW_MILLIS)
+			failures.pollFirst();
+		failures.addLast(nowMillis);
+		int attempts = failures.size();
+		LOGGER.warning(() -> "Mot de passe administrateur incorrect (" + c.id() + ", "
+			+ attempts + " échec(s) sur la fenêtre)");
 		reject(c, GameSession.WRONG_PASSWORD);
 		if (attempts >= GameSession.MAX_WRONG_PASSWORDS) {
-			wrongPasswords.remove(c);
 			LOGGER.warning(() -> "Session " + c.id() + " fermée après " + attempts
-				+ " mots de passe administrateur incorrects");
+				+ " mots de passe administrateur incorrects sur la fenêtre");
 			c.close(GameSession.TOO_MANY_WRONG_PASSWORDS);
 		}
 	}

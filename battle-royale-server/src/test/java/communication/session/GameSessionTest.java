@@ -217,11 +217,14 @@ class GameSessionTest {
 		assertFalse(guesser.isOpen());
 		assertEquals(GameSession.TOO_MANY_WRONG_PASSWORDS, guesser.closeReason());
 
-		// Le compteur est propre à chaque connexion
+		// La fenêtre est globale : fermer sa session ne réinitialise pas le compteur
 		FakeConnection other = new FakeConnection("other");
 		assertFalse(session.claimAdmin(other, "mauvais"));
-		assertTrue(other.isOpen());
-		assertTrue(session.claimAdmin(other, "s3cret"));
+		assertFalse(other.isOpen());
+		assertEquals(GameSession.TOO_MANY_WRONG_PASSWORDS, other.closeReason());
+		// Le bon mot de passe reste accepté
+		FakeConnection legit = new FakeConnection("legit");
+		assertTrue(session.claimAdmin(legit, "s3cret"));
 	}
 
 	@Test
