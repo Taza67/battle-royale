@@ -57,7 +57,7 @@ const session = {
 	commande: null
 };
 
-const connexion = await creerConnexion({ robots: 7, arriveeRobots: 1600 });
+const connexion = await creerConnexion({ robots: 7, robotsJeu: 2, arriveeRobots: 1600 });
 const tableau = new TableauJoueurs(element("corps-joueurs"), element("aucun-joueur"));
 const boutons = [...document.querySelectorAll("[data-commande]")];
 

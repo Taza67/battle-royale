@@ -7,6 +7,19 @@ const HAUTEUR_CARTE = 720;
 const VIE_MAXIMALE = 100;
 const JOUEURS_MAXIMUM = 50;
 const LONGUEUR_PSEUDO_MAXIMALE = 16;
+const ESSAIS_MOT_DE_PASSE = 5;
+
+const REFUS = Object.freeze({
+	pseudoInvalide: "Pseudo invalide : 1 à 16 caractères",
+	pseudoPris: "Pseudo déjà utilisé",
+	inscriptionsFermees: "Inscriptions fermées : la partie a déjà commencé",
+	complet: "Partie complète",
+	sessionReprise: "Session reprise par une autre connexion",
+	dejaInscrite: "Session déjà inscrite",
+	motDePasse: "Mot de passe administrateur incorrect",
+	adminPris: "Un administrateur est déjà connecté",
+	adminRemplace: "Session administrateur reprise par une autre connexion"
+});
 
 const DUREE_TICK = 50;
 const DUREE_DEPLACEMENT = 250;
@@ -26,6 +39,7 @@ const ATTAQUES = {
 };
 
 const NOMS_ROBOTS = ["Mistral", "Kiwi", "Bastion", "Nova", "Pixel", "Orage", "Lynx", "Comète", "Titan", "Zéphyr", "Gecko", "Brume"];
+const PREMIER_ID_ROBOT_JEU = 100;
 
 const DIRECTIONS = Array.from({ length: 8 }, (_, direction) => {
 	const angle = direction * Math.PI / 4;
@@ -33,6 +47,12 @@ const DIRECTIONS = Array.from({ length: 8 }, (_, direction) => {
 });
 
 const STATUTS = { eliminated: "eliminated", alive: "alive", winner: "winner" };
+
+function creerJeton() {
+	const octets = new Uint8Array(16);
+	crypto.getRandomValues(octets);
+	return Array.from(octets, octet => octet.toString(16).padStart(2, "0")).join("");
+}
 
 /**
  * Socket factice reliée au serveur factice, compatible avec l'interface WebSocket
@@ -84,7 +104,7 @@ class SocketFactice {
 	 * Livre un message du serveur au client.
 	 */
 	livrer(message) {
-		if (this.readyState !== 1)
+		if (this.readyState !== 1 || this.#serveur.muet)
 			return;
 
 		const donnees = JSON.stringify(message);
@@ -104,6 +124,20 @@ class SocketFactice {
 		this.readyState = 3;
 		this.#serveur.fermerSession(this);
 		setTimeout(() => this.onclose?.({ code: 1006 }), LATENCE);
+	}
+
+	/**
+	 * Livre un dernier message puis ferme la connexion côté serveur.
+	 */
+	congedier(message) {
+		this.livrer(message);
+		setTimeout(() => {
+			if (this.readyState !== 1)
+				return;
+			this.readyState = 3;
+			this.#serveur.fermerSession(this);
+			this.onclose?.({ code: 1008 });
+		}, LATENCE * 2);
 	}
 }
 
@@ -138,7 +172,11 @@ export class ServeurFactice {
 	#options;
 	#sessions = new Set();
 	#joueurs = new Map();
+	#robotsJeu = [];
 	#admin = null;
+	#echecsMotDePasse = new Map();
+	#muet = false;
+	#derniereFin = null;
 	#etat = "lobby";
 	#horloge = 0;
 	#manche = null;
@@ -152,6 +190,7 @@ export class ServeurFactice {
 	/**
 	 * @param {object} options
 	 * @param {number} [options.robots] nombre de robots qui rejoignent la salle d'attente
+	 * @param {number} [options.robotsJeu] nombre de robots ajoutés par le jeu à chaque manche, absents de la liste des joueurs et du classement
 	 * @param {number} [options.arriveeRobots] intervalle d'arrivée des robots (ms)
 	 * @param {number} [options.demarrageAuto] lance la manche ce délai (ms) après l'inscription d'un humain, `0` pour attendre l'administrateur
 	 * @param {number} [options.nouvelleMancheAuto] relance une manche ce délai (ms) après la fin, `0` pour attendre l'administrateur
@@ -161,6 +200,7 @@ export class ServeurFactice {
 	constructor(options = {}) {
 		this.#options = {
 			robots: 5,
+			robotsJeu: 0,
 			arriveeRobots: 1200,
 			demarrageAuto: 0,
 			nouvelleMancheAuto: 0,
@@ -187,11 +227,45 @@ export class ServeurFactice {
 	}
 
 	/**
+	 * Indique si le serveur n'envoie plus rien (connexion à moitié ouverte).
+	 */
+	get muet() {
+		return this.#muet;
+	}
+
+	/**
 	 * Coupe toutes les connexions ouvertes (simulation d'une perte de réseau).
 	 */
 	couperConnexions() {
 		for (const socket of [...this.#sessions])
 			socket.couper();
+	}
+
+	/**
+	 * Cesse d'envoyer des messages sans fermer les connexions, comme un réseau
+	 * qui ne transmet plus rien, ou reprend les envois.
+	 */
+	rendreMuet(muet = true) {
+		this.#muet = muet;
+	}
+
+	/**
+	 * Renouvelle les jetons de reprise : ceux déjà distribués ne sont plus valables.
+	 */
+	oublierJetons() {
+		for (const joueur of this.#joueurs.values())
+			joueur.jeton = creerJeton();
+	}
+
+	/**
+	 * Ouvre une session supplémentaire, comme un autre appareil, et retourne la
+	 * socket et la liste des messages qu'elle reçoit.
+	 */
+	autreAppareil() {
+		const socket = this.creerSocket();
+		const recus = [];
+		socket.onmessage = evenement => recus.push(JSON.parse(evenement.data));
+		return { socket, recus, envoyer: message => socket.send(JSON.stringify(message)) };
 	}
 
 	/**
@@ -219,7 +293,7 @@ export class ServeurFactice {
 			return;
 
 		const vivants = this.#vivants();
-		const vainqueur = vivants.find(joueur => joueur.pseudo === pseudoVainqueur) ?? vivants.find(joueur => joueur.robot) ?? vivants[0];
+		const vainqueur = vivants.find(joueur => joueur.pseudo === pseudoVainqueur) ?? vivants.find(joueur => joueur.robot && !joueur.jeu) ?? vivants[0];
 		for (const joueur of vivants)
 			if (joueur !== vainqueur)
 				this.#infligerDegats(joueur, VIE_MAXIMALE, vainqueur);
@@ -247,6 +321,7 @@ export class ServeurFactice {
 	 */
 	fermerSession(socket) {
 		this.#sessions.delete(socket);
+		this.#echecsMotDePasse.delete(socket);
 
 		if (this.#admin === socket)
 			this.#admin = null;
@@ -277,7 +352,7 @@ export class ServeurFactice {
 
 		switch (message?.type) {
 			case "join":
-				this.#inscrire(socket, message.pseudo);
+				this.#inscrire(socket, message.pseudo, message.token);
 				break;
 			case "move":
 				this.#deplacer(socket, message);
@@ -294,33 +369,38 @@ export class ServeurFactice {
 		}
 	}
 
-	#inscrire(socket, pseudoRecu) {
+	#inscrire(socket, pseudoRecu, jeton) {
 		const pseudo = typeof pseudoRecu === "string" ? pseudoRecu.trim() : "";
 
-		if (pseudo.length < 1 || pseudo.length > LONGUEUR_PSEUDO_MAXIMALE) {
-			socket.livrer({ type: "rejected", reason: "Le pseudo doit contenir entre 1 et 16 caractères." });
+		if (socket === this.#admin || this.#joueurDeSession(socket) !== null) {
+			socket.livrer({ type: "rejected", reason: REFUS.dejaInscrite });
 			return;
 		}
 
-		if (socket === this.#admin) {
-			socket.livrer({ type: "rejected", reason: "Cette session est celle de l'administrateur." });
+		if (pseudo.length < 1 || pseudo.length > LONGUEUR_PSEUDO_MAXIMALE) {
+			socket.livrer({ type: "rejected", reason: REFUS.pseudoInvalide });
 			return;
 		}
 
 		let joueur = [...this.#joueurs.values()].find(candidat => candidat.pseudo.toLowerCase() === pseudo.toLowerCase());
 
 		if (joueur !== undefined) {
-			if (joueur.robot || (joueur.session !== null && joueur.session !== socket)) {
-				socket.livrer({ type: "rejected", reason: "Ce pseudo est déjà utilisé." });
+			const ancienne = joueur.session;
+			if (joueur.robot || (ancienne !== null && jeton !== joueur.jeton)) {
+				socket.livrer({ type: "rejected", reason: REFUS.pseudoPris });
 				return;
+			}
+			if (ancienne !== null) {
+				joueur.session = null;
+				ancienne.congedier({ type: "rejected", reason: REFUS.sessionReprise });
 			}
 		} else {
 			if (this.#etat !== "lobby") {
-				socket.livrer({ type: "rejected", reason: "Les inscriptions sont fermées : la partie a déjà commencé." });
+				socket.livrer({ type: "rejected", reason: REFUS.inscriptionsFermees });
 				return;
 			}
 			if (this.#joueurs.size >= JOUEURS_MAXIMUM) {
-				socket.livrer({ type: "rejected", reason: "La partie est complète." });
+				socket.livrer({ type: "rejected", reason: REFUS.complet });
 				return;
 			}
 
@@ -329,36 +409,49 @@ export class ServeurFactice {
 				this.#demarrageAuto = this.#horloge + this.#options.demarrageAuto;
 		}
 
-		for (const autre of this.#joueurs.values()) {
-			if (autre !== joueur && autre.session === socket) {
-				autre.session = null;
-				autre.connecte = false;
-			}
-		}
-
 		joueur.session = socket;
 		joueur.connecte = true;
 		this.#joueursModifies = true;
 
-		socket.livrer({ type: "welcome", id: joueur.id, pseudo: joueur.pseudo, state: this.#etat });
+		socket.livrer({ type: "welcome", id: joueur.id, pseudo: joueur.pseudo, state: this.#etat, token: joueur.jeton });
 		if (this.#manche !== null && (this.#etat === "running" || this.#etat === "paused"))
 			socket.livrer(this.#messageEtat(joueur));
+		else if (this.#derniereFin !== null && (this.#etat === "over" || this.#etat === "stopped"))
+			socket.livrer(this.#derniereFin);
 	}
 
 	#connecterAdmin(socket, motDePasse) {
-		if (this.#options.motDePasse !== null && motDePasse !== this.#options.motDePasse) {
-			socket.livrer({ type: "rejected", reason: "Mot de passe incorrect." });
+		if (socket === this.#admin || this.#joueurDeSession(socket) !== null) {
+			socket.livrer({ type: "rejected", reason: REFUS.dejaInscrite });
 			return;
 		}
 
-		if (this.#admin !== null && this.#admin !== socket) {
-			socket.livrer({ type: "rejected", reason: "Un administrateur est déjà connecté." });
+		if (this.#options.motDePasse !== null) {
+			if (motDePasse !== this.#options.motDePasse) {
+				const echecs = (this.#echecsMotDePasse.get(socket) ?? 0) + 1;
+				this.#echecsMotDePasse.set(socket, echecs);
+				if (echecs >= ESSAIS_MOT_DE_PASSE)
+					socket.congedier({ type: "rejected", reason: REFUS.motDePasse });
+				else
+					socket.livrer({ type: "rejected", reason: REFUS.motDePasse });
+				return;
+			}
+			if (this.#admin !== null) {
+				const ancienne = this.#admin;
+				this.#admin = null;
+				ancienne.congedier({ type: "rejected", reason: REFUS.adminRemplace });
+			}
+		} else if (this.#admin !== null) {
+			socket.livrer({ type: "rejected", reason: REFUS.adminPris });
 			return;
 		}
 
+		this.#echecsMotDePasse.delete(socket);
 		this.#admin = socket;
 		socket.livrer({ type: "admin-welcome", state: this.#etat });
 		socket.livrer({ type: "players", players: this.#listeJoueurs() });
+		if (this.#derniereFin !== null && (this.#etat === "over" || this.#etat === "stopped"))
+			socket.livrer(this.#derniereFin);
 	}
 
 	#commanderAdmin(socket, commande) {
@@ -404,8 +497,17 @@ export class ServeurFactice {
 		while (this.#joueurs.has(id))
 			id++;
 
-		const joueur = {
+		const joueur = this.#nouveauParticipant(id, pseudo, robot);
+		this.#joueurs.set(id, joueur);
+		this.#joueursModifies = true;
+		return joueur;
+	}
+
+	#nouveauParticipant(id, pseudo, robot) {
+		return {
 			id, pseudo, robot,
+			jeu: false,
+			jeton: creerJeton(),
 			session: null,
 			connecte: robot,
 			statut: STATUTS.alive,
@@ -417,10 +519,11 @@ export class ServeurFactice {
 			cible: null,
 			absenceJusqua: 0
 		};
+	}
 
-		this.#joueurs.set(id, joueur);
-		this.#joueursModifies = true;
-		return joueur;
+	// Joueurs inscrits et robots ajoutés par le jeu pour la manche.
+	#participants() {
+		return [...this.#joueurs.values(), ...this.#robotsJeu];
 	}
 
 	#executer(commande) {
@@ -453,7 +556,13 @@ export class ServeurFactice {
 	}
 
 	#demarrer() {
-		const joueurs = [...this.#joueurs.values()];
+		this.#robotsJeu = Array.from({ length: this.#options.robotsJeu }, (_, index) => {
+			const robot = this.#nouveauParticipant(PREMIER_ID_ROBOT_JEU + index, `Robot ${index + 1}`, true);
+			robot.jeu = true;
+			return robot;
+		});
+
+		const joueurs = this.#participants();
 		const total = joueurs.length;
 
 		joueurs.forEach((joueur, index) => {
@@ -502,7 +611,7 @@ export class ServeurFactice {
 	}
 
 	#vivants() {
-		return [...this.#joueurs.values()].filter(joueur => joueur.statut !== STATUTS.eliminated);
+		return this.#participants().filter(joueur => joueur.statut !== STATUTS.eliminated);
 	}
 
 	#lancerAttaque(joueur, forme) {
@@ -564,11 +673,14 @@ export class ServeurFactice {
 			if (joueur.session !== null)
 				joueur.session.livrer(this.#messageEtat(joueur));
 
-		this.#diffuser({
+		this.#derniereFin = {
 			type: "end",
-			winner: vainqueur === null ? null : { id: vainqueur.id, pseudo: vainqueur.pseudo },
-			ranking: classement
-		}, true);
+			winner: vainqueur === null || vainqueur.jeu ? null : { id: vainqueur.id, pseudo: vainqueur.pseudo },
+			ranking: classement,
+			total: this.#manche?.total ?? classement.length,
+			stopped: arret
+		};
+		this.#diffuser(this.#derniereFin, true);
 		this.#changerEtat(arret ? "stopped" : "over");
 
 		if (this.#options.nouvelleMancheAuto > 0)

@@ -32,7 +32,7 @@ const session = {
 };
 session.automatique = session.pseudo !== null;
 
-const connexion = await creerConnexion({ robots: 5, demarrageAuto: 6000, nouvelleMancheAuto: 20000 });
+const connexion = await creerConnexion({ robots: 5, robotsJeu: 2, demarrageAuto: 6000, nouvelleMancheAuto: 20000 });
 const minicarte = new Minicarte(element("minicarte"));
 const commandes = new Commandes({
 	zoneJoystick: element("joystick"),
