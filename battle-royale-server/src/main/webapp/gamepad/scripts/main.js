@@ -16,6 +16,7 @@ const CLE_PSEUDO = "battle-royale.pseudo";
 const TENTATIVES_REINSCRIPTION = 3;
 const DELAI_REINSCRIPTION = 1500;
 const INTERVALLE_VIBRATION = 350;
+const SILENCE_MAXIMAL = 5000;
 
 const element = identifiant => document.getElementById(identifiant);
 
@@ -295,6 +296,9 @@ function actualiser() {
 	else
 		minicarte.arreter();
 
+	// En partie, le serveur envoie l'état du joueur en continu : un silence
+	// prolongé révèle une connexion morte.
+	connexion.surveiller(session.partie === "running" || session.partie === "paused" ? SILENCE_MAXIMAL : 0);
 	actualiserCommandes();
 }
 
