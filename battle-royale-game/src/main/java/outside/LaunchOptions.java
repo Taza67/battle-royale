@@ -121,7 +121,7 @@ public record LaunchOptions(boolean multi, int bots, int port, String bind, floa
 				try {
 					width = Integer.parseInt(parts[0]);
 					height = Integer.parseInt(parts[1]);
-				} catch (RuntimeException e) {
+				} catch (NumberFormatException e) {
 					throw new IllegalArgumentException("Taille de fenêtre invalide : " + v + " (ex. 1600x900)");
 				}
 				if (width < 320 || height < 180) throw new IllegalArgumentException("Fenêtre trop petite : " + v);
