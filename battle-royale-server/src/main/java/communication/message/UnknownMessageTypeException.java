@@ -7,22 +7,10 @@ package communication.message;
  */
 public class UnknownMessageTypeException extends InvalidMessageException {
 	/**
-	 * Type reçu
-	 */
-	private final String type;
-
-	/**
 	 * Construit l'exception
 	 * @param type Type reçu
 	 */
 	public UnknownMessageTypeException(String type) {
-		super("type inconnu : " + type);
-		this.type = type;
+		super(type, "type inconnu : " + type, null);
 	}
-
-	/**
-	 * Retourne le type reçu
-	 * @return Type inconnu
-	 */
-	public String getType() { return type; }
 }

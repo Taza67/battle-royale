@@ -2,6 +2,7 @@ package communication.message;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import org.junit.jupiter.api.Test;
@@ -123,5 +124,21 @@ class ClientMessageParserTest {
 	void rejectsNullText() {
 		assertInstanceOf(InvalidMessageException.class,
 			assertThrows(Exception.class, () -> ClientMessageParser.parse(null)));
+	}
+
+	@Test
+	void reportsTheTypeOfInvalidMessages() {
+		InvalidMessageException join = assertThrows(InvalidMessageException.class,
+			() -> ClientMessageParser.parse("{\"type\":\"join\",\"pseudo\":\"\"}"));
+		assertEquals("join", join.getType());
+		assertEquals("pseudo vide", join.getMessage());
+
+		InvalidMessageException move = assertThrows(InvalidMessageException.class,
+			() -> ClientMessageParser.parse("{\"type\":\"move\",\"direction\":1}"));
+		assertEquals("move", move.getType());
+
+		assertEquals("danse", assertThrows(UnknownMessageTypeException.class,
+			() -> ClientMessageParser.parse("{\"type\":\"danse\"}")).getType());
+		assertNull(assertThrows(InvalidMessageException.class, () -> ClientMessageParser.parse("[]")).getType());
 	}
 }

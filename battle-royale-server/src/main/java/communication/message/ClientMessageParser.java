@@ -37,7 +37,23 @@ public final class ClientMessageParser {
 	public static ClientMessage parse(String text) throws InvalidMessageException {
 		JsonObject object = readObject(text);
 		String type = requireString(object, "type");
+		try {
+			return parseFields(type, object);
+		} catch (UnknownMessageTypeException e) {
+			throw e;
+		} catch (InvalidMessageException e) {
+			throw new InvalidMessageException(type, e.getMessage(), e.getCause());
+		}
+	}
 
+	/**
+	 * Lit les champs d'un message dont le type est connu
+	 * @param type Type du message
+	 * @param object Objet JSON reçu
+	 * @return Message typé et validé
+	 * @throws InvalidMessageException si un champ est absent, mal typé ou hors limites
+	 */
+	private static ClientMessage parseFields(String type, JsonObject object) throws InvalidMessageException {
 		switch (type) {
 			case "join":
 				return new ClientMessage.Join(validatePseudo(requireString(object, "pseudo")));
