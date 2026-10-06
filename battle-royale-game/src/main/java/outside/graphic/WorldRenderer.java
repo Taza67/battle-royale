@@ -1,5 +1,6 @@
 package outside.graphic;
 
+import static inside.IConfig.*;
 import static outside.graphic.GraphicUtilities.*;
 
 import java.util.HashMap;
@@ -9,7 +10,6 @@ import inside.BoardSnapshot;
 import inside.BoardSnapshot.BulletState;
 import inside.BoardSnapshot.PlayerState;
 import inside.Direction;
-import inside.IConfig;
 import inside.GameMap;
 import inside.Obstacle;
 import inside.SafeZone;
@@ -20,7 +20,7 @@ import inside.geometry.Rectangle;
  * Les positions sont interpolées entre les deux dernières images de la simulation.
  * @author mourtaza
  */
-public class WorldRenderer implements IConfig {
+public class WorldRenderer {
 	/**
 	 * Taille d'affichage d'un emoji de joueur
 	 */
@@ -49,16 +49,15 @@ public class WorldRenderer implements IConfig {
 	/**
 	 * Dessine le monde
 	 * @param map Carte (obstacles immuables)
-	 * @param previous Image précédente (peut être null)
-	 * @param current Image courante
-	 * @param alpha Avancement entre les deux images (0 à 1)
-	 * @param time Instant courant (secondes, pour les animations)
-	 * @param localId Identifiant du joueur local (-1 si aucun)
+	 * @param frame Contexte de l'image
 	 * @param effects Effets à dessiner au-dessus des joueurs
 	 * @param numberFont Police des nombres de dégâts
 	 */
-	public void render(GameMap map, BoardSnapshot previous, BoardSnapshot current, float alpha, double time, int localId,
-			Effects effects, Font numberFont) {
+	public void render(GameMap map, FrameInfo frame, Effects effects, Font numberFont) {
+		BoardSnapshot previous = frame.previous(), current = frame.current();
+		float alpha = frame.alpha();
+		double time = frame.time();
+
 		PREVIOUS_PLAYERS.clear();
 		PREVIOUS_BULLETS.clear();
 		if (previous != null) {
@@ -82,7 +81,7 @@ public class WorldRenderer implements IConfig {
 			if (p.alive()) renderSwing(p, interpolated(p, alpha));
 
 		for (PlayerState p : current.players())
-			if (p.alive()) renderPlayer(p, interpolated(p, alpha), current.tick(), time, p.id() == localId, effects);
+			if (p.alive()) renderPlayer(p, interpolated(p, alpha), current.tick(), time, p.id() == frame.localId(), effects);
 
 		effects.render(TEXTURES.getGlow(), numberFont);
 	}
@@ -93,11 +92,7 @@ public class WorldRenderer implements IConfig {
 	private void renderGround() {
 		tiled(TEXTURES.getGround(), 0, 0, MAP_WIDTH, MAP_HEIGHT, 150, 0, 0, Color.WHITE);
 		// Vignettage léger vers les bords
-		Color edge = new Color(0, 0, 0, 0.18f), none = new Color(0, 0, 0, 0);
-		gradientRect(0, 0, MAP_WIDTH, 60, edge, none);
-		gradientRect(0, MAP_HEIGHT - 60, MAP_WIDTH, MAP_HEIGHT, none, edge);
-		gradientLine(0, MAP_HEIGHT / 2, 60, MAP_HEIGHT / 2, MAP_HEIGHT, edge, none);
-		gradientLine(MAP_WIDTH, MAP_HEIGHT / 2, MAP_WIDTH - 60, MAP_HEIGHT / 2, MAP_HEIGHT, edge, none);
+		edgeFade(new Rectangle(0, 0, MAP_WIDTH, MAP_HEIGHT), 60, new Color(0, 0, 0, 0.18f), true);
 	}
 
 	/**
@@ -117,12 +112,8 @@ public class WorldRenderer implements IConfig {
 					fillRect(r.expand(3), Color.rgb(0x0E2E40).withAlpha(0.9f));
 					tiled(TEXTURES.getWater(), r.getX1(), r.getY1(), r.getX2(), r.getY2(), 60, waterOX, waterOY,
 						new Color(0.82f, 0.9f, 0.92f, 1));
-					Color foam = new Color(0.82f, 0.95f, 1f, 0.4f), none = foam.withAlpha(0);
-					float f = 5;
-					gradientRect(r.getX1(), r.getY1() - f, r.getX2(), r.getY1(), none, foam);
-					gradientRect(r.getX1(), r.getY2(), r.getX2(), r.getY2() + f, foam, none);
-					gradientLine(r.getX1(), r.getCenterY(), r.getX1() - f, r.getCenterY(), r.getHeight(), foam, none);
-					gradientLine(r.getX2(), r.getCenterY(), r.getX2() + f, r.getCenterY(), r.getHeight(), foam, none);
+					Color foam = new Color(0.82f, 0.95f, 1f, 0.4f);
+					edgeFade(r, 5, foam, false);
 					strokeRect(r, 2, foam.withAlpha(0.7f));
 					continue;
 				}
@@ -171,12 +162,7 @@ public class WorldRenderer implements IConfig {
 		additive(false);
 
 		// Assombrit la lave vers les bords extérieurs de la carte
-		Color edge = new Color(0.12f, 0.01f, 0, 0.4f), clear = new Color(0.12f, 0.01f, 0, 0);
-		float e = 50;
-		gradientRect(0, 0, MAP_WIDTH, e, edge, clear);
-		gradientRect(0, MAP_HEIGHT - e, MAP_WIDTH, MAP_HEIGHT, clear, edge);
-		gradientLine(0, MAP_HEIGHT / 2, e, MAP_HEIGHT / 2, MAP_HEIGHT, edge, clear);
-		gradientLine(MAP_WIDTH, MAP_HEIGHT / 2, MAP_WIDTH - e, MAP_HEIGHT / 2, MAP_HEIGHT, edge, clear);
+		edgeFade(new Rectangle(0, 0, MAP_WIDTH, MAP_HEIGHT), 50, new Color(0.12f, 0.01f, 0, 0.4f), true);
 	}
 
 	/**
@@ -316,12 +302,7 @@ public class WorldRenderer implements IConfig {
 		float px = x + (float)Math.cos(a) * r, py = y + (float)Math.sin(a) * r;
 		float lx = x + (float)Math.cos(a + 0.35f) * (r - 5), ly = y + (float)Math.sin(a + 0.35f) * (r - 5);
 		float rx = x + (float)Math.cos(a - 0.35f) * (r - 5), ry = y + (float)Math.sin(a - 0.35f) * (r - 5);
-		color(ring);
-		org.lwjgl.opengl.GL11.glBegin(org.lwjgl.opengl.GL11.GL_TRIANGLES);
-		org.lwjgl.opengl.GL11.glVertex2f(px, py);
-		org.lwjgl.opengl.GL11.glVertex2f(lx, ly);
-		org.lwjgl.opengl.GL11.glVertex2f(rx, ry);
-		org.lwjgl.opengl.GL11.glEnd();
+		triangle(px, py, lx, ly, rx, ry, ring);
 
 		// Barre de vie
 		float ratio = p.life() / (float)MAX_LIFE_POINTS, bw = 30, by = y - h - 9;

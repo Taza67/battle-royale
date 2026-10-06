@@ -1,5 +1,6 @@
 package outside.graphic;
 
+import static inside.IConfig.*;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
@@ -7,7 +8,6 @@ import java.util.Random;
 
 import org.lwjgl.BufferUtils;
 
-import inside.IConfig;
 
 /**
  * Classe chargeant les textures du jeu depuis le classpath.
@@ -17,24 +17,24 @@ import inside.IConfig;
  * {@code id + 4} (même numérotation que les avatars de la manette web).
  * @author mourtaza
  */
-public class TextureManager implements IConfig {
-	private final static String TEXTURE_ATLAS_PATH = "textures/tileset.png";
-	private final static String TEXTURE_PLAYERS_ATLAS_PATH = "textures/emojisset.png";
-	private final static String TEXTURE_GROUND_PATH = "textures/ground.png";
-	private final static String TEXTURE_WATER_PATH = "textures/water.png";
-	private final static String TEXTURE_EMBLEM_PATH = "textures/emblem.png";
+public class TextureManager {
+	private static final String TEXTURE_ATLAS_PATH = "textures/tileset.png";
+	private static final String TEXTURE_PLAYERS_ATLAS_PATH = "textures/emojisset.png";
+	private static final String TEXTURE_GROUND_PATH = "textures/ground.png";
+	private static final String TEXTURE_WATER_PATH = "textures/water.png";
+	private static final String TEXTURE_EMBLEM_PATH = "textures/emblem.png";
 	/**
 	 * Abscisses des colonnes d'emojis dans l'atlas des joueurs
 	 */
-	private final static int[] EMOJI_COLUMNS = { 2, 88, 170, 255, 333, 421, 506, 585, 670, 755 };
+	private static final int[] EMOJI_COLUMNS = { 2, 88, 170, 255, 333, 421, 506, 585, 670, 755 };
 	/**
 	 * Ordonnées des lignes d'emojis dans l'atlas des joueurs
 	 */
-	private final static int[] EMOJI_ROWS = { 3, 98, 195, 290, 385 };
+	private static final int[] EMOJI_ROWS = { 3, 98, 195, 290, 385 };
 	/**
 	 * Taille d'un emoji dans l'atlas
 	 */
-	private final static int EMOJI_SIZE = 61;
+	private static final int EMOJI_SIZE = 61;
 
 	private final Texture TEXTURE_ATLAS, TEXTURE_PLAYERS_ATLAS, TEXTURE_PLAYERS_GREY;
 	private final Texture GROUND, WATER, EMBLEM, LAVA, GLOW;

@@ -1,5 +1,6 @@
 package outside.graphic;
 
+import static inside.IConfig.*;
 import static outside.graphic.GraphicUtilities.*;
 
 import java.text.Normalizer;
@@ -9,7 +10,6 @@ import inside.BoardSnapshot;
 import inside.BoardSnapshot.KillFeedEntry;
 import inside.BoardSnapshot.PlayerState;
 import inside.DamageCause;
-import inside.IConfig;
 import inside.Phase;
 import inside.SafeZone;
 import outside.graphic.Font.Align;
@@ -18,7 +18,7 @@ import outside.graphic.Font.Align;
  * Dessin de l'interface : HUD, bandeaux, pause, écran de fin et salle d'attente
  * @author mourtaza
  */
-public class HudRenderer implements IConfig {
+public class HudRenderer {
 	/**
 	 * Informations de la vue nécessaires au HUD
 	 * @param localId Identifiant du joueur local (-1 si aucun)
@@ -37,6 +37,14 @@ public class HudRenderer implements IConfig {
 	 * Durée d'affichage d'une élimination dans le fil, en secondes
 	 */
 	private static final float KILL_FEED_SECONDS = 8;
+	/**
+	 * Couleur de fond des panneaux
+	 */
+	private static final Color PANEL = new Color(0.05f, 0.07f, 0.1f, 1);
+	/**
+	 * Couleur de fond des panneaux clairs (classement, salle d'attente)
+	 */
+	private static final Color PANEL_LIGHT = new Color(0.08f, 0.1f, 0.15f, 1);
 
 	private final Fonts FONTS;
 	private final TextureManager TEXTURES;
@@ -54,13 +62,14 @@ public class HudRenderer implements IConfig {
 
 	/**
 	 * Dessine le HUD d'une partie en cours ou terminée
-	 * @param s Image du plateau
+	 * @param frame Contexte de l'image
 	 * @param info Informations de la vue
 	 * @param effects Effets (bandeau courant)
-	 * @param time Instant courant (secondes)
 	 * @param endTime Instant de la fin de partie (secondes, négatif si la partie continue)
 	 */
-	public void render(BoardSnapshot s, HudInfo info, Effects effects, double time, double endTime) {
+	public void render(FrameInfo frame, HudInfo info, Effects effects, double endTime) {
+		BoardSnapshot s = frame.current();
+		double time = frame.time();
 		renderStatusPanel(s);
 		renderKillFeed(s);
 
@@ -109,7 +118,7 @@ public class HudRenderer implements IConfig {
 		}
 
 		float w = Math.max(250, FONTS.SMALL.width(timer) + 28);
-		panel(12, 12, 12 + w, s.phase() == Phase.BATTLE ? 94 : 72, 8, new Color(0.05f, 0.07f, 0.1f, 0.72f));
+		panel(12, 12, 12 + w, s.phase() == Phase.BATTLE ? 94 : 72, 8, panelBg(0.72f));
 		FONTS.SMALL.draw(timer, 26, 22, timerColor, Align.LEFT);
 		FONTS.SMALL.draw("Vivants : " + s.alive() + " / " + s.total(), 26, 46, Color.WHITE, Align.LEFT);
 		if (s.phase() == Phase.BATTLE) {
@@ -136,7 +145,7 @@ public class HudRenderer implements IConfig {
 			String text = e.killerId() < 0 ? victim + " a fondu dans la lave"
 				: s.pseudoOf(e.killerId()) + " » " + victim + (e.cause() == DamageCause.MELEE ? "  (épée)" : "  (tir)");
 			float w = FONTS.SMALL.width(text) + 22;
-			panel(MAP_WIDTH - 12 - w, y, MAP_WIDTH - 12, y + 26, 6, new Color(0.05f, 0.07f, 0.1f, 0.65f * a));
+			panel(MAP_WIDTH - 12 - w, y, MAP_WIDTH - 12, y + 26, 6, panelBg(0.65f * a));
 			FONTS.SMALL.draw(text, MAP_WIDTH - 23, y + 4, (e.killerId() < 0 ? Color.ORANGE : Color.WHITE).withAlpha(a), Align.RIGHT);
 			y += 31;
 		}
@@ -148,7 +157,7 @@ public class HudRenderer implements IConfig {
 	 */
 	private void renderLocalPlayer(PlayerState p) {
 		float x = 12, y = MAP_HEIGHT - 86;
-		panel(x, y, x + 300, MAP_HEIGHT - 12, 8, new Color(0.05f, 0.07f, 0.1f, 0.75f));
+		panel(x, y, x + 300, MAP_HEIGHT - 12, 8, panelBg(0.75f));
 		texture(TEXTURES.getPlayerTexture(p.id(), !p.alive()), x + 10, y + 10, x + 62, y + 62, Color.WHITE);
 
 		float ratio = p.life() / (float)MAX_LIFE_POINTS;
@@ -184,7 +193,7 @@ public class HudRenderer implements IConfig {
 		String help = info.multi() ? "Échauffement : aucun dégât, prenez vos marques avec la manette"
 			: "Flèches / ZQSD / WASD : se déplacer   -   Espace / J : tir   -   K / Entrée : épée   -   P : pause";
 		float w = FONTS.SMALL.width(help) + 30;
-		panel(MAP_WIDTH / 2 - w / 2, MAP_HEIGHT - 44, MAP_WIDTH / 2 + w / 2, MAP_HEIGHT - 12, 8, new Color(0.05f, 0.07f, 0.1f, 0.7f));
+		panel(MAP_WIDTH / 2 - w / 2, MAP_HEIGHT - 44, MAP_WIDTH / 2 + w / 2, MAP_HEIGHT - 12, 8, panelBg(0.7f));
 		FONTS.SMALL.draw(help, MAP_WIDTH / 2, MAP_HEIGHT - 38, Color.WHITE, Align.CENTER);
 
 		if (s.secondsLeft() <= 3 && s.secondsLeft() > 0 && !s.paused())
@@ -268,7 +277,7 @@ public class HudRenderer implements IConfig {
 		List<PlayerState> ranking = s.ranking();
 		float x1 = MAP_WIDTH / 2 - 270, x2 = MAP_WIDTH / 2 + 270, y = top + 92;
 		int rows = Math.min(ranking.size(), winner != null ? 12 : 14);
-		panel(x1, y - 8, x2, y + 30 + rows * 28 + 8, 10, new Color(0.08f, 0.1f, 0.15f, 0.85f * a));
+		panel(x1, y - 8, x2, y + 30 + rows * 28 + 8, 10, panelLight(0.85f * a));
 		FONTS.SMALL.draw("Rang", x1 + 20, y, Color.LIGHT_GREY.withAlpha(a), Align.LEFT);
 		FONTS.SMALL.draw("Joueur", x1 + 110, y, Color.LIGHT_GREY.withAlpha(a), Align.LEFT);
 		FONTS.SMALL.draw("Éliminations", x2 - 20, y, Color.LIGHT_GREY.withAlpha(a), Align.RIGHT);
@@ -284,7 +293,7 @@ public class HudRenderer implements IConfig {
 		if (!localShown && info.localId() >= 0) {
 			PlayerState local = s.player(info.localId());
 			if (local != null) {
-				panel(x1, y + 4, x2, y + 34, 8, new Color(0.08f, 0.1f, 0.15f, 0.85f * a));
+				panel(x1, y + 4, x2, y + 34, 8, panelLight(0.85f * a));
 				rankingRow(local, rows, x1, x2, y + 6, a, true);
 			}
 		}
@@ -354,7 +363,7 @@ public class HudRenderer implements IConfig {
 		float pulse = 0.65f + 0.35f * (float)Math.sin(time * 3);
 		FONTS.LARGE.drawShadowed("En attente du serveur web", MAP_WIDTH / 2, 300, Color.WHITE.withAlpha(pulse), Align.CENTER);
 
-		panel(MAP_WIDTH / 2 - 380, 370, MAP_WIDTH / 2 + 380, 520, 12, new Color(0.08f, 0.1f, 0.15f, 0.85f));
+		panel(MAP_WIDTH / 2 - 380, 370, MAP_WIDTH / 2 + 380, 520, 12, panelLight(0.85f));
 		FONTS.MEDIUM.draw("Rejoignez la partie depuis votre téléphone :", MAP_WIDTH / 2, 390, Color.LIGHT_GREY, Align.CENTER);
 		FONTS.MEDIUM.drawShadowed(info.gamepadUrl(), MAP_WIDTH / 2, 430, Color.CYAN, Align.CENTER);
 		FONTS.SMALL.draw("L'administrateur lance la partie depuis le panneau d'administration", MAP_WIDTH / 2, 478, Color.LIGHT_GREY, Align.CENTER);
@@ -373,7 +382,24 @@ public class HudRenderer implements IConfig {
 		if (!info.multi() || info.status() == null || time - info.statusTime() > 5) return;
 		float a = (float)Math.min(1, 5 - (time - info.statusTime()));
 		float w = FONTS.SMALL.width(info.status()) + 24;
-		panel(MAP_WIDTH - 12 - w, MAP_HEIGHT - 44, MAP_WIDTH - 12, MAP_HEIGHT - 12, 6, new Color(0.05f, 0.07f, 0.1f, 0.75f * a));
+		panel(MAP_WIDTH - 12 - w, MAP_HEIGHT - 44, MAP_WIDTH - 12, MAP_HEIGHT - 12, 6, panelBg(0.75f * a));
 		FONTS.SMALL.draw(info.status(), MAP_WIDTH - 24, MAP_HEIGHT - 38, (info.statusError() ? Color.RED : Color.WHITE).withAlpha(a), Align.RIGHT);
+	}
+	/**
+	 * Fond d'un panneau standard
+	 * @param alpha Opacité
+	 * @return Couleur du panneau
+	 */
+	private static Color panelBg(float alpha) {
+		return PANEL.withAlpha(alpha);
+	}
+
+	/**
+	 * Fond d'un panneau clair (classement, salle d'attente)
+	 * @param alpha Opacité
+	 * @return Couleur du panneau
+	 */
+	private static Color panelLight(float alpha) {
+		return PANEL_LIGHT.withAlpha(alpha);
 	}
 }

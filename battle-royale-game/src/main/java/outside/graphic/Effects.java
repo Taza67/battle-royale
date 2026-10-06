@@ -1,5 +1,6 @@
 package outside.graphic;
 
+import static inside.IConfig.*;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -9,7 +10,6 @@ import inside.BoardSnapshot;
 import inside.BoardSnapshot.PlayerState;
 import inside.DamageCause;
 import inside.GameEvent;
-import inside.IConfig;
 import inside.geometry.Rectangle;
 
 /**
@@ -17,7 +17,7 @@ import inside.geometry.Rectangle;
  * Ils sont produits à partir des événements de la simulation et n'ont aucune influence sur elle.
  * @author mourtaza
  */
-public class Effects implements IConfig {
+public class Effects {
 	/**
 	 * Particule
 	 */
@@ -114,8 +114,9 @@ public class Effects implements IConfig {
 	 * @param subtitle Sous-titre
 	 * @param color Couleur
 	 * @param duration Durée en secondes
+	 * @param now Instant de l'événement (secondes)
 	 */
-	public void showBanner(String title, String subtitle, Color color, double duration) {
+	public void showBanner(String title, String subtitle, Color color, double duration, double now) {
 		banner = new Banner(title, subtitle, color, now, duration);
 	}
 
@@ -124,8 +125,9 @@ public class Effects implements IConfig {
 	 * @param events Événements
 	 * @param s Image du plateau après les événements
 	 * @param localId Identifiant du joueur local (-1 si aucun)
+	 * @param now Instant des événements (secondes)
 	 */
-	public void consume(List<GameEvent> events, BoardSnapshot s, int localId) {
+	public void consume(List<GameEvent> events, BoardSnapshot s, int localId, double now) {
 		for (GameEvent e : events) {
 			switch (e.type()) {
 			case SHOT:
@@ -140,10 +142,10 @@ public class Effects implements IConfig {
 					text("-" + e.amount(), e.x(), e.y() - 18, e.targetId() == localId ? Color.RED : Color.rgb(0xFFF0A0));
 				}
 				if (e.targetId() == localId && e.amount() > 0) {
-					shake(0.35f, 5);
+					shake(now, 0.35f, 5);
 					PlayerState source = s.player(e.actorId());
 					if (source != null)
-						damageFrom((float)Math.atan2(source.y() - e.y(), source.x() - e.x()));
+						damageFrom(now, (float)Math.atan2(source.y() - e.y(), source.x() - e.x()));
 				}
 				break;
 			}
@@ -156,11 +158,11 @@ public class Effects implements IConfig {
 				burst(e.x(), e.y(), 40, 160, 0.9f, 4, c, true);
 				burst(e.x(), e.y(), 18, 70, 1.2f, 6, Color.rgb(0x333333).withAlpha(0.8f), false);
 				if (e.targetId() == localId) {
-					shake(0.7f, 9);
-					showBanner("Vous êtes éliminé", rankText(e.amount()) + " sur " + s.total(), Color.RED, 3.5);
+					shake(now, 0.7f, 9);
+					showBanner("Vous êtes éliminé", rankText(e.amount()) + " sur " + s.total(), Color.RED, 3.5, now);
 				} else if (localId >= 0 && e.actorId() == localId && victim != null) {
-					shake(0.25f, 3);
-					showBanner("Élimination !", victim.pseudo(), Color.GOLD, 1.6);
+					shake(now, 0.25f, 3);
+					showBanner("Élimination !", victim.pseudo(), Color.GOLD, 1.6, now);
 				}
 				break;
 			}
@@ -172,21 +174,21 @@ public class Effects implements IConfig {
 						burst(winner.x(), winner.y(), 45, 140, 1.8f, 4, Color.WHITE, true);
 					}
 					confetti(140);
-					shake(0.4f, 4);
+					shake(now, 0.4f, 4);
 				}
 				break;
 			case BATTLE_STARTED:
-				showBanner("Que le combat commence !", "Les dégâts sont activés", Color.GOLD, 2.8);
+				showBanner("Que le combat commence !", "Les dégâts sont activés", Color.GOLD, 2.8, now);
 				break;
 			case ZONE_SHRINKING:
-				showBanner("La zone se resserre !", "Vague " + e.amount() + " - restez dans la zone", Color.ORANGE, 3);
+				showBanner("La zone se resserre !", "Vague " + e.amount() + " - restez dans la zone", Color.ORANGE, 3, now);
 				break;
 			case ZONE_SHRUNK:
 				if (e.amount() == s.waveCount())
-					showBanner("Zone finale", "La lave recouvre tout", Color.RED, 3);
+					showBanner("Zone finale", "La lave recouvre tout", Color.RED, 3, now);
 				break;
 			case RESUMED:
-				showBanner("Reprise", "", Color.WHITE, 1.2);
+				showBanner("Reprise", "", Color.WHITE, 1.2, now);
 				break;
 			default:
 			}
@@ -254,15 +256,10 @@ public class Effects implements IConfig {
 				float size = p.size * (additive ? 0.6f + 0.6f * t : 1.2f - 0.4f * t);
 				Color c = p.color.withAlpha(p.color.a() * t);
 				if (p.square) {
-					GraphicUtilities.color(c);
 					float a = p.phase + (float)now * 6;
 					float ca = (float)Math.cos(a) * size, sa = (float)Math.sin(a) * size;
-					org.lwjgl.opengl.GL11.glBegin(org.lwjgl.opengl.GL11.GL_QUADS);
-					org.lwjgl.opengl.GL11.glVertex2f(p.x - ca - sa, p.y - sa + ca);
-					org.lwjgl.opengl.GL11.glVertex2f(p.x + ca - sa, p.y + sa + ca);
-					org.lwjgl.opengl.GL11.glVertex2f(p.x + ca + sa, p.y + sa - ca);
-					org.lwjgl.opengl.GL11.glVertex2f(p.x - ca + sa, p.y - sa - ca);
-					org.lwjgl.opengl.GL11.glEnd();
+					GraphicUtilities.quad(p.x - ca - sa, p.y - sa + ca, p.x + ca - sa, p.y + sa + ca,
+						p.x + ca + sa, p.y + sa - ca, p.x - ca + sa, p.y - sa - ca, c);
 				} else {
 					GraphicUtilities.glow(glow, p.x, p.y, size * 2, size * 2, c);
 				}
@@ -304,10 +301,11 @@ public class Effects implements IConfig {
 
 	/**
 	 * Déclenche un tremblement de caméra
+	 * @param now Instant de l'événement (secondes)
 	 * @param duration Durée en secondes
 	 * @param power Amplitude en unités logiques
 	 */
-	private void shake(float duration, float power) {
+	private void shake(double now, float duration, float power) {
 		shakeEnd = Math.max(shakeEnd, now + duration);
 		shakeDuration = Math.max(0.1, shakeEnd - now);
 		shakePower = Math.max(shakePower, power);
@@ -315,9 +313,10 @@ public class Effects implements IConfig {
 
 	/**
 	 * Mémorise la direction d'une source de dégâts pour l'indicateur à l'écran
+	 * @param now Instant de l'événement (secondes)
 	 * @param angle Angle vers la source (repère écran)
 	 */
-	private void damageFrom(float angle) {
+	private void damageFrom(double now, float angle) {
 		damageAngle = angle;
 		damageEnd = now + 0.6;
 	}
@@ -359,7 +358,6 @@ public class Effects implements IConfig {
 			p.additive = true;
 			p.ambient = true;
 			PARTICLES.add(p);
-			ambient++;
 			return;
 		}
 	}
@@ -384,7 +382,6 @@ public class Effects implements IConfig {
 		p.additive = true;
 		p.ambient = true;
 		PARTICLES.add(p);
-		ambient++;
 	}
 
 	/**

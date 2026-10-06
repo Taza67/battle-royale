@@ -1,6 +1,6 @@
 package outside.graphic;
 
-import inside.IConfig;
+import static inside.IConfig.*;
 
 /**
  * Zone d'affichage 16:9 centrée dans le tampon d'image (bandes noires autour)
@@ -10,7 +10,7 @@ import inside.IConfig;
  * @param height Hauteur en pixels
  * @author mourtaza
  */
-public record Viewport(int x, int y, int width, int height) implements IConfig {
+public record Viewport(int x, int y, int width, int height) {
 	/**
 	 * Calcule la plus grande zone au format de la carte contenue dans un tampon
 	 * @param framebufferWidth Largeur du tampon en pixels

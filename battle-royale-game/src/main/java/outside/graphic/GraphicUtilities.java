@@ -1,15 +1,15 @@
 package outside.graphic;
 
+import static inside.IConfig.*;
 import static org.lwjgl.opengl.GL11.*;
 
-import inside.IConfig;
 import inside.geometry.Rectangle;
 
 /**
  * Primitives de dessin OpenGL dans l'espace logique de la carte (1280 × 720, axe Y vers le bas)
  * @author mourtaza
  */
-public final class GraphicUtilities implements IConfig {
+public final class GraphicUtilities {
 	private GraphicUtilities() {}
 
 	/**
@@ -297,6 +297,71 @@ public final class GraphicUtilities implements IConfig {
 		glTexCoord2f(u1, v2); glVertex2f(x1, y2);
 		glEnd();
 		glDisable(GL_TEXTURE_2D);
+	}
+
+	/**
+	 * Dessine un fondu sur les quatre bords d'un rectangle (vignettage, mousse, assombrissement)
+	 * @param r Rectangle dont les bords sont fondu
+	 * @param depth Profondeur du fondu
+	 * @param c Couleur au niveau du bord (transparente au bout du fondu)
+	 * @param inside true pour un fondu vers l'intérieur du rectangle, false vers l'extérieur
+	 */
+	public static void edgeFade(Rectangle r, float depth, Color c, boolean inside) {
+		Color none = c.withAlpha(0);
+		float x1 = r.getX1(), y1 = r.getY1(), x2 = r.getX2(), y2 = r.getY2();
+		float cy = r.getCenterY(), h = r.getHeight();
+		if (inside) {
+			gradientRect(x1, y1, x2, y1 + depth, c, none);
+			gradientRect(x1, y2 - depth, x2, y2, none, c);
+			gradientLine(x1, cy, x1 + depth, cy, h, c, none);
+			gradientLine(x2, cy, x2 - depth, cy, h, c, none);
+		} else {
+			gradientRect(x1, y1 - depth, x2, y1, none, c);
+			gradientRect(x1, y2, x2, y2 + depth, c, none);
+			gradientLine(x1, cy, x1 - depth, cy, h, c, none);
+			gradientLine(x2, cy, x2 + depth, cy, h, c, none);
+		}
+	}
+
+	/**
+	 * Dessine un triangle plein
+	 * @param x1 Abscisse du premier sommet
+	 * @param y1 Ordonnée du premier sommet
+	 * @param x2 Abscisse du deuxième sommet
+	 * @param y2 Ordonnée du deuxième sommet
+	 * @param x3 Abscisse du troisième sommet
+	 * @param y3 Ordonnée du troisième sommet
+	 * @param c Couleur
+	 */
+	public static void triangle(float x1, float y1, float x2, float y2, float x3, float y3, Color c) {
+		color(c);
+		glBegin(GL_TRIANGLES);
+		glVertex2f(x1, y1);
+		glVertex2f(x2, y2);
+		glVertex2f(x3, y3);
+		glEnd();
+	}
+
+	/**
+	 * Dessine un quadrilatère plein
+	 * @param x1 Abscisse du premier sommet
+	 * @param y1 Ordonnée du premier sommet
+	 * @param x2 Abscisse du deuxième sommet
+	 * @param y2 Ordonnée du deuxième sommet
+	 * @param x3 Abscisse du troisième sommet
+	 * @param y3 Ordonnée du troisième sommet
+	 * @param x4 Abscisse du quatrième sommet
+	 * @param y4 Ordonnée du quatrième sommet
+	 * @param c Couleur
+	 */
+	public static void quad(float x1, float y1, float x2, float y2, float x3, float y3, float x4, float y4, Color c) {
+		color(c);
+		glBegin(GL_QUADS);
+		glVertex2f(x1, y1);
+		glVertex2f(x2, y2);
+		glVertex2f(x3, y3);
+		glVertex2f(x4, y4);
+		glEnd();
 	}
 
 	/**
