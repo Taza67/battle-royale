@@ -1,5 +1,6 @@
 package inside;
 
+import static inside.IConfig.*;
 /**
  * Classe utilitaire sur les 8 directions du jeu
  * (sens trigonométrique, axe Y vers le bas : 0 est, 2 nord, 4 ouest, 6 sud)
@@ -7,7 +8,7 @@ package inside;
  *
  * @see IConfig#EAST
  */
-public final class Direction implements IConfig {
+public final class Direction {
 	/**
 	 * Composantes des vecteurs unitaires de chaque direction
 	 */

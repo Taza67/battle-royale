@@ -1,5 +1,6 @@
 package inside;
 
+import static inside.IConfig.*;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -30,7 +31,7 @@ import inside.geometry.Vertice;
  *
  * @see IConfig
  */
-public class Board implements IConfig {
+public class Board {
 	/**
 	 * Description d'un joueur à créer
 	 * @param id Identifiant

@@ -1,5 +1,6 @@
 package inside;
 
+import static inside.IConfig.*;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -17,7 +18,7 @@ import inside.geometry.Vertice;
  * @see GridCell
  * @see Obstacle
  */
-public class GameMap implements IConfig {
+public class GameMap {
 	/**
 	 * Marge laissée entre les obstacles générés et le bord de la carte
 	 */

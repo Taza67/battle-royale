@@ -1,5 +1,6 @@
 package inside;
 
+import static inside.IConfig.*;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Random;
@@ -21,7 +22,7 @@ import inside.geometry.Rectangle;
  * </ul>
  * @author mourtaza
  */
-public class BotController implements IConfig {
+public class BotController {
 	/**
 	 * Nombre de pas entre deux décisions d'un robot (≈ cadence de la manette web)
 	 */

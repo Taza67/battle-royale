@@ -1,5 +1,6 @@
 package inside;
 
+import static inside.IConfig.*;
 import java.util.Random;
 
 import inside.geometry.Rectangle;

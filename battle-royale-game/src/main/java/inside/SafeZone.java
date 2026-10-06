@@ -1,5 +1,6 @@
 package inside;
 
+import static inside.IConfig.*;
 import java.util.List;
 import java.util.Random;
 import java.util.function.Predicate;
@@ -16,7 +17,7 @@ import inside.geometry.Vertice;
  *
  * @see GameSettings.ZoneWave
  */
-public class SafeZone implements IConfig {
+public class SafeZone {
 	/**
 	 * Étapes possibles de la zone
 	 */

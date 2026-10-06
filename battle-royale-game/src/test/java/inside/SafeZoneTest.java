@@ -1,5 +1,6 @@
 package inside;
 
+import static inside.IConfig.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.util.List;
@@ -12,7 +13,7 @@ import inside.SafeZone.Stage;
 import inside.SafeZone.Transition;
 import inside.geometry.Rectangle;
 
-class SafeZoneTest implements IConfig {
+class SafeZoneTest {
 	private static final Rectangle BOUNDS = new Rectangle(0, 0, MAP_WIDTH, MAP_HEIGHT);
 
 	@Test

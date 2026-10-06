@@ -1,5 +1,6 @@
 package inside;
 
+import static inside.IConfig.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 import org.junit.jupiter.api.Test;
@@ -7,7 +8,7 @@ import org.junit.jupiter.api.Test;
 import inside.geometry.Rectangle;
 import inside.geometry.Vertice;
 
-class GeometryTest implements IConfig {
+class GeometryTest {
 	private static final float EPS = 1e-4f;
 
 	@Test

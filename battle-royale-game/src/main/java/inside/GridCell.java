@@ -1,5 +1,6 @@
 package inside;
 
+import static inside.IConfig.*;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -13,7 +14,7 @@ import inside.geometry.Rectangle;
  *
  * @see GameMap
  */
-public class GridCell implements IConfig {
+public class GridCell {
 	/**
 	 * Position de la zone dans la grille (colonne, ligne)
 	 */

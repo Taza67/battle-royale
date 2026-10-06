@@ -1,5 +1,6 @@
 package inside;
 
+import static inside.IConfig.*;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -10,7 +11,7 @@ import java.util.Set;
  *
  * @see Player
  */
-public class Weapon implements IConfig {
+public class Weapon {
 	/**
 	 * Nombre de pas de simulation restants pendant lesquels le coup d'épée peut toucher
 	 */

@@ -1,5 +1,6 @@
 package outside;
 
+import static inside.IConfig.*;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.PrintStream;
@@ -27,7 +28,7 @@ import outside.communication.Protocol;
  * @author mourtaza
  */
 public record LaunchOptions(boolean multi, int bots, int port, String bind, float warmupSeconds, long seed, String pseudo,
-	boolean spectate, boolean sound, int windowWidth, int windowHeight, String gamepadUrl) implements IConfig {
+	boolean spectate, boolean sound, int windowWidth, int windowHeight, String gamepadUrl) {
 
 	/**
 	 * Port TCP par défaut

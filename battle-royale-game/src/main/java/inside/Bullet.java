@@ -1,5 +1,6 @@
 package inside;
 
+import static inside.IConfig.*;
 /**
  * Classe représentant un projectile sur le plateau de jeu
  * @author mourtaza

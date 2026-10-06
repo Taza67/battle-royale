@@ -1,5 +1,6 @@
 package inside;
 
+import static inside.IConfig.*;
 import java.util.List;
 
 /**
@@ -7,7 +8,7 @@ import java.util.List;
  * @author mourtaza
  *
  */
-public final class GameSettings implements IConfig {
+public final class GameSettings {
 	/**
 	 * Description d'une vague de rétrécissement de la zone sûre
 	 * @param waitSeconds Durée d'attente avant le rétrécissement, en secondes

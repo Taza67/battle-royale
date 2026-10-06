@@ -1,5 +1,6 @@
 package inside;
 
+import static inside.IConfig.*;
 import static inside.Boards.*;
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -10,7 +11,7 @@ import org.junit.jupiter.api.Test;
 import inside.Obstacle.TypeObstacle;
 import inside.geometry.Rectangle;
 
-class MovementTest implements IConfig {
+class MovementTest {
 	private static final float FULL_SPEED = Player.pixelsPerSecond(MAX_SPEED_LEVEL);
 
 	@Test

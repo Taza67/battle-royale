@@ -1,5 +1,6 @@
 package inside;
 
+import static inside.IConfig.*;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -9,7 +10,7 @@ import inside.GameSettings.ZoneWave;
 /**
  * Outils de préparation des plateaux pour les tests
  */
-final class Boards implements IConfig {
+final class Boards {
 	/**
 	 * Zone qui ne bouge pas pendant les tests (attente très longue)
 	 */

@@ -1,5 +1,6 @@
 package outside.communication;
 
+import static inside.IConfig.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.io.ByteArrayInputStream;
@@ -22,7 +23,7 @@ import inside.IConfig;
 import inside.GameMap;
 import inside.geometry.Rectangle;
 
-class ProtocolTest implements IConfig {
+class ProtocolTest {
 
 	private static DataInputStream input(byte[] bytes) {
 		return new DataInputStream(new ByteArrayInputStream(bytes));

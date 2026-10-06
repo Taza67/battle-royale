@@ -1,5 +1,6 @@
 package outside;
 
+import static inside.IConfig.*;
 import static org.lwjgl.glfw.GLFW.*;
 
 import java.io.BufferedReader;
@@ -43,7 +44,7 @@ import outside.graphic.WorldRenderer;
  * publiées par la simulation.
  * @author mourtaza
  */
-public class Game implements IConfig {
+public class Game {
 	private static final Logger LOGGER = Logger.getLogger(Game.class.getName());
 	/**
 	 * Durée maximale d'une image prise en compte pour l'animation des effets

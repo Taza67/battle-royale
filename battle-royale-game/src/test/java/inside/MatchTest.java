@@ -1,5 +1,6 @@
 package inside;
 
+import static inside.IConfig.*;
 import static inside.Boards.*;
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -15,7 +16,7 @@ import org.junit.jupiter.params.provider.CsvSource;
 import inside.Board.PlayerSpec;
 import inside.GameSettings.ZoneWave;
 
-class MatchTest implements IConfig {
+class MatchTest {
 	/**
 	 * Durée maximale simulée d'une partie
 	 */

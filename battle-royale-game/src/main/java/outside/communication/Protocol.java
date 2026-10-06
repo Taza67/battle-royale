@@ -1,5 +1,6 @@
 package outside.communication;
 
+import static inside.IConfig.*;
 import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
@@ -23,7 +24,7 @@ import inside.geometry.Rectangle;
  * (voir docs/PROTOCOLE.md). Tous les entiers sont en big-endian.
  * @author mourtaza
  */
-public final class Protocol implements IConfig {
+public final class Protocol {
 	/**
 	 * Code envoyé par le serveur au début de la poignée de main
 	 */
