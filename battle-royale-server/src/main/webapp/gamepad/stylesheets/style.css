@@ -626,6 +626,15 @@ body[data-ecran="ecran-manette"] > #bouton-plein-ecran-flottant {
     border: 1px solid rgba(245, 197, 66, 0.5);
 }
 
+.fin-message {
+    margin: 0;
+    padding: 8px 12px;
+    font-size: clamp(0.9rem, 4vmin, 1.15rem);
+    background-color: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 10px;
+}
+
 .bloc-vainqueur div, .fin-moi div {
     display: flex;
     flex-direction: column;

@@ -3,14 +3,13 @@
 
 import { creerConnexion, estModeDemo, urlManette } from "../../common/scripts/connexion.js";
 import {
-	afficherEcran, creerElement, lierIndicateurConnexion, notifier, poserAvatar, remplirClassement
+	afficherEcran, creerElement, lierIndicateurConnexion, notifier, poserAvatar, remplirClassement, resumerFin
 } from "../../common/scripts/interface.js";
 import { LIBELLES_ETAT, entier, normaliserEtat } from "../../common/scripts/protocole.js";
 import { TableauJoueurs, evenementsEntre, normaliserJoueur } from "./joueurs.js";
 
 const CLE_SESSION = "battle-royale.admin";
-const TENTATIVES_RECONNEXION = 3;
-const DELAI_RECONNEXION = 1500;
+const RAISON_REMPLACEE = "Session administrateur reprise par une autre connexion";
 const DELAI_ACQUITTEMENT = 8000;
 const TAILLE_JOURNAL = 60;
 
@@ -51,7 +50,6 @@ const session = {
 	motDePasse: "",
 	admise: false,
 	automatique: false,
-	echecs: 0,
 	partie: null,
 	joueurs: [],
 	listeRecue: false,
@@ -59,7 +57,7 @@ const session = {
 	commande: null
 };
 
-const connexion = await creerConnexion({ robots: 7, arriveeRobots: 1600 });
+const connexion = await creerConnexion({ robots: 7, robotsJeu: 2, arriveeRobots: 1600 });
 const tableau = new TableauJoueurs(element("corps-joueurs"), element("aucun-joueur"));
 const boutons = [...document.querySelectorAll("[data-commande]")];
 
@@ -112,7 +110,6 @@ function seConnecter(evenement) {
 
 	session.souhaitee = true;
 	session.automatique = false;
-	session.echecs = 0;
 	session.motDePasse = element("mot-de-passe").value;
 	element("erreur-connexion").textContent = "";
 	envoyerConnexion();
@@ -130,6 +127,8 @@ function revenirConnexion(raison) {
 	element("mot-de-passe").focus();
 }
 
+// La connexion administrateur n'est renvoyée automatiquement qu'à l'ouverture
+// d'une nouvelle socket, jamais après un refus.
 connexion.surOuverture(() => {
 	session.admise = false;
 	envoyerConnexion();
@@ -149,7 +148,6 @@ connexion.sur("admin-welcome", message => {
 
 	session.admise = true;
 	session.automatique = true;
-	session.echecs = 0;
 	ecrireSession({ motDePasse: session.motDePasse });
 
 	changerPartie(normaliserEtat(message.state) ?? "lobby", false);
@@ -163,11 +161,9 @@ connexion.sur("admin-welcome", message => {
 connexion.sur("rejected", message => {
 	const raison = typeof message.reason === "string" && message.reason !== "" ? message.reason : "Connexion refusée.";
 
-	if (session.automatique && session.echecs < TENTATIVES_RECONNEXION) {
-		session.echecs++;
-		setTimeout(envoyerConnexion, DELAI_RECONNEXION);
+	// Une session déjà admise qui reçoit un autre refus reste administrateur.
+	if (session.admise && raison !== RAISON_REMPLACEE)
 		return;
-	}
 
 	revenirConnexion(raison);
 });
@@ -221,14 +217,27 @@ connexion.sur("players", message => {
 	deduireResultats();
 });
 
-function afficherResultats(vainqueur, classement) {
+/**
+ * Affiche les résultats d'une manche à partir d'un message `end`, reçu ou reconstitué.
+ *
+ * @returns {object} résumé de la fin (voir `resumerFin`)
+ */
+function afficherResultats(fin) {
+	const vainqueur = fin.winner ?? null;
+	const classement = Array.isArray(fin.ranking) ? fin.ranking : [];
+	const resume = resumerFin(fin, { arretee: session.partie === "stopped" });
+
 	element("bloc-resultats").hidden = false;
+	element("resultat-message").hidden = resume.message === null;
+	element("resultat-message").textContent = resume.message ?? "";
 	element("resultat-vainqueur").hidden = vainqueur === null;
 	if (vainqueur !== null) {
 		element("pseudo-vainqueur").textContent = vainqueur.pseudo;
 		poserAvatar(element("avatar-vainqueur"), entier(vainqueur.id, null));
 	}
+	element("resultat-total").textContent = resume.total > 0 ? `${resume.total} participant${resume.total > 1 ? "s" : ""}` : "";
 	remplirClassement(element("corps-classement"), classement);
+	return resume;
 }
 
 // Si le message `end` a été manqué (panneau ouvert ou reconnecté après la fin),
@@ -242,23 +251,27 @@ function deduireResultats() {
 		return;
 
 	const gagnant = session.joueurs.find(joueur => joueur.statut === "winner");
-	afficherResultats(
-		gagnant === undefined ? null : { id: gagnant.id, pseudo: gagnant.pseudo },
-		classes.map(({ id, pseudo, kills, rang }) => ({ id, pseudo, kills, rank: rang }))
-	);
+	afficherResultats({
+		winner: gagnant === undefined ? null : { id: gagnant.id, pseudo: gagnant.pseudo },
+		ranking: classes.map(({ id, pseudo, kills, rang }) => ({ id, pseudo, kills, rank: rang })),
+		stopped: session.partie === "stopped"
+	});
 }
 
 connexion.sur("end", message => {
 	if (!session.admise)
 		return;
 
-	const vainqueur = message.winner ?? null;
-	const classement = Array.isArray(message.ranking) ? message.ranking : [];
-
 	session.finRecue = true;
-	afficherResultats(vainqueur, classement);
+	const resume = afficherResultats(message);
+	const vainqueur = message.winner ?? null;
 
-	journaliser(vainqueur === null ? "Fin de la manche sans vainqueur." : `Victoire de ${vainqueur.pseudo} !`, "succes");
+	if (vainqueur !== null)
+		journaliser(`Victoire de ${vainqueur.pseudo} !`, "succes");
+	else if (resume.message !== null)
+		journaliser(`${resume.message}.`, resume.arretee ? "erreur" : "succes");
+	else
+		journaliser("Fin de la manche sur une égalité.", "succes");
 });
 
 // Commandes //////////////////////////////////////////////////////////////////

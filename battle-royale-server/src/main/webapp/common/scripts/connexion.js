@@ -1,12 +1,14 @@
 // Client WebSocket partagé par la manette et le panneau d'administration :
 // construction de l'URL, distribution des messages par type, reconnexion
-// automatique avec attente exponentielle.
+// automatique avec attente exponentielle et détection des connexions muettes.
 
 const NOM_POINT_ACCES = "websocketserver";
 const APPLICATIONS = ["gamepad", "adminPanel"];
+const HOTES_LOCAUX = ["localhost", "127.0.0.1", "[::1]"];
 
 const ATTENTE_INITIALE = 500;
 const ATTENTE_MAXIMALE = 10000;
+const PERIODE_SURVEILLANCE = 500;
 
 const OUVERT = 1;
 
@@ -33,13 +35,40 @@ export function cheminContexte(chemin = window.location.pathname) {
 }
 
 /**
+ * Retourne l'URL donnée par le paramètre `?ws=`, ou `null` s'il est absent ou
+ * refusé : il n'est pris en compte que pour une page servie en local et une URL
+ * `ws:` ou `wss:` sur le même hôte (seul le port peut changer), pour qu'un lien
+ * piégé ne puisse pas envoyer le mot de passe administrateur à un autre serveur.
+ */
+export function urlWebSocketForcee(adresse = window.location) {
+	const valeur = new URLSearchParams(adresse.search).get("ws");
+	if (!valeur)
+		return null;
+
+	let url = null;
+	try {
+		url = new URL(valeur);
+	} catch (erreur) {
+		// Adresse illisible : refusée ci-dessous.
+	}
+
+	const acceptee = url !== null && HOTES_LOCAUX.includes(adresse.hostname)
+		&& (url.protocol === "ws:" || url.protocol === "wss:") && url.hostname === adresse.hostname;
+	if (!acceptee) {
+		console.warn("Paramètre ws ignoré : seule une adresse ws(s) sur le même hôte local est acceptée.");
+		return null;
+	}
+	return url.href;
+}
+
+/**
  * Construit l'URL du point d'accès WebSocket à partir de l'adresse de la page :
- * même hôte et même port, `wss` derrière `https`. Le paramètre `?ws=` permet de
- * viser un autre serveur pendant le développement.
+ * même hôte et même port, `wss` derrière `https`. En local, le paramètre `?ws=`
+ * permet de viser un autre port pendant le développement.
  */
 export function urlWebSocket(adresse = window.location) {
-	const forcee = new URLSearchParams(adresse.search).get("ws");
-	if (forcee)
+	const forcee = urlWebSocketForcee(adresse);
+	if (forcee !== null)
 		return forcee;
 
 	const protocole = adresse.protocol === "https:" ? "wss:" : "ws:";
@@ -69,6 +98,9 @@ export class Connexion {
 	#tentatives = 0;
 	#minuteur = null;
 	#active = false;
+	#silenceMaximal = 0;
+	#dernierMessage = 0;
+	#surveillance = null;
 
 	/**
 	 * @param {object} options
@@ -124,6 +156,7 @@ export class Connexion {
 	fermer() {
 		this.#active = false;
 		clearTimeout(this.#minuteur);
+		this.surveiller(0);
 
 		if (this.#socket !== null) {
 			this.#socket.onclose = null;
@@ -132,6 +165,26 @@ export class Connexion {
 		}
 
 		this.#changerEtat("deconnectee");
+	}
+
+	/**
+	 * Active la détection des connexions muettes : si la socket ouverte ne reçoit
+	 * aucun message pendant `delai` millisecondes, elle est abandonnée et la
+	 * reconnexion habituelle prend le relais. `0` désactive la détection.
+	 */
+	surveiller(delai) {
+		const silence = delai > 0 ? delai : 0;
+		if (silence === this.#silenceMaximal)
+			return;
+
+		this.#silenceMaximal = silence;
+		clearInterval(this.#surveillance);
+		this.#surveillance = null;
+		if (silence === 0)
+			return;
+
+		this.#dernierMessage = performance.now();
+		this.#surveillance = setInterval(() => this.#verifierSilence(), Math.min(PERIODE_SURVEILLANCE, silence / 4));
 	}
 
 	/**
@@ -190,11 +243,15 @@ export class Connexion {
 		this.#socket = socket;
 		socket.onopen = () => {
 			this.#tentatives = 0;
+			this.#dernierMessage = performance.now();
 			this.#changerEtat("connectee");
 			for (const ecouteur of this.#ecouteursOuverture)
 				ecouteur();
 		};
-		socket.onmessage = evenement => this.#distribuer(evenement.data);
+		socket.onmessage = evenement => {
+			this.#dernierMessage = performance.now();
+			this.#distribuer(evenement.data);
+		};
 		socket.onclose = () => {
 			if (this.#socket === socket)
 				this.#socket = null;
@@ -214,6 +271,23 @@ export class Connexion {
 		this.#changerEtat("reconnexion");
 		clearTimeout(this.#minuteur);
 		this.#minuteur = setTimeout(() => this.#connecter(), attente * alea);
+	}
+
+	#verifierSilence() {
+		if (!this.estConnectee || performance.now() - this.#dernierMessage < this.#silenceMaximal)
+			return;
+
+		// La fermeture d'une connexion morte peut tarder : la socket est abandonnée
+		// sans attendre son événement `close`.
+		const socket = this.#socket;
+		socket.onopen = socket.onmessage = socket.onclose = socket.onerror = null;
+		this.#socket = null;
+		try {
+			socket.close();
+		} catch (erreur) {
+			// Socket déjà inutilisable : rien à fermer.
+		}
+		this.#planifierReconnexion();
 	}
 
 	#reessayerMaintenant() {

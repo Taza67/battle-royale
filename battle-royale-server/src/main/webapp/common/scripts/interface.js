@@ -8,6 +8,9 @@ const LIBELLES_CONNEXION = {
 	deconnectee: "Hors ligne"
 };
 
+const MESSAGE_ARRET = "Manche arrêtée par l'administrateur";
+const MESSAGE_VICTOIRE_ROBOT = "Victoire d'un robot";
+
 const DUREE_NOTIFICATION = 3500;
 const NOMBRE_AVATARS = 50;
 
@@ -148,4 +151,35 @@ export function remplirClassement(corps, classement, idMis = null) {
 		});
 
 	corps.replaceChildren(...lignes);
+}
+
+/**
+ * Résume la fin d'une manche pour l'affichage : nombre de participants, arrêt
+ * par l'administrateur, victoire d'un robot et message correspondant.
+ *
+ * `ranking` ne contenant que les humains, un `winner` nul sans humain classé
+ * premier désigne la victoire d'un robot ; avec un humain premier, une égalité.
+ *
+ * @param {object|null} fin message `end` reçu, ou `null`
+ * @param {object} [secours] valeurs connues par ailleurs, quand `end` ne les porte pas
+ * @param {number} [secours.total] nombre de participants (`state.total`)
+ * @param {boolean} [secours.arretee] partie dans l'état `stopped`
+ * @returns {{total: number, arretee: boolean, victoireRobot: boolean, message: string|null}}
+ */
+export function resumerFin(fin, { total = 0, arretee = false } = {}) {
+	const classement = Array.isArray(fin?.ranking) ? fin.ranking : [];
+	const rangMaximal = classement.reduce((maximum, joueur) => Math.max(maximum, Number.isInteger(joueur?.rank) ? joueur.rank : 0), 0);
+	const totalFin = Number.isInteger(fin?.total) && fin.total > 0 ? fin.total : 0;
+	const totalSecours = Number.isInteger(total) && total > 0 ? total : 0;
+
+	const estArretee = typeof fin?.stopped === "boolean" ? fin.stopped : arretee;
+	const victoireRobot = fin != null && !estArretee && (fin.winner ?? null) === null
+		&& !classement.some(joueur => joueur?.rank === 1);
+
+	return {
+		total: totalFin || totalSecours || rangMaximal,
+		arretee: estArretee,
+		victoireRobot,
+		message: estArretee ? MESSAGE_ARRET : victoireRobot ? MESSAGE_VICTOIRE_ROBOT : null
+	};
 }

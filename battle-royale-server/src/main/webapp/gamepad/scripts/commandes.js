@@ -85,15 +85,23 @@ export class Commandes {
 	}
 
 	/**
-	 * Active ou désactive les commandes. La désactivation envoie un arrêt explicite.
+	 * Active ou désactive les commandes. La désactivation envoie un arrêt
+	 * explicite et suspend les attaques répétées ; la réactivation réapplique
+	 * le joystick, les touches et les boutons restés enfoncés entre-temps
+	 * (pause, reconnexion).
 	 */
 	activer(active) {
 		if (this.#active === active)
 			return;
 
 		this.#active = active;
-		if (!active)
-			this.#toutRelacher();
+		for (const repetition of this.#repetitions.values()) {
+			if (active)
+				this.#lancerRepetition(repetition);
+			else
+				this.#suspendreRepetition(repetition);
+		}
+		this.#appliquer();
 	}
 
 	/**
@@ -187,13 +195,30 @@ export class Commandes {
 			this.#surAttaque(forme);
 	}
 
+	// Une répétition existe tant que son bouton ou sa touche reste enfoncé ; son
+	// minuteur ne tourne que lorsque les commandes sont actives.
 	#commencerRepetition(cle, forme, bouton = null) {
 		if (this.#repetitions.has(cle))
 			return;
 
 		bouton?.classList.add("bouton-jeu-actif");
-		this.#attaquer(forme);
-		this.#repetitions.set(cle, { minuteur: setInterval(() => this.#attaquer(forme), PERIODE_REPETITION_ATTAQUE), bouton });
+		const repetition = { forme, bouton, minuteur: null };
+		this.#repetitions.set(cle, repetition);
+		if (this.#active)
+			this.#lancerRepetition(repetition);
+	}
+
+	#lancerRepetition(repetition) {
+		if (repetition.minuteur !== null)
+			return;
+
+		this.#attaquer(repetition.forme);
+		repetition.minuteur = setInterval(() => this.#attaquer(repetition.forme), PERIODE_REPETITION_ATTAQUE);
+	}
+
+	#suspendreRepetition(repetition) {
+		clearInterval(repetition.minuteur);
+		repetition.minuteur = null;
 	}
 
 	#arreterRepetition(cle) {
@@ -201,7 +226,7 @@ export class Commandes {
 		if (repetition === undefined)
 			return;
 
-		clearInterval(repetition.minuteur);
+		this.#suspendreRepetition(repetition);
 		repetition.bouton?.classList.remove("bouton-jeu-actif");
 		this.#repetitions.delete(cle);
 	}
