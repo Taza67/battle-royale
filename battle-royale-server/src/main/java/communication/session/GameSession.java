@@ -260,6 +260,8 @@ public final class GameSession implements AutoCloseable {
 			playersById.put(id, player);
 			LOG.info(() -> player + " inscrit (" + c.id() + ")");
 			c.send(Json.write(new ServerMessage.Welcome(id, player.getPseudo(), state.wireName(), tokenFor(player.getPseudo()))));
+			if (hasResult())
+				c.send(lastEndJson);
 			playersChanged();
 			return player;
 		}
