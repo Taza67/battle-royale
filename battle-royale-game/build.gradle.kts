@@ -14,6 +14,7 @@ val lwjglNatives = listOf(
 )
 
 dependencies {
+    implementation(project(":battle-royale-protocol"))
     implementation(platform("org.lwjgl:lwjgl-bom:$lwjglVersion"))
     for (module in listOf("lwjgl", "lwjgl-glfw", "lwjgl-opengl", "lwjgl-openal", "lwjgl-stb")) {
         implementation("org.lwjgl:$module")

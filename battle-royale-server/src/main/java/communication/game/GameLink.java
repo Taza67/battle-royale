@@ -16,6 +16,8 @@ import java.util.function.Consumer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import protocol.GameProtocol;
+
 /**
  * Lien TCP avec le jeu pour une manche : un thread dédié se connecte, réalise la poignée
  * de main puis échange actions et états toutes les 50 ms, en relayant pause, reprise et arrêt
@@ -26,28 +28,34 @@ import java.util.logging.Logger;
 public final class GameLink {
 	/**
 	 * Code annonçant le démarrage d'une partie
+	 * @see GameProtocol#START
 	 */
-	public static final int CODE_START = 0;
+	public static final int CODE_START = GameProtocol.START;
 	/**
 	 * Code de mise en pause
+	 * @see GameProtocol#PAUSE
 	 */
-	public static final int CODE_PAUSE = -1;
+	public static final int CODE_PAUSE = GameProtocol.PAUSE;
 	/**
 	 * Code d'arrêt demandé par l'administrateur
+	 * @see GameProtocol#STOP
 	 */
-	public static final int CODE_STOP = -2;
+	public static final int CODE_STOP = GameProtocol.STOP;
 	/**
 	 * Code de reprise après une pause
+	 * @see GameProtocol#RESUME
 	 */
-	public static final int CODE_RESUME = -3;
+	public static final int CODE_RESUME = GameProtocol.RESUME;
 	/**
 	 * Type d'action : déplacement
+	 * @see GameProtocol#ACTION_MOVE
 	 */
-	public static final byte ACTION_MOVE = 0;
+	public static final byte ACTION_MOVE = (byte) GameProtocol.ACTION_MOVE;
 	/**
 	 * Type d'action : attaque
+	 * @see GameProtocol#ACTION_ATTACK
 	 */
-	public static final byte ACTION_ATTACK = 1;
+	public static final byte ACTION_ATTACK = (byte) GameProtocol.ACTION_ATTACK;
 	/**
 	 * Raison d'échec : connexion impossible
 	 */
@@ -408,7 +416,7 @@ public final class GameLink {
 			}
 			nextTick = now + tickNanos;
 			socket.setSoTimeout((int) Math.max(1, TimeUnit.NANOSECONDS.toMillis(deadline - now)));
-			out.writeInt(0);
+			out.writeInt(GameProtocol.EMPTY_ACTIONS);
 			out.flush();
 			Reply reply = readReply(in);
 			if (!reply.running()) {

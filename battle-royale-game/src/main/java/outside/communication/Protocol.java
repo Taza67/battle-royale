@@ -11,6 +11,8 @@ import java.util.List;
 import java.util.Set;
 import java.util.logging.Logger;
 
+import protocol.GameProtocol;
+
 import inside.Board.PlayerSpec;
 import inside.BoardSnapshot;
 import inside.BoardSnapshot.PlayerState;
@@ -26,40 +28,49 @@ import inside.geometry.Rectangle;
 public final class Protocol implements IConfig {
 	/**
 	 * Code envoyé par le serveur au début de la poignée de main
+	 * @see GameProtocol#START
 	 */
-	public static final int START = 0;
+	public static final int START = GameProtocol.START;
 	/**
 	 * Code de pause
+	 * @see GameProtocol#PAUSE
 	 */
-	public static final int PAUSE = -1;
+	public static final int PAUSE = GameProtocol.PAUSE;
 	/**
 	 * Code d'arrêt demandé par l'administrateur
+	 * @see GameProtocol#STOP
 	 */
-	public static final int STOP = -2;
+	public static final int STOP = GameProtocol.STOP;
 	/**
 	 * Code de reprise
+	 * @see GameProtocol#RESUME
 	 */
-	public static final int RESUME = -3;
+	public static final int RESUME = GameProtocol.RESUME;
 	/**
 	 * Type d'action : déplacement
+	 * @see GameProtocol#ACTION_MOVE
 	 */
-	public static final int ACTION_MOVE = 0;
+	public static final int ACTION_MOVE = GameProtocol.ACTION_MOVE;
 	/**
 	 * Type d'action : attaque
+	 * @see GameProtocol#ACTION_ATTACK
 	 */
-	public static final int ACTION_ATTACK = 1;
+	public static final int ACTION_ATTACK = GameProtocol.ACTION_ATTACK;
 	/**
 	 * Taille de l'en-tête de l'état, en octets
+	 * @see GameProtocol#HEADER_SIZE
 	 */
-	public static final int HEADER_SIZE = 23;
+	public static final int HEADER_SIZE = GameProtocol.HEADER_SIZE;
 	/**
 	 * Taille de l'état d'un joueur, en octets
+	 * @see GameProtocol#PLAYER_SIZE
 	 */
-	public static final int PLAYER_SIZE = 9;
+	public static final int PLAYER_SIZE = GameProtocol.PLAYER_SIZE;
 	/**
 	 * Taille maximale acceptée pour un bloc d'actions
+	 * @see GameProtocol#MAX_ACTIONS_SIZE
 	 */
-	public static final int MAX_ACTIONS_SIZE = 1 << 16;
+	public static final int MAX_ACTIONS_SIZE = GameProtocol.MAX_ACTIONS_SIZE;
 
 	private static final Logger LOGGER = Logger.getLogger(Protocol.class.getName());
 

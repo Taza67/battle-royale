@@ -6,6 +6,8 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+import protocol.GameProtocol;
+
 /**
  * État de la partie transmis par le jeu à chaque échange : en-tête de 23 octets
  * puis 9 octets par joueur, entiers en big-endian
@@ -24,16 +26,19 @@ public record GameSnapshot(Phase phase, int alive, int total, int winnerId, int 
 		Zone zone, Zone nextZone, int secondsLeft, List<PlayerSnapshot> players) {
 	/**
 	 * Taille de l'en-tête, en octets
+	 * @see GameProtocol#HEADER_SIZE
 	 */
-	public static final int HEADER_SIZE = 23;
+	public static final int HEADER_SIZE = GameProtocol.HEADER_SIZE;
 	/**
 	 * Taille de l'état d'un joueur, en octets
+	 * @see GameProtocol#PLAYER_SIZE
 	 */
-	public static final int PLAYER_SIZE = 9;
+	public static final int PLAYER_SIZE = GameProtocol.PLAYER_SIZE;
 	/**
 	 * Nombre maximal de joueurs décrits dans un état (identifiants sur un octet)
+	 * @see GameProtocol#MAX_PLAYERS
 	 */
-	public static final int MAX_PLAYERS = 128;
+	public static final int MAX_PLAYERS = GameProtocol.MAX_PLAYERS;
 	/**
 	 * Taille maximale d'un état valide, en octets
 	 */
