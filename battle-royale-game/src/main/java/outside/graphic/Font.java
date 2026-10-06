@@ -12,7 +12,6 @@ import org.lwjgl.stb.STBTTBakedChar;
 import org.lwjgl.stb.STBTTFontinfo;
 import org.lwjgl.stb.STBTruetype;
 import org.lwjgl.system.MemoryStack;
-import org.lwjgl.system.MemoryUtil;
 
 /**
  * Police TrueType rendue avec stb_truetype : les caractères Latin-1 sont pré-rendus
@@ -90,27 +89,19 @@ public class Font implements AutoCloseable {
 
 		CHARS = STBTTBakedChar.malloc(CHARS_NUMBER);
 		int bitmapSize = 256;
-		ByteBuffer alpha = null;
-		try {
-			while (true) {
-				if (alpha != null) MemoryUtil.memFree(alpha);
-				alpha = BufferUtils.createByteBuffer(bitmapSize * bitmapSize);
-				int result = STBTruetype.stbtt_BakeFontBitmap(ttf, pixelHeight, alpha, bitmapSize, bitmapSize, FIRST_CHAR, CHARS);
-				if (result > 0 || bitmapSize >= MAX_BITMAP_SIZE) break;
-				bitmapSize *= 2;
-			}
-		} finally {
-			MemoryUtil.memFree(ttf);
+		ByteBuffer alpha;
+		while (true) {
+			alpha = BufferUtils.createByteBuffer(bitmapSize * bitmapSize);
+			int result = STBTruetype.stbtt_BakeFontBitmap(ttf, pixelHeight, alpha, bitmapSize, bitmapSize, FIRST_CHAR, CHARS);
+			if (result > 0 || bitmapSize >= MAX_BITMAP_SIZE) break;
+			bitmapSize *= 2;
 		}
 		BITMAP_SIZE = bitmapSize;
 
 		ByteBuffer rgba = BufferUtils.createByteBuffer(BITMAP_SIZE * BITMAP_SIZE * 4);
 		for (int i = 0; i < BITMAP_SIZE * BITMAP_SIZE; i++)
 			rgba.put((byte)255).put((byte)255).put((byte)255).put(alpha.get(i));
-		MemoryUtil.memFree(alpha);
-		rgba.flip();
-		TEXTURE = new Texture(rgba, BITMAP_SIZE, BITMAP_SIZE, false, true);
-		MemoryUtil.memFree(rgba);
+		TEXTURE = new Texture(rgba.flip(), BITMAP_SIZE, BITMAP_SIZE, false, true);
 	}
 
 	/**
@@ -201,7 +192,5 @@ public class Font implements AutoCloseable {
 		TEXTURE.delete();
 		CHARS.free();
 		QUAD.free();
-		MemoryUtil.memFree(XB);
-		MemoryUtil.memFree(YB);
 	}
 }
