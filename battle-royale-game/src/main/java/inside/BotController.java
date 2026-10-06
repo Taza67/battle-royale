@@ -44,7 +44,19 @@ public class BotController implements IConfig {
 	/**
 	 * Points de vie en dessous desquels un robot fuit
 	 */
-	private static final int FLEE_LIFE = 30;
+	private static final int FLEE_LIFE = 35;
+	/**
+	 * Agressivité en dessous de laquelle un robot préfère le tir à distance
+	 */
+	private static final float MARKSMAN_AGGRESSION = 0.55f;
+	/**
+	 * Distance que les tireurs cherchent à garder avec leur cible
+	 */
+	private static final float MARKSMAN_DISTANCE = 150;
+	/**
+	 * Durée pendant laquelle un robot touché riposte contre son agresseur
+	 */
+	private static final int RETALIATION_TICKS = 3 * TICKS_PER_SECOND;
 	/**
 	 * Distance d'anticipation pour l'évitement d'obstacles
 	 */
@@ -91,6 +103,8 @@ public class BotController implements IConfig {
 		long escapeUntil;
 		/** Sens de contournement préféré (1 ou -1) */
 		int turn = 1;
+		/** Tempérament, entre 0 (prudent, tireur) et 1 (agressif, bretteur) */
+		float aggression = 1;
 	}
 
 	/**
@@ -140,6 +154,7 @@ public class BotController implements IConfig {
 		Memory m = MEMORIES.computeIfAbsent(bot.getID(), id -> {
 			Memory mem = new Memory();
 			mem.turn = RANDOM.nextBoolean() ? 1 : -1;
+			mem.aggression = 0.2f + 0.8f * RANDOM.nextFloat();
 			mem.lastX = bot.getX();
 			mem.lastY = bot.getY();
 			return mem;
@@ -161,7 +176,7 @@ public class BotController implements IConfig {
 			return;
 		}
 
-		Player enemy = battle ? nearestEnemy(bot) : null;
+		Player enemy = battle ? target(bot, m, now) : null;
 		if (enemy == null) {
 			wander(bot, m, now, safe);
 			return;
@@ -182,7 +197,16 @@ public class BotController implements IConfig {
 			return;
 		}
 
-		// 3. Corps à corps
+		boolean finish = enemy.getLifePoints() < bot.getLifePoints() || BOARD.getAliveCount() <= HUNT_ALIVE;
+
+		// 3. Les tireurs gardent leurs distances et cherchent l'alignement
+		if (m.aggression < MARKSMAN_AGGRESSION && !finish && distance > MELEE_RANGE * 0.9f) {
+			if (tryShoot(bot, dx, dy, distance)) return;
+			keepDistance(bot, m, safe, dx, dy, distance);
+			return;
+		}
+
+		// 4. Corps à corps
 		if (distance < MELEE_RANGE * 0.9f) {
 			int d = Direction.fromVector(dx, dy);
 			m.stuck = 0;
@@ -191,10 +215,37 @@ public class BotController implements IConfig {
 			return;
 		}
 
-		// 4. Tir si l'ennemi est aligné, sinon poursuite
+		// 5. Tir si l'ennemi est aligné, sinon poursuite
 		if (tryShoot(bot, dx, dy, distance)) return;
-		boolean finish = enemy.getLifePoints() < bot.getLifePoints() || BOARD.getAliveCount() <= HUNT_ALIVE;
 		goTo(bot, m, enemy.getX(), enemy.getY(), finish ? 4 : 3);
+	}
+
+	/**
+	 * Recule si l'ennemi est trop proche, sinon se décale pour s'aligner sur l'axe le plus proche
+	 * @param bot Robot
+	 * @param m Mémoire
+	 * @param safe Zone sûre visée
+	 * @param dx Écart horizontal vers l'ennemi
+	 * @param dy Écart vertical vers l'ennemi
+	 * @param distance Distance de l'ennemi
+	 */
+	private void keepDistance(Player bot, Memory m, Rectangle safe, float dx, float dy, float distance) {
+		float tx, ty;
+		if (distance < MARKSMAN_DISTANCE) {
+			tx = bot.getX() - dx;
+			ty = bot.getY() - dy;
+		} else if (Math.abs(dx) > Math.abs(dy)) {
+			tx = bot.getX();
+			ty = bot.getY() + dy;
+		} else {
+			tx = bot.getX() + dx;
+			ty = bot.getY();
+		}
+		if (!safe.expand(-ZONE_MARGIN).contains(tx, ty)) {
+			tx = safe.getCenterX();
+			ty = safe.getCenterY();
+		}
+		goTo(bot, m, tx, ty, 3);
 	}
 
 	/**
@@ -320,17 +371,34 @@ public class BotController implements IConfig {
 	}
 
 	/**
+	 * Choisit la cible d'un robot : riposte contre son dernier agresseur, sinon ennemi le plus proche
+	 * dans un champ de perception qui dépend du tempérament
+	 * @param bot Robot
+	 * @param m Mémoire
+	 * @param now Pas courant
+	 * @return Cible ou null
+	 */
+	private Player target(Player bot, Memory m, long now) {
+		if (now - bot.getLastHitTick() < RETALIATION_TICKS && bot.getLastAttacker() >= 0) {
+			Player attacker = BOARD.getPlayer(bot.getLastAttacker());
+			if (attacker != null && attacker.getIsAlive()) return attacker;
+		}
+		return nearestEnemy(bot, VISION_RANGE * (0.35f + 0.65f * m.aggression));
+	}
+
+	/**
 	 * Cherche l'ennemi vivant le plus proche dans le champ de perception
 	 * @param bot Robot
+	 * @param range Distance de perception
 	 * @return Ennemi ou null
 	 */
-	private Player nearestEnemy(Player bot) {
+	private Player nearestEnemy(Player bot, float range) {
 		// En fin de partie, les robots traquent les derniers survivants où qu'ils soient
 		boolean hunt = BOARD.getAliveCount() <= HUNT_ALIVE;
 		Player best = null;
-		float bestDistance = hunt ? Float.MAX_VALUE : VISION_RANGE * VISION_RANGE;
+		float bestDistance = hunt ? Float.MAX_VALUE : range * range;
 		Iterable<Player> candidates = hunt ? BOARD.getPlayers()
-			: BOARD.getMap().playersNear(Rectangle.centered(bot.getX(), bot.getY(), VISION_RANGE, VISION_RANGE));
+			: BOARD.getMap().playersNear(Rectangle.centered(bot.getX(), bot.getY(), range, range));
 		for (Player p : candidates) {
 			if (p == bot || !p.getIsAlive()) continue;
 			float dx = p.getX() - bot.getX(), dy = p.getY() - bot.getY();
