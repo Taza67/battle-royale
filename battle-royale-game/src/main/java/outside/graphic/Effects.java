@@ -9,20 +9,22 @@ import inside.BoardSnapshot;
 import inside.BoardSnapshot.PlayerState;
 import inside.DamageCause;
 import inside.GameEvent;
+import inside.IConfig;
+import inside.geometry.Rectangle;
 
 /**
  * Effets visuels éphémères de la vue : particules, nombres de dégâts et bandeaux.
  * Ils sont produits à partir des événements de la simulation et n'ont aucune influence sur elle.
  * @author mourtaza
  */
-public class Effects {
+public class Effects implements IConfig {
 	/**
 	 * Particule
 	 */
 	private static final class Particle {
-		float x, y, vx, vy, life, maxLife, size, drag;
+		float x, y, vx, vy, life, maxLife, size, drag, gravity, phase;
 		Color color;
-		boolean additive;
+		boolean additive, square, ambient;
 	}
 
 	/**
@@ -56,12 +58,32 @@ public class Effects {
 	}
 
 	private static final int MAX_PARTICLES = 1500;
+	/**
+	 * Nombre maximal de particules d'ambiance (braises et pollen)
+	 */
+	private static final int MAX_AMBIENT = 140;
+	/**
+	 * Palette des confettis de victoire
+	 */
+	private static final Color[] CONFETTI = {
+		Color.rgb(0xF94144), Color.rgb(0xF9C74F), Color.rgb(0x90BE6D),
+		Color.rgb(0x43AA8B), Color.rgb(0x4D96FF), Color.rgb(0xC77DFF)
+	};
 
 	private final List<Particle> PARTICLES = new ArrayList<>();
 	private final List<FloatingText> TEXTS = new ArrayList<>();
 	private final Random RANDOM = new Random();
 	private Banner banner;
 	private double now;
+	private int ambient;
+
+	// Tremblement de caméra (dégâts subis par le joueur local)
+	private double shakeEnd = -1, shakeDuration = 1;
+	private float shakePower, shakeX, shakeY;
+
+	// Indicateur directionnel des dégâts subis par le joueur local
+	private double damageEnd = -1;
+	private float damageAngle;
 
 
 	/**
@@ -71,6 +93,11 @@ public class Effects {
 		PARTICLES.clear();
 		TEXTS.clear();
 		banner = null;
+		ambient = 0;
+		shakeEnd = -1;
+		shakePower = 0;
+		shakeX = shakeY = 0;
+		damageEnd = -1;
 	}
 
 	/**
@@ -102,7 +129,8 @@ public class Effects {
 		for (GameEvent e : events) {
 			switch (e.type()) {
 			case SHOT:
-				burst(e.x(), e.y(), 5, 60, 0.15f, 2.5f, Color.rgb(0xFFE38A), true);
+				burst(e.x(), e.y(), 6, 60, 0.15f, 2.5f, Color.rgb(0xFFE38A), true);
+				flash(e.x(), e.y(), 10, Color.rgb(0xFFF3C0));
 				break;
 			case HIT: {
 				boolean melee = e.cause() == DamageCause.MELEE;
@@ -110,6 +138,12 @@ public class Effects {
 				if (e.amount() > 0) {
 					burst(e.x(), e.y(), 6, 50, 0.6f, 3.5f, Color.rgb(0xC0262D), false);
 					text("-" + e.amount(), e.x(), e.y() - 18, e.targetId() == localId ? Color.RED : Color.rgb(0xFFF0A0));
+				}
+				if (e.targetId() == localId && e.amount() > 0) {
+					shake(0.35f, 5);
+					PlayerState source = s.player(e.actorId());
+					if (source != null)
+						damageFrom((float)Math.atan2(source.y() - e.y(), source.x() - e.x()));
 				}
 				break;
 			}
@@ -121,12 +155,26 @@ public class Effects {
 				Color c = Color.fromId(e.targetId());
 				burst(e.x(), e.y(), 40, 160, 0.9f, 4, c, true);
 				burst(e.x(), e.y(), 18, 70, 1.2f, 6, Color.rgb(0x333333).withAlpha(0.8f), false);
-				if (e.targetId() == localId)
+				if (e.targetId() == localId) {
+					shake(0.7f, 9);
 					showBanner("Vous êtes éliminé", rankText(e.amount()) + " sur " + s.total(), Color.RED, 3.5);
-				else if (localId >= 0 && e.actorId() == localId && victim != null)
+				} else if (localId >= 0 && e.actorId() == localId && victim != null) {
+					shake(0.25f, 3);
 					showBanner("Élimination !", victim.pseudo(), Color.GOLD, 1.6);
+				}
 				break;
 			}
+			case GAME_OVER:
+				if (localId >= 0 && e.actorId() == localId) {
+					PlayerState winner = s.player(localId);
+					if (winner != null) {
+						burst(winner.x(), winner.y(), 70, 240, 1.4f, 5, Color.GOLD, true);
+						burst(winner.x(), winner.y(), 45, 140, 1.8f, 4, Color.WHITE, true);
+					}
+					confetti(140);
+					shake(0.4f, 4);
+				}
+				break;
 			case BATTLE_STARTED:
 				showBanner("Que le combat commence !", "Les dégâts sont activés", Color.GOLD, 2.8);
 				break;
@@ -153,6 +201,19 @@ public class Effects {
 	public void update(double time, float dt) {
 		now = time;
 
+		double remaining = shakeEnd - now;
+		if (remaining > 0) {
+			float k = (float)(remaining / shakeDuration);
+			shakeX = shakePower * k * k * (float)Math.sin(now * 53);
+			shakeY = shakePower * k * k * (float)Math.cos(now * 41);
+		} else {
+			shakeX = shakeY = 0;
+			shakePower = 0;
+		}
+
+		ambient = 0;
+		for (Particle p : PARTICLES) if (p.ambient) ambient++;
+
 		Iterator<Particle> it = PARTICLES.iterator();
 		while (it.hasNext()) {
 			Particle p = it.next();
@@ -164,6 +225,7 @@ public class Effects {
 			float k = (float)Math.pow(p.drag, dt);
 			p.vx *= k;
 			p.vy *= k;
+			p.vy += p.gravity * dt;
 			p.x += p.vx * dt;
 			p.y += p.vy * dt;
 		}
@@ -190,7 +252,20 @@ public class Effects {
 				if (p.additive != additive) continue;
 				float t = p.life / p.maxLife;
 				float size = p.size * (additive ? 0.6f + 0.6f * t : 1.2f - 0.4f * t);
-				GraphicUtilities.glow(glow, p.x, p.y, size * 2, size * 2, p.color.withAlpha(p.color.a() * t));
+				Color c = p.color.withAlpha(p.color.a() * t);
+				if (p.square) {
+					GraphicUtilities.color(c);
+					float a = p.phase + (float)now * 6;
+					float ca = (float)Math.cos(a) * size, sa = (float)Math.sin(a) * size;
+					org.lwjgl.opengl.GL11.glBegin(org.lwjgl.opengl.GL11.GL_QUADS);
+					org.lwjgl.opengl.GL11.glVertex2f(p.x - ca - sa, p.y - sa + ca);
+					org.lwjgl.opengl.GL11.glVertex2f(p.x + ca - sa, p.y + sa + ca);
+					org.lwjgl.opengl.GL11.glVertex2f(p.x + ca + sa, p.y + sa - ca);
+					org.lwjgl.opengl.GL11.glVertex2f(p.x - ca + sa, p.y - sa - ca);
+					org.lwjgl.opengl.GL11.glEnd();
+				} else {
+					GraphicUtilities.glow(glow, p.x, p.y, size * 2, size * 2, c);
+				}
 			}
 		}
 		GraphicUtilities.additive(false);
@@ -198,6 +273,159 @@ public class Effects {
 		for (FloatingText t : TEXTS) {
 			float a = Math.min(1, t.life / (t.maxLife * 0.5f));
 			font.drawShadowed(t.text, t.x, t.y, t.color.withAlpha(a), Font.Align.CENTER);
+		}
+	}
+
+	/**
+	 * Décalement horizontal du tremblement de caméra
+	 * @return Décalage en unités logiques
+	 */
+	public float shakeX() { return shakeX; }
+	/**
+	 * Décalement vertical du tremblement de caméra
+	 * @return Décalage en unités logiques
+	 */
+	public float shakeY() { return shakeY; }
+
+	/**
+	 * Opacité de l'indicateur de dégâts subis (0 si inactif)
+	 * @return Opacité entre 0 et 1
+	 */
+	public float damageAlpha() {
+		double remaining = damageEnd - now;
+		return remaining > 0 ? (float)Math.min(1, remaining / 0.45) : 0;
+	}
+
+	/**
+	 * Direction de la source des derniers dégâts subis (angle à l'écran)
+	 * @return Angle en radians
+	 */
+	public float damageAngle() { return damageAngle; }
+
+	/**
+	 * Déclenche un tremblement de caméra
+	 * @param duration Durée en secondes
+	 * @param power Amplitude en unités logiques
+	 */
+	private void shake(float duration, float power) {
+		shakeEnd = Math.max(shakeEnd, now + duration);
+		shakeDuration = Math.max(0.1, shakeEnd - now);
+		shakePower = Math.max(shakePower, power);
+	}
+
+	/**
+	 * Mémorise la direction d'une source de dégâts pour l'indicateur à l'écran
+	 * @param angle Angle vers la source (repère écran)
+	 */
+	private void damageFrom(float angle) {
+		damageAngle = angle;
+		damageEnd = now + 0.6;
+	}
+
+	/**
+	 * Fait naître les particules d'ambiance : braises au-dessus de la lave et pollen sur l'herbe
+	 * @param dt Durée écoulée (secondes)
+	 * @param zone Zone sûre courante (la lave recouvre le reste de la carte)
+	 */
+	public void ambient(float dt, Rectangle zone) {
+		if (ambient >= MAX_AMBIENT || PARTICLES.size() >= MAX_PARTICLES) return;
+
+		// Quelques braises par seconde au-dessus de la lave, proportionnelles à sa surface
+		float lavaArea = Math.max(0, MAP_WIDTH * MAP_HEIGHT - zone.getWidth() * zone.getHeight());
+		if (lavaArea > 1000 && RANDOM.nextFloat() < dt * 18) spawnEmber(zone);
+		// Fines particules de pollen dérivant dans la zone sûre
+		if (RANDOM.nextFloat() < dt * 26) spawnPollen(zone);
+	}
+
+	/**
+	 * Fait apparaître une braise qui monte dans la lave, hors de la zone sûre
+	 * @param zone Zone sûre
+	 */
+	private void spawnEmber(Rectangle zone) {
+		for (int i = 0; i < 6; i++) {
+			float x = RANDOM.nextFloat() * MAP_WIDTH;
+			float y = RANDOM.nextFloat() * MAP_HEIGHT;
+			if (x >= zone.getX1() && x <= zone.getX2() && y >= zone.getY1() && y <= zone.getY2())
+				continue;
+			Particle p = new Particle();
+			p.x = x;
+			p.y = y;
+			p.vx = (RANDOM.nextFloat() - 0.5f) * 16;
+			p.vy = -22 - RANDOM.nextFloat() * 30;
+			p.maxLife = p.life = 1.6f + RANDOM.nextFloat() * 1.4f;
+			p.size = 1.6f + RANDOM.nextFloat() * 1.6f;
+			p.drag = 0.7f;
+			p.color = new Color(1f, 0.45f + RANDOM.nextFloat() * 0.3f, 0.08f, 0.8f);
+			p.additive = true;
+			p.ambient = true;
+			PARTICLES.add(p);
+			ambient++;
+			return;
+		}
+	}
+
+	/**
+	 * Fait apparaître une particule de pollen dérivant dans la zone sûre
+	 * @param zone Zone sûre
+	 */
+	private void spawnPollen(Rectangle zone) {
+		float x = zone.getX1() + RANDOM.nextFloat() * zone.getWidth();
+		float y = zone.getY1() + RANDOM.nextFloat() * zone.getHeight();
+		Particle p = new Particle();
+		p.x = x;
+		p.y = y;
+		p.vx = (RANDOM.nextFloat() - 0.5f) * 24;
+		p.vy = -6 + (RANDOM.nextFloat() - 0.5f) * 10;
+		p.maxLife = p.life = 2.5f + RANDOM.nextFloat() * 1.5f;
+		p.size = 0.9f + RANDOM.nextFloat() * 1.2f;
+		p.drag = 0.85f;
+		p.phase = RANDOM.nextFloat() * 6.28f;
+		p.color = new Color(0.95f, 1f, 0.72f, 0.5f);
+		p.additive = true;
+		p.ambient = true;
+		PARTICLES.add(p);
+		ambient++;
+	}
+
+	/**
+	 * Ajoute un éclair bref et lumineux (bouche du canon)
+	 * @param x Abscisse
+	 * @param y Ordonnée
+	 * @param size Taille
+	 * @param color Couleur
+	 */
+	private void flash(float x, float y, float size, Color color) {
+		if (PARTICLES.size() >= MAX_PARTICLES) return;
+		Particle p = new Particle();
+		p.x = x;
+		p.y = y;
+		p.maxLife = p.life = 0.1f;
+		p.size = size;
+		p.drag = 1;
+		p.color = color;
+		p.additive = true;
+		PARTICLES.add(p);
+	}
+
+	/**
+	 * Fait pleuvoir des confettis multicolores sur la carte (victoire locale)
+	 * @param count Nombre de confettis
+	 */
+	private void confetti(int count) {
+		for (int i = 0; i < count && PARTICLES.size() < MAX_PARTICLES; i++) {
+			Particle p = new Particle();
+			p.x = RANDOM.nextFloat() * MAP_WIDTH;
+			p.y = -20 - RANDOM.nextFloat() * 220;
+			p.vx = (RANDOM.nextFloat() - 0.5f) * 60;
+			p.vy = 60 + RANDOM.nextFloat() * 70;
+			p.maxLife = p.life = 2.5f + RANDOM.nextFloat() * 1.8f;
+			p.size = 2.2f + RANDOM.nextFloat() * 1.8f;
+			p.drag = 0.9f;
+			p.gravity = 55;
+			p.phase = RANDOM.nextFloat() * 6.28f;
+			p.color = CONFETTI[RANDOM.nextInt(CONFETTI.length)];
+			p.square = true;
+			PARTICLES.add(p);
 		}
 	}
 

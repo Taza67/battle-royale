@@ -12,7 +12,9 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import org.lwjgl.glfw.GLFWErrorCallback;
+import org.lwjgl.glfw.GLFWImage;
 import org.lwjgl.glfw.GLFWVidMode;
+import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL;
 import org.lwjgl.system.MemoryStack;
 
@@ -171,6 +173,8 @@ public class Game implements IConfig {
 			}
 		}
 
+		setWindowIcon();
+
 		glfwSetKeyCallback(window, (win, key, scancode, action, mods) -> {
 			if (action == GLFW_PRESS) onKeyPressed(key);
 		});
@@ -210,6 +214,8 @@ public class Game implements IConfig {
 			if (shown != null) {
 				if (localId >= 0) INPUT.apply(shown.board(), localId, readKeys());
 				consumeEvents(now);
+				if (frame != null && frame.session() == shown)
+					EFFECTS.ambient(elapsed, frame.current().zone());
 			}
 
 			EFFECTS.update(now, elapsed);
@@ -255,8 +261,14 @@ public class Game implements IConfig {
 		}
 
 		BoardSnapshot current = frame.current();
+
+		// Tremblement de caméra : le monde est translaté, l'interface reste fixe
+		GL11.glMatrixMode(GL11.GL_MODELVIEW);
+		GL11.glPushMatrix();
+		GL11.glTranslatef(EFFECTS.shakeX(), EFFECTS.shakeY(), 0);
 		world.render(shown.board().getMap(), frame.previous(), current, frame.alpha(System.nanoTime()), now, localId,
 			EFFECTS, fonts.MEDIUM);
+		GL11.glPopMatrix();
 		hud.render(current, info, EFFECTS, now, endTime);
 	}
 
@@ -323,6 +335,22 @@ public class Game implements IConfig {
 			long primary = glfwGetPrimaryMonitor();
 			GLFWVidMode mode = glfwGetVideoMode(primary);
 			if (mode != null) glfwSetWindowMonitor(window, primary, 0, 0, mode.width(), mode.height(), mode.refreshRate());
+		}
+	}
+
+	/**
+	 * Applique l'emblème du jeu comme icône de fenêtre (silencieux si l'image manque)
+	 */
+	private void setWindowIcon() {
+		try {
+			outside.graphic.Texture.Image icon = outside.graphic.Texture.readResource("textures/emblem.png");
+			try (MemoryStack stack = MemoryStack.stackPush()) {
+				GLFWImage.Buffer icons = GLFWImage.malloc(1, stack);
+				icons.width(icon.width()).height(icon.height()).pixels(icon.pixels());
+				glfwSetWindowIcon(window, icons);
+			}
+		} catch (RuntimeException e) {
+			LOGGER.fine("Icône de fenêtre non appliquée : " + e.getMessage());
 		}
 	}
 
