@@ -16,19 +16,19 @@ import inside.geometry.Rectangle;
  */
 public class GridCell {
 	/**
-	 * Position de la zone dans la grille (colonne, ligne)
+	 * Position de la case dans la grille (colonne, ligne)
 	 */
 	private final int column, row;
 	/**
-	 * Rectangle occupé par la zone
+	 * Rectangle occupé par la case
 	 */
 	private final Rectangle representation;
 	/**
-	 * Obstacles chevauchant la zone
+	 * Obstacles chevauchant la case
 	 */
 	private final List<Obstacle> obstacles;
 	/**
-	 * Joueurs vivants présents dans la zone
+	 * Joueurs vivants présents dans la case
 	 */
 	private final List<Player> players;
 
@@ -49,34 +49,34 @@ public class GridCell {
 
 
 	/**
-	 * Retourne la colonne de la zone
+	 * Retourne la colonne de la case
 	 * @return Colonne
 	 */
-	public int getX() { return column; }
+	public int getColumn() { return column; }
 	/**
-	 * Retourne la ligne de la zone
+	 * Retourne la ligne de la case
 	 * @return Ligne
 	 */
-	public int getY() { return row; }
+	public int getRow() { return row; }
 	/**
-	 * Retourne le rectangle occupé par la zone
+	 * Retourne le rectangle occupé par la case
 	 * @return Rectangle
 	 */
 	public Rectangle getRepresentation() { return representation; }
 	/**
-	 * Retourne les obstacles chevauchant la zone
+	 * Retourne les obstacles chevauchant la case
 	 * @return Liste non modifiable
 	 */
 	public List<Obstacle> getObstacles() { return Collections.unmodifiableList(obstacles); }
 	/**
-	 * Retourne les joueurs présents dans la zone
+	 * Retourne les joueurs présents dans la case
 	 * @return Liste non modifiable
 	 */
 	public List<Player> getPlayers() { return Collections.unmodifiableList(players); }
 
 
 	/**
-	 * Ajoute un obstacle à la zone
+	 * Ajoute un obstacle à la case
 	 * @param o Obstacle
 	 */
 	void addObstacle(Obstacle o) {
@@ -84,7 +84,7 @@ public class GridCell {
 	}
 
 	/**
-	 * Ajoute un joueur à la zone
+	 * Ajoute un joueur à la case
 	 * @param p Joueur
 	 */
 	void addPlayer(Player p) {
@@ -92,7 +92,7 @@ public class GridCell {
 	}
 
 	/**
-	 * Retire un joueur de la zone
+	 * Retire un joueur de la case
 	 * @param p Joueur
 	 */
 	void deletePlayer(Player p) {
@@ -101,6 +101,6 @@ public class GridCell {
 
 	@Override
 	public String toString() {
-		return "(" + column + ", " + row + ") - Nombre de joueurs dans la zone = " + players.size();
+		return "(" + column + ", " + row + ") - Nombre de joueurs dans la case = " + players.size();
 	}
 }
