@@ -54,10 +54,6 @@ public class Board {
 	 */
 	private static final long LAVA_KILL_CREDIT_TICKS = 10L * TICKS_PER_SECOND;
 	/**
-	 * Écart minimal entre le joueur et le départ d'un projectile, en pixels
-	 */
-	private static final float BULLET_SPAWN_GAP = 1;
-	/**
 	 * Marge intérieure de la zone de recherche d'une position d'apparition
 	 */
 	private static final float SPAWN_AREA_MARGIN = 20;
@@ -85,6 +81,11 @@ public class Board {
 	 * @see MovementResolver
 	 */
 	private final MovementResolver movement;
+	/**
+	 * Résolveur du combat (mêlée et projectiles)
+	 * @see CombatResolver
+	 */
+	private final CombatResolver combat;
 	/**
 	 * Joueurs indexés par identifiant (triés)
 	 */
@@ -135,11 +136,6 @@ public class Board {
 	 * Identifiant du vainqueur, -1 si aucun (volatile : lu par les autres fils)
 	 */
 	private volatile int winnerId = -1;
-	/**
-	 * Identifiant du prochain projectile
-	 */
-	private int nextBulletId;
-
 
 	/**
 	 * Construit un plateau avec une carte générée à partir de la graine des réglages
@@ -171,6 +167,7 @@ public class Board {
 		commands = new ConcurrentLinkedQueue<>();
 		suspended = new ArrayDeque<>();
 		eventLog = new EventLog();
+		combat = new CombatResolver(this.map, this.players.values(), bullets, eventLog);
 
 		for (PlayerSpec spec : players) {
 			if (this.players.containsKey(spec.id()))
@@ -322,8 +319,8 @@ public class Board {
 			for (Player p : players.values())
 				if (p.isAlive()) movement.move(p, tick);
 
-			resolveMelee();
-			updateBullets();
+			combat.resolveMelee(phase, tick);
+			combat.updateBullets(phase, tick);
 
 			if (phase == Phase.BATTLE) {
 				updateZone();
@@ -412,28 +409,8 @@ public class Board {
 				addEvent(new GameEvent(GameEvent.Type.SWING, tick, p.getId(), -1, 0, p.getX(), p.getY(), DamageCause.MELEE));
 		} else if (attack.form() == ATTACK_SHOOT) {
 			if (p.getWeapon().tryShoot())
-				shoot(p);
+				combat.shoot(p, phase, tick);
 		}
-	}
-
-	/**
-	 * Fait tirer un joueur dans la direction de son regard
-	 * @param p Joueur
-	 */
-	private void shoot(Player p) {
-		int d = p.getViewDirection();
-		float offset = Math.max(p.getRadiusX(), p.getRadiusY()) + BULLET_RADIUS + BULLET_SPAWN_GAP;
-		float bx = p.getX() + Direction.dx(d) * offset, by = p.getY() + Direction.dy(d) * offset;
-		Bullet b = new Bullet(nextBulletId++, p.getId(), bx, by, d);
-
-		addEvent(new GameEvent(GameEvent.Type.SHOT, tick, p.getId(), -1, 0, bx, by, DamageCause.BULLET));
-
-		if (!map.getBounds().contains(bx, by) || map.obstacleIntersecting(b.getRepresentation(), true) != null) {
-			addEvent(new GameEvent(GameEvent.Type.BULLET_BLOCKED, tick, p.getId(), -1, 0, bx, by, DamageCause.BULLET));
-			return;
-		}
-
-		bullets.add(b);
 	}
 
 	/**
@@ -444,82 +421,6 @@ public class Board {
 		bullets.clear();
 		safeZone.start();
 		addEvent(GameEvent.global(GameEvent.Type.BATTLE_STARTED, tick, 0));
-	}
-
-	/**
-	 * Applique les coups d'épée en cours (chaque cible est touchée au plus une fois par coup)
-	 */
-	private void resolveMelee() {
-		for (Player p : players.values()) {
-			if (!p.isAlive() || !p.getWeapon().isSwinging()) continue;
-
-			Rectangle reach = Rectangle.centered(p.getX(), p.getY(), MELEE_RANGE, MELEE_RANGE);
-			for (Player target : map.playersNear(reach.expand(PLAYER_RADIUS_X))) {
-				if (target == p || !target.isAlive() || !Weapon.isInReach(p, target)) continue;
-				if (!p.getWeapon().registerHit(target.getId())) continue;
-
-				int damage = phase == Phase.BATTLE ? target.reduceLifePoints(MELEE_DAMAGE, p.getId(), DamageCause.MELEE, tick) : 0;
-				addEvent(new GameEvent(GameEvent.Type.HIT, tick, p.getId(), target.getId(), damage,
-					target.getX(), target.getY(), DamageCause.MELEE));
-			}
-		}
-	}
-
-	/**
-	 * Fait avancer les projectiles par petits pas et résout leurs collisions
-	 */
-	private void updateBullets() {
-		float distance = BULLET_SPEED * TICK_DURATION;
-		int substeps = Math.max(1, (int)Math.ceil(distance / BULLET_SUBSTEP));
-		float substep = distance / substeps;
-
-		Iterator<Bullet> it = bullets.iterator();
-		while (it.hasNext()) {
-			Bullet b = it.next();
-
-			for (int s = 0; s < substeps && b.isActive(); s++) {
-				b.advance(substep);
-				stepBullet(b);
-			}
-
-			if (!b.isActive()) it.remove();
-		}
-	}
-
-	/**
-	 * Résout les collisions d'un projectile à sa position actuelle
-	 * @param b Projectile
-	 */
-	private void stepBullet(Bullet b) {
-		if (!map.getBounds().contains(b.getX(), b.getY())) {
-			b.destroy();
-			addEvent(new GameEvent(GameEvent.Type.BULLET_BLOCKED, tick, b.getOwnerId(), -1, 0,
-				clamp(b.getX(), 0, MAP_WIDTH), clamp(b.getY(), 0, MAP_HEIGHT), DamageCause.BULLET));
-			return;
-		}
-
-		Rectangle r = b.getRepresentation();
-		if (map.obstacleIntersecting(r, true) != null) {
-			b.destroy();
-			addEvent(new GameEvent(GameEvent.Type.BULLET_BLOCKED, tick, b.getOwnerId(), -1, 0, b.getX(), b.getY(), DamageCause.BULLET));
-			return;
-		}
-
-		// Portée épuisée : la balle s'arrête avant de pouvoir toucher qui que ce soit
-		if (b.isOutOfRange()) {
-			b.destroy();
-			return;
-		}
-
-		for (Player target : map.playersNear(r.expand(PLAYER_RADIUS_X))) {
-			if (target.getId() == b.getOwnerId() || !target.isAlive() || !target.getRepresentation().intersect(r)) continue;
-
-			int damage = phase == Phase.BATTLE ? target.reduceLifePoints(BULLET_DAMAGE, b.getOwnerId(), DamageCause.BULLET, tick) : 0;
-			addEvent(new GameEvent(GameEvent.Type.HIT, tick, b.getOwnerId(), target.getId(), damage,
-				b.getX(), b.getY(), DamageCause.BULLET));
-			b.destroy();
-			return;
-		}
 	}
 
 	/**
