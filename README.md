@@ -44,6 +44,8 @@
 
 ## About The Project
 
+[![Aperçu d'une manche][product-screenshot]](https://github.com/Taza67/battle-royale)
+
 `battle-royale` est un battle royale jouable en groupe autour d'un écran partagé : le jeu (Java, LWJGL/OpenGL) tourne sur un ordinateur pendant que les joueurs se connectent depuis leur téléphone, qui devient une manette web avec joystick, boutons d'attaque, barre de vie et minicarte. Un panneau d'administration web lance, met en pause et arrête les manches.
 
 La simulation est autoritaire à pas fixe (60 Hz) avec snapshots immuables ; la zone sûre se resserre par vagues vers un centre aléatoire et la lave inflige des dégâts croissants hors zone. Robots pour compléter une partie, mode solo au clavier, spectateur, reconnexion par jeton de session, mode démonstration des pages web sans serveur (`?mock=1`).
@@ -131,3 +133,4 @@ Lien du projet : [https://github.com/Taza67/battle-royale](https://github.com/Ta
 [license-url]: https://github.com/Taza67/battle-royale/blob/main/LICENSE
 [java-shield]: https://img.shields.io/badge/Java%2017-ED8B00.svg?logo=openjdk&logoColor=white
 [java-url]: https://www.java.com/
+[product-screenshot]: images/gameplay.webp
