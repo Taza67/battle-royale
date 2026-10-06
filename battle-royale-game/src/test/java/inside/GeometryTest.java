@@ -13,13 +13,11 @@ class GeometryTest {
 
 	@Test
 	void rotationDUnQuartDeTourUtiliseLesCoordonneesDOrigine() {
-		Vertice v = new Vertice(1, 0);
-		v.rotate((float)(Math.PI / 2));
+		Vertice v = new Vertice(1, 0).rotate((float)(Math.PI / 2));
 		assertEquals(0, v.getX(), EPS);
 		assertEquals(1, v.getY(), EPS);
 
-		Vertice w = new Vertice(3, 4);
-		w.rotate((float)Math.PI);
+		Vertice w = new Vertice(3, 4).rotate((float)Math.PI);
 		assertEquals(-3, w.getX(), EPS);
 		assertEquals(-4, w.getY(), EPS);
 		assertEquals(5, w.length(), EPS);
