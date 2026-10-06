@@ -12,26 +12,34 @@ import { validerPseudo } from "./inscription.js";
 import { Minicarte } from "./minicarte.js";
 import { initialiserPleinEcran } from "./pleinEcran.js";
 
-const CLE_PSEUDO = "battle-royale.pseudo";
-const TENTATIVES_REINSCRIPTION = 3;
-const DELAI_REINSCRIPTION = 1500;
+const CLE_JOUEUR = "battle-royale.joueur";
+const ANCIENNE_CLE_PSEUDO = "battle-royale.pseudo";
+const RAISON_PSEUDO_PRIS = "Pseudo déjà utilisé";
+const RAISON_SESSION_REPRISE = "Session reprise par une autre connexion";
+const DUREE_ESSAIS_PSEUDO = 30000;
+const ATTENTE_ESSAI_INITIALE = 1000;
+const ATTENTE_ESSAI_MAXIMALE = 8000;
 const INTERVALLE_VIBRATION = 350;
 const SILENCE_MAXIMAL = 5000;
 
 const element = identifiant => document.getElementById(identifiant);
 
+const memorise = lireStockage();
 const session = {
-	pseudo: lireStockage(),
-	automatique: false,
+	pseudo: memorise?.pseudo ?? null,
+	jeton: memorise?.jeton ?? null,
+	automatique: memorise !== null,
 	inscrit: false,
 	id: null,
 	partie: null,
 	fin: null,
 	dernierEtat: null,
-	echecsAutomatiques: 0,
 	derniereVibration: 0
 };
-session.automatique = session.pseudo !== null;
+
+// Nouveaux essais d'inscription quand le pseudo est encore attaché à l'ancienne
+// connexion, que le serveur n'a pas encore vue se fermer.
+const essais = { debut: null, nombre: 0, minuteur: null };
 
 const connexion = await creerConnexion({ robots: 5, robotsJeu: 2, demarrageAuto: 6000, nouvelleMancheAuto: 20000 });
 const minicarte = new Minicarte(element("minicarte"));
@@ -44,23 +52,34 @@ const commandes = new Commandes({
 
 // Stockage ///////////////////////////////////////////////////////////////////
 
+// Le pseudo et son jeton de reprise sont mémorisés ensemble : `{pseudo, jeton}`.
 function lireStockage() {
 	try {
-		return localStorage.getItem(CLE_PSEUDO);
+		const donnees = JSON.parse(localStorage.getItem(CLE_JOUEUR));
+		if (typeof donnees?.pseudo === "string" && donnees.pseudo !== "")
+			return { pseudo: donnees.pseudo, jeton: typeof donnees.jeton === "string" && donnees.jeton !== "" ? donnees.jeton : null };
+
+		const ancien = localStorage.getItem(ANCIENNE_CLE_PSEUDO);
+		return ancien === null || ancien === "" ? null : { pseudo: ancien, jeton: null };
 	} catch (erreur) {
 		return null;
 	}
 }
 
-function ecrireStockage(pseudo) {
+function ecrireStockage(pseudo, jeton = null) {
 	try {
+		localStorage.removeItem(ANCIENNE_CLE_PSEUDO);
 		if (pseudo === null)
-			localStorage.removeItem(CLE_PSEUDO);
+			localStorage.removeItem(CLE_JOUEUR);
 		else
-			localStorage.setItem(CLE_PSEUDO, pseudo);
+			localStorage.setItem(CLE_JOUEUR, JSON.stringify({ pseudo, jeton }));
 	} catch (erreur) {
 		// Stockage indisponible (navigation privée) : la reconnexion automatique est simplement perdue.
 	}
+}
+
+function memePseudo(a, b) {
+	return typeof a === "string" && typeof b === "string" && a.toLowerCase() === b.toLowerCase();
 }
 
 // Retours sensoriels /////////////////////////////////////////////////////////
@@ -87,8 +106,44 @@ function signalerDegats(degats) {
 // Inscription ////////////////////////////////////////////////////////////////
 
 function envoyerInscription() {
-	if (session.pseudo !== null)
-		connexion.envoyer({ type: "join", pseudo: session.pseudo });
+	if (session.pseudo === null)
+		return;
+
+	const message = { type: "join", pseudo: session.pseudo };
+	if (session.jeton !== null)
+		message.token = session.jeton;
+	connexion.envoyer(message);
+}
+
+function annulerEssais() {
+	clearTimeout(essais.minuteur);
+	essais.minuteur = null;
+}
+
+function reinitialiserEssais() {
+	annulerEssais();
+	essais.debut = null;
+	essais.nombre = 0;
+}
+
+// Planifie un nouvel essai d'inscription avec une attente croissante ; retourne
+// `false` une fois le délai total écoulé.
+function planifierEssai() {
+	const maintenant = performance.now();
+	essais.debut ??= maintenant;
+
+	const restant = DUREE_ESSAIS_PSEUDO - (maintenant - essais.debut);
+	if (restant <= 0)
+		return false;
+
+	const attente = Math.min(ATTENTE_ESSAI_MAXIMALE, ATTENTE_ESSAI_INITIALE * 2 ** essais.nombre, restant);
+	essais.nombre++;
+	annulerEssais();
+	essais.minuteur = setTimeout(() => {
+		essais.minuteur = null;
+		envoyerInscription();
+	}, attente);
+	return true;
 }
 
 function inscrire(evenement) {
@@ -106,28 +161,40 @@ function inscrire(evenement) {
 		return;
 	}
 
+	// Le jeton mémorisé (éventuellement par un autre onglet) n'accompagne que son pseudo.
+	const stocke = lireStockage();
 	session.pseudo = pseudo;
+	session.jeton = stocke !== null && memePseudo(stocke.pseudo, pseudo) ? stocke.jeton : null;
 	session.automatique = false;
-	session.echecsAutomatiques = 0;
+	reinitialiserEssais();
 	envoyerInscription();
 	actualiser();
 }
 
-function revenirInscription(raison) {
+/**
+ * Abandonne l'inscription et revient au formulaire avec la raison.
+ *
+ * @param {string} raison message affiché sous le formulaire
+ * @param {boolean} conserverStockage garde le pseudo et le jeton mémorisés, utilisés par la connexion qui a repris la session
+ */
+function revenirInscription(raison, conserverStockage = false) {
 	const pseudo = session.pseudo;
 
+	reinitialiserEssais();
 	session.pseudo = null;
+	session.jeton = null;
 	session.automatique = false;
 	session.inscrit = false;
 	session.id = null;
 	session.partie = null;
 	session.fin = null;
 	session.dernierEtat = null;
-	ecrireStockage(null);
+	if (!conserverStockage)
+		ecrireStockage(null);
 
 	element("pseudo").value = pseudo ?? "";
 	element("erreur-inscription").textContent = raison;
-	element("pseudo").setAttribute("aria-invalid", "true");
+	element("pseudo").setAttribute("aria-invalid", String(!conserverStockage));
 	actualiser();
 	element("pseudo").focus();
 }
@@ -142,18 +209,22 @@ connexion.surOuverture(() => {
 });
 
 connexion.surEtat(() => {
-	if (!connexion.estConnectee)
+	if (!connexion.estConnectee) {
 		session.inscrit = false;
+		// La réouverture de la socket renverra l'inscription.
+		annulerEssais();
+	}
 	actualiser();
 });
 
 connexion.sur("welcome", message => {
 	session.inscrit = true;
 	session.automatique = true;
-	session.echecsAutomatiques = 0;
+	reinitialiserEssais();
 	session.id = entier(message.id, null);
 	session.pseudo = typeof message.pseudo === "string" ? message.pseudo : session.pseudo;
-	ecrireStockage(session.pseudo);
+	session.jeton = typeof message.token === "string" && message.token !== "" ? message.token : null;
+	ecrireStockage(session.pseudo, session.jeton);
 
 	element("erreur-inscription").textContent = "";
 	afficherProfil(session.pseudo, session.id);
@@ -163,11 +234,19 @@ connexion.sur("welcome", message => {
 connexion.sur("rejected", message => {
 	const raison = typeof message.reason === "string" && message.reason !== "" ? message.reason : "Inscription refusée.";
 
-	if (session.automatique && session.echecsAutomatiques < TENTATIVES_REINSCRIPTION) {
-		session.echecsAutomatiques++;
-		setTimeout(envoyerInscription, DELAI_REINSCRIPTION);
+	// Un autre onglet ou appareil a repris la session : pas de nouvel essai, qui
+	// la lui reprendrait à son tour.
+	if (raison === RAISON_SESSION_REPRISE) {
+		revenirInscription(raison, true);
 		return;
 	}
+
+	// Une session déjà inscrite qui reçoit un autre refus garde son inscription.
+	if (session.inscrit)
+		return;
+
+	if (session.automatique && raison === RAISON_PSEUDO_PRIS && planifierEssai())
+		return;
 
 	revenirInscription(raison);
 });
@@ -296,9 +375,10 @@ function actualiser() {
 	else
 		minicarte.arreter();
 
-	// En partie, le serveur envoie l'état du joueur en continu : un silence
-	// prolongé révèle une connexion morte.
-	connexion.surveiller(session.partie === "running" || session.partie === "paused" ? SILENCE_MAXIMAL : 0);
+	// En partie, le serveur envoie l'état du joueur inscrit en continu : un
+	// silence prolongé révèle une connexion morte.
+	const enPartie = session.partie === "running" || session.partie === "paused";
+	connexion.surveiller(session.inscrit && enPartie ? SILENCE_MAXIMAL : 0);
 	actualiserCommandes();
 }
 
