@@ -5,7 +5,7 @@ import inside.Command;
 import inside.IConfig;
 
 /**
- * Traduit l'état du clavier en commandes pour le joueur local, à chaque pas de simulation.
+ * Traduit l'état du clavier en commandes pour le joueur local, à chaque image affichée.
  * Les touches maintenues donnent un déplacement continu ; relâcher toutes les flèches arrête le joueur.
  * @author mourtaza
  */
@@ -32,7 +32,7 @@ public class KeyboardInput implements IConfig {
 	public static final int WALK_SPEED = 2;
 
 	/**
-	 * Indique si le joueur se déplaçait au pas précédent
+	 * Indique si le joueur se déplaçait à l'image précédente
 	 */
 	private boolean moving;
 

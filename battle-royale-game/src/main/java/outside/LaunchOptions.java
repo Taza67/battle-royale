@@ -6,12 +6,15 @@ import java.io.PrintStream;
 
 import inside.GameSettings;
 import inside.IConfig;
+import outside.communication.GameServer;
+import outside.communication.NetworkUtilities;
 
 /**
  * Options de lancement du jeu, lues sur la ligne de commande
  * @param multi true pour le mode multijoueur (serveur web et manettes)
  * @param bots Nombre de robots
  * @param port Port TCP du jeu (mode multijoueur)
+ * @param bind Adresse d'écoute du serveur TCP du jeu (mode multijoueur)
  * @param warmupSeconds Durée de l'échauffement en secondes
  * @param seed Graine aléatoire
  * @param pseudo Pseudo du joueur local (mode solo)
@@ -19,10 +22,11 @@ import inside.IConfig;
  * @param sound false pour désactiver le son
  * @param windowWidth Largeur initiale de la fenêtre
  * @param windowHeight Hauteur initiale de la fenêtre
+ * @param gamepadUrl Adresse de la manette affichée dans la salle d'attente (null pour la déduire de l'adresse locale)
  * @author mourtaza
  */
-public record LaunchOptions(boolean multi, int bots, int port, float warmupSeconds, long seed, String pseudo,
-	boolean spectate, boolean sound, int windowWidth, int windowHeight) implements IConfig {
+public record LaunchOptions(boolean multi, int bots, int port, String bind, float warmupSeconds, long seed, String pseudo,
+	boolean spectate, boolean sound, int windowWidth, int windowHeight, String gamepadUrl) implements IConfig {
 
 	/**
 	 * Port TCP par défaut
@@ -41,12 +45,16 @@ public record LaunchOptions(boolean multi, int bots, int port, float warmupSecon
 		"  --mode solo|multi   mode de jeu (solo par défaut)",
 		"  --bots N            nombre de robots (" + DEFAULT_SOLO_BOTS + " en solo, 0 en multijoueur)",
 		"  --port P            port TCP du jeu en multijoueur (" + DEFAULT_PORT + " par défaut)",
+		"  --bind ADRESSE      adresse d'écoute du jeu (" + GameServer.DEFAULT_BIND_ADDRESS + " par défaut,",
+		"                      0.0.0.0 si le serveur web tourne sur une autre machine)",
 		"  --warmup S          durée de l'échauffement en secondes (" + GameSettings.DEFAULT_WARMUP_SECONDS + " par défaut)",
 		"  --seed N            graine aléatoire (carte, zones, robots)",
 		"  --pseudo NOM        pseudo du joueur en solo",
 		"  --spectate          solo : regarder une partie entre robots",
 		"  --no-sound          désactiver le son",
 		"  --window LxH        taille initiale de la fenêtre (1280x720 par défaut)",
+		"  --gamepad-url URL   adresse de la manette affichée dans la salle d'attente",
+		"                      (par défaut http://<adresse locale>:8080/battle-royale-server/gamepad/)",
 		"  --help              afficher cette aide");
 
 	/**
@@ -61,7 +69,7 @@ public record LaunchOptions(boolean multi, int bots, int port, float warmupSecon
 		int port = DEFAULT_PORT, width = 1280, height = 720;
 		float warmup = GameSettings.DEFAULT_WARMUP_SECONDS;
 		long seed = System.nanoTime();
-		String pseudo = "Joueur";
+		String pseudo = "Joueur", bind = GameServer.DEFAULT_BIND_ADDRESS, gamepadUrl = null;
 		boolean spectate = false, sound = true;
 
 		for (int i = 0; i < args.length; i++) {
@@ -75,6 +83,11 @@ public record LaunchOptions(boolean multi, int bots, int port, float warmupSecon
 			}
 			case "--bots" -> bots = intValue(args, ++i, a, 0, MAX_PLAYERS - 1);
 			case "--port" -> port = intValue(args, ++i, a, 1, 65535);
+			case "--bind" -> {
+				bind = value(args, ++i, a).strip();
+				if (bind.isEmpty() || bind.chars().anyMatch(Character::isWhitespace))
+					throw new IllegalArgumentException("Adresse invalide pour --bind : " + args[i]);
+			}
 			case "--warmup" -> {
 				String v = value(args, ++i, a);
 				try {
@@ -109,6 +122,11 @@ public record LaunchOptions(boolean multi, int bots, int port, float warmupSecon
 				}
 				if (width < 320 || height < 180) throw new IllegalArgumentException("Fenêtre trop petite : " + v);
 			}
+			case "--gamepad-url" -> {
+				gamepadUrl = value(args, ++i, a).strip();
+				if (!gamepadUrl.matches("https?://\\S+"))
+					throw new IllegalArgumentException("Adresse invalide pour --gamepad-url : " + args[i] + " (ex. http://192.168.1.20:8080/battle-royale-server/gamepad/)");
+			}
 			default -> throw new IllegalArgumentException("Option inconnue : " + a);
 			}
 		}
@@ -117,7 +135,7 @@ public record LaunchOptions(boolean multi, int bots, int port, float warmupSecon
 		int b = bots != null ? bots : (m ? 0 : DEFAULT_SOLO_BOTS);
 		if (!m && spectate && b < 2) throw new IllegalArgumentException("Il faut au moins 2 robots pour --spectate");
 		if (m && spectate) throw new IllegalArgumentException("--spectate n'est disponible qu'en solo");
-		return new LaunchOptions(m, b, port, warmup, seed, pseudo, spectate, sound, width, height);
+		return new LaunchOptions(m, b, port, bind, warmup, seed, pseudo, spectate, sound, width, height, gamepadUrl);
 	}
 
 	/**
@@ -143,6 +161,15 @@ public record LaunchOptions(boolean multi, int bots, int port, float warmupSecon
 			out.println("- Entrée invalide, lancement en solo par défaut");
 			return parse("--mode", "solo");
 		}
+	}
+
+	/**
+	 * Retourne l'adresse de la manette à afficher : celle de --gamepad-url, sinon celle du serveur web
+	 * supposé lancé sur cette machine
+	 * @return Adresse
+	 */
+	public String effectiveGamepadUrl() {
+		return gamepadUrl != null ? gamepadUrl : NetworkUtilities.gamepadUrl(NetworkUtilities.lanIPv4());
 	}
 
 	/**

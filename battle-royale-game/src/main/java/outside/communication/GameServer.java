@@ -5,11 +5,14 @@ import java.io.BufferedOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.EOFException;
+import java.io.FilterInputStream;
 import java.io.IOException;
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketException;
+import java.net.SocketTimeoutException;
 import java.util.List;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -31,6 +34,14 @@ public class GameServer implements Runnable, AutoCloseable {
 	 * Journal du serveur
 	 */
 	private static final Logger LOGGER = Logger.getLogger(GameServer.class.getName());
+	/**
+	 * Adresse d'écoute par défaut : seul le serveur web lancé sur la même machine peut se connecter
+	 */
+	public static final String DEFAULT_BIND_ADDRESS = "127.0.0.1";
+	/**
+	 * Délai accordé au serveur web pour terminer la poignée de main, en millisecondes
+	 */
+	public static final int HANDSHAKE_TIMEOUT_MS = 5000;
 
 	/**
 	 * Écouteur des événements du serveur (appelé depuis le fil réseau)
@@ -58,6 +69,10 @@ public class GameServer implements Runnable, AutoCloseable {
 	}
 
 	/**
+	 * Adresse d'écoute
+	 */
+	private final String BIND_ADDRESS;
+	/**
 	 * Port d'écoute
 	 */
 	private final int PORT;
@@ -81,14 +96,20 @@ public class GameServer implements Runnable, AutoCloseable {
 	 * Indique si le serveur doit s'arrêter
 	 */
 	private volatile boolean closed;
+	/**
+	 * Indique si l'arrêt de la partie en cours a été demandé (fil réseau uniquement)
+	 */
+	private boolean stopRequested;
 
 
 	/**
 	 * Construit le serveur (sans le démarrer)
+	 * @param bindAddress Adresse d'écoute (par exemple {@value #DEFAULT_BIND_ADDRESS} ou 0.0.0.0)
 	 * @param port Port d'écoute
 	 * @param listener Écouteur
 	 */
-	public GameServer(int port, Listener listener) {
+	public GameServer(String bindAddress, int port, Listener listener) {
+		BIND_ADDRESS = bindAddress;
 		PORT = port;
 		LISTENER = listener;
 		THREAD = new Thread(this, "serveur-tcp-" + port);
@@ -108,13 +129,19 @@ public class GameServer implements Runnable, AutoCloseable {
 	 */
 	public int getPort() { return PORT; }
 
+	/**
+	 * Retourne l'adresse d'écoute
+	 * @return Adresse
+	 */
+	public String getBindAddress() { return BIND_ADDRESS; }
+
 	@Override
 	public void run() {
 		try (ServerSocket server = new ServerSocket()) {
 			server.setReuseAddress(true);
-			server.bind(new InetSocketAddress(PORT));
+			server.bind(new InetSocketAddress(InetAddress.getByName(BIND_ADDRESS), PORT));
 			serverSocket = server;
-			LISTENER.onStatus("En attente du serveur web (port " + PORT + ")", false);
+			LISTENER.onStatus("En attente du serveur web (" + BIND_ADDRESS + ":" + PORT + ")", false);
 
 			while (!closed) {
 				try (Socket socket = server.accept()) {
@@ -132,8 +159,8 @@ public class GameServer implements Runnable, AutoCloseable {
 			}
 		} catch (IOException e) {
 			if (!closed) {
-				LOGGER.log(Level.SEVERE, "Impossible d'écouter sur le port " + PORT, e);
-				LISTENER.onStatus("Impossible d'écouter sur le port " + PORT + " : " + e.getMessage(), true);
+				LOGGER.log(Level.SEVERE, "Impossible d'écouter sur " + BIND_ADDRESS + ":" + PORT, e);
+				LISTENER.onStatus("Impossible d'écouter sur " + BIND_ADDRESS + ":" + PORT + " : " + e.getMessage(), true);
 			}
 		}
 	}
@@ -144,10 +171,19 @@ public class GameServer implements Runnable, AutoCloseable {
 	 * @throws IOException Erreur d'entrée/sortie
 	 */
 	private void handle(Socket socket) throws IOException {
-		DataInputStream in = new DataInputStream(new BufferedInputStream(socket.getInputStream()));
+		DeadlineInputStream raw = new DeadlineInputStream(socket, System.nanoTime() + HANDSHAKE_TIMEOUT_MS * 1_000_000L);
+		DataInputStream in = new DataInputStream(new BufferedInputStream(raw));
 		DataOutputStream out = new DataOutputStream(new BufferedOutputStream(socket.getOutputStream()));
 
-		List<PlayerSpec> players = Protocol.readHandshake(in);
+		List<PlayerSpec> players;
+		try {
+			players = Protocol.readHandshake(in);
+		} catch (SocketTimeoutException e) {
+			LISTENER.onStatus("Poignée de main non terminée en " + HANDSHAKE_TIMEOUT_MS / 1000 + " s, connexion fermée", true);
+			return;
+		}
+		raw.clearDeadline();
+
 		String refusal = Protocol.validatePlayers(players);
 		Board board = refusal == null ? LISTENER.onGameRequested(players) : null;
 
@@ -159,22 +195,29 @@ public class GameServer implements Runnable, AutoCloseable {
 		}
 		LISTENER.onStatus("Partie lancée avec " + players.size() + " joueur(s)", false);
 
+		stopRequested = false;
 		try {
 			loop(in, out, board);
-		} catch (EOFException | SocketException e) {
+		} catch (IOException e) {
 			if (closed) return;
-			LOGGER.log(Level.FINE, "Connexion fermée par le serveur web", e);
-			if (!board.getSnapshot().isOver()) {
+			if (stopRequested) {
+				LOGGER.log(Level.FINE, "Connexion fermée après l'arrêt de la partie", e);
+				LISTENER.onStatus("Partie arrêtée par l'administrateur", false);
+			} else if (board.getSnapshot().isOver()) {
+				LOGGER.log(Level.FINE, "Connexion fermée après la fin de la partie", e);
+				LISTENER.onStatus("Partie terminée, serveur web déconnecté", false);
+			} else {
+				boolean closedByPeer = e instanceof EOFException || e instanceof SocketException;
+				LOGGER.log(closedByPeer ? Level.FINE : Level.WARNING, "Échange interrompu avec le serveur web", e);
 				LISTENER.onConnectionLost(board);
 				LISTENER.onStatus("Connexion avec le serveur web perdue", true);
-			} else {
-				LISTENER.onStatus("Partie terminée, serveur web déconnecté", false);
 			}
 		}
 	}
 
 	/**
-	 * Boucle d'échange : lit un code puis applique les actions ou le contrôle demandé
+	 * Boucle d'échange : lit un code puis applique les actions ou le contrôle demandé.
+	 * Après un arrêt, le jeu continue de répondre par l'état jusqu'à ce que le serveur web ferme la connexion.
 	 * @param in Flux d'entrée
 	 * @param out Flux de sortie
 	 * @param board Plateau de la partie
@@ -197,6 +240,7 @@ public class GameServer implements Runnable, AutoCloseable {
 			} else if (code == Protocol.RESUME) {
 				board.enqueue(new Command.Control(Command.ControlType.RESUME));
 			} else if (code == Protocol.STOP) {
+				stopRequested = true;
 				board.enqueue(new Command.Control(Command.ControlType.STOP));
 			} else {
 				throw new Protocol.ProtocolException("Code inconnu : " + code);
@@ -223,6 +267,56 @@ public class GameServer implements Runnable, AutoCloseable {
 			THREAD.join(1000);
 		} catch (InterruptedException e) {
 			Thread.currentThread().interrupt();
+		}
+	}
+
+	/**
+	 * Flux d'entrée d'une connexion soumis à une échéance globale : avant chaque lecture, le délai
+	 * d'attente du socket est réduit au temps restant, si bien qu'un envoi au compte-gouttes ne
+	 * prolonge pas la poignée de main
+	 */
+	private static final class DeadlineInputStream extends FilterInputStream {
+		/**
+		 * Connexion lue
+		 */
+		private final Socket SOCKET;
+		/**
+		 * Échéance (System.nanoTime), 0 si aucune
+		 */
+		private long deadline;
+
+		DeadlineInputStream(Socket socket, long deadline) throws IOException {
+			super(socket.getInputStream());
+			SOCKET = socket;
+			this.deadline = deadline;
+		}
+
+		/**
+		 * Supprime l'échéance et rend les lectures bloquantes sans limite
+		 * @throws SocketException Erreur du socket
+		 */
+		void clearDeadline() throws SocketException {
+			deadline = 0;
+			SOCKET.setSoTimeout(0);
+		}
+
+		private void arm() throws IOException {
+			if (deadline == 0) return;
+			long left = (deadline - System.nanoTime()) / 1_000_000L;
+			if (left <= 0) throw new SocketTimeoutException("Échéance de la poignée de main dépassée");
+			SOCKET.setSoTimeout((int)left);
+		}
+
+		@Override
+		public int read() throws IOException {
+			arm();
+			return super.read();
+		}
+
+		@Override
+		public int read(byte[] b, int off, int len) throws IOException {
+			arm();
+			return super.read(b, off, len);
 		}
 	}
 

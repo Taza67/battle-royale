@@ -7,7 +7,7 @@ import java.io.InputStreamReader;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -21,11 +21,9 @@ import inside.Board.PlayerSpec;
 import inside.BoardSnapshot;
 import inside.BotController;
 import inside.Command;
-import inside.GameEvent;
 import inside.IConfig;
 import outside.audio.AudioUtilities;
 import outside.communication.GameServer;
-import outside.communication.NetworkUtilities;
 import outside.graphic.Effects;
 import outside.graphic.Fonts;
 import outside.graphic.GraphicUtilities;
@@ -35,17 +33,18 @@ import outside.graphic.TextureManager;
 import outside.graphic.WorldRenderer;
 
 /**
- * Point d'entrée du jeu : fenêtre GLFW, boucle principale à pas fixe et affichage.
+ * Point d'entrée du jeu : fenêtre GLFW, clavier et affichage.
  * <p>
- * La simulation avance par pas fixes de 1/60 s grâce à un accumulateur ; l'affichage est
- * redessiné à chaque image (synchronisation verticale) en interpolant entre les deux
- * dernières images de la simulation.
+ * La simulation avance par pas fixes de 1/60 s sur son propre fil ({@link SimulationLoop}).
+ * Le fil de la fenêtre se contente de déposer les commandes du clavier et de redessiner
+ * chaque image (synchronisation verticale) en interpolant entre les deux dernières images
+ * publiées par la simulation.
  * @author mourtaza
  */
 public class Game implements IConfig {
 	private static final Logger LOGGER = Logger.getLogger(Game.class.getName());
 	/**
-	 * Durée maximale d'une image prise en compte (évite la spirale de rattrapage)
+	 * Durée maximale d'une image prise en compte pour l'animation des effets
 	 */
 	private static final double MAX_FRAME_TIME = 0.25;
 
@@ -53,10 +52,11 @@ public class Game implements IConfig {
 	private final String GAMEPAD_URL;
 	private final KeyboardInput INPUT = new KeyboardInput();
 	private final Effects EFFECTS = new Effects();
+	private final SimulationLoop SIMULATION = new SimulationLoop();
 	/**
-	 * Plateau créé par le fil réseau, en attente de prise en charge par la boucle principale
+	 * Nombre de parties créées (fait varier la graine d'une partie à l'autre)
 	 */
-	private final AtomicReference<Board> PENDING_BOARD = new AtomicReference<>();
+	private final AtomicInteger GAMES_CREATED = new AtomicInteger();
 
 	private long window;
 	private TextureManager textures;
@@ -66,11 +66,11 @@ public class Game implements IConfig {
 	private AudioUtilities audio;
 	private GameServer server;
 
-	private Board board;
-	private BotController bots;
-	private BoardSnapshot previous;
+	/**
+	 * Partie affichée (fil de la fenêtre)
+	 */
+	private SimulationLoop.Session shown;
 	private int localId = -1;
-	private int gamesPlayed;
 	private double endTime = -1;
 
 	private volatile String status;
@@ -85,7 +85,7 @@ public class Game implements IConfig {
 	 */
 	public Game(LaunchOptions options) {
 		OPTIONS = options;
-		GAMEPAD_URL = NetworkUtilities.gamepadUrl(NetworkUtilities.lanIPv4());
+		GAMEPAD_URL = options.effectiveGamepadUrl();
 	}
 
 	/**
@@ -118,6 +118,7 @@ public class Game implements IConfig {
 	public void run() {
 		try {
 			if (!init()) return;
+			SIMULATION.start();
 			if (OPTIONS.multi()) startServer();
 			else newSoloGame();
 			loop();
@@ -184,58 +185,53 @@ public class Game implements IConfig {
 	}
 
 	/**
-	 * Boucle principale : accumulateur à pas fixe, puis affichage à chaque image
+	 * Boucle de la fenêtre : clavier, effets de la dernière image publiée, puis affichage
 	 */
 	private void loop() {
-		double last = glfwGetTime(), accumulator = 0;
+		double last = glfwGetTime();
 
 		while (!glfwWindowShouldClose(window)) {
+			RuntimeException failure = SIMULATION.getFailure();
+			if (failure != null) throw new IllegalStateException("Simulation arrêtée", failure);
+
 			glfwPollEvents();
 
 			double now = glfwGetTime();
-			double frame = Math.min(now - last, MAX_FRAME_TIME);
+			float elapsed = (float)Math.min(now - last, MAX_FRAME_TIME);
 			last = now;
 
-			Board pending = PENDING_BOARD.getAndSet(null);
-			if (pending != null) setBoard(pending, -1);
-
-			if (board != null) {
-				accumulator += frame;
-				while (accumulator >= TICK_DURATION) {
-					step(now);
-					accumulator -= TICK_DURATION;
-				}
+			SimulationLoop.Frame frame = SIMULATION.getFrame();
+			if (frame != null && frame.session() != shown) show(frame.session());
+			if (shown != null) {
+				if (localId >= 0) INPUT.apply(shown.board(), localId, readKeys());
+				consumeEvents(now);
 			}
 
-			EFFECTS.update(now, (float)frame);
-			render(now, (float)(accumulator / TICK_DURATION));
+			EFFECTS.update(now, elapsed);
+			render(now, frame);
 			glfwSwapBuffers(window);
 		}
 	}
 
 	/**
-	 * Effectue un pas de simulation : entrées, robots, simulation, effets
+	 * Transmet aux effets et au son les événements produits par la simulation depuis l'image précédente
 	 * @param now Instant courant
 	 */
-	private void step(double now) {
-		previous = board.getSnapshot();
-		if (localId >= 0) INPUT.apply(board, localId, readKeys());
-		if (bots != null) bots.update();
-		board.tick();
-
-		List<GameEvent> events = board.drainEvents();
-		BoardSnapshot s = board.getSnapshot();
-		EFFECTS.consume(events, s, localId);
-		audio.play(events, localId);
-		if (s.isOver() && endTime < 0) endTime = now;
+	private void consumeEvents(double now) {
+		for (SimulationLoop.Events batch : SIMULATION.drainEvents()) {
+			if (batch.session() != shown) continue;
+			EFFECTS.consume(batch.events(), batch.snapshot(), localId);
+			audio.play(batch.events(), localId);
+		}
+		if (endTime < 0 && shown.board().getSnapshot().isOver()) endTime = now;
 	}
 
 	/**
 	 * Dessine l'image courante
 	 * @param now Instant courant
-	 * @param alpha Avancement de l'interpolation
+	 * @param frame Dernière image publiée par la simulation (null avant la première partie)
 	 */
-	private void render(double now, float alpha) {
+	private void render(double now, SimulationLoop.Frame frame) {
 		int fbWidth, fbHeight;
 		try (MemoryStack stack = MemoryStack.stackPush()) {
 			var w = stack.mallocInt(1);
@@ -248,13 +244,14 @@ public class Game implements IConfig {
 		GraphicUtilities.beginFrame(fbWidth, fbHeight);
 		HudInfo info = new HudInfo(localId, OPTIONS.multi(), GAMEPAD_URL, OPTIONS.port(), status, statusError, statusTime, connectionLost);
 
-		if (board == null) {
-			hud.renderLobby(info, now);
+		if (frame == null || frame.session() != shown) {
+			if (OPTIONS.multi()) hud.renderLobby(info, now);
 			return;
 		}
 
-		BoardSnapshot current = board.getSnapshot();
-		world.render(board.getMap(), previous, current, Math.max(0, Math.min(1, alpha)), now, localId, EFFECTS, fonts.MEDIUM);
+		BoardSnapshot current = frame.current();
+		world.render(shown.board().getMap(), frame.previous(), current, frame.alpha(System.nanoTime()), now, localId,
+			EFFECTS, fonts.MEDIUM);
 		hud.render(current, info, EFFECTS, now, endTime);
 	}
 
@@ -285,11 +282,12 @@ public class Game implements IConfig {
 		switch (key) {
 		case GLFW_KEY_ESCAPE -> glfwSetWindowShouldClose(window, true);
 		case GLFW_KEY_P -> {
-			if (!OPTIONS.multi() && board != null && !board.isOver())
-				board.enqueue(new Command.Control(board.isPaused() ? Command.ControlType.RESUME : Command.ControlType.PAUSE));
+			BoardSnapshot s = shown != null ? shown.board().getSnapshot() : null;
+			if (!OPTIONS.multi() && s != null && !s.isOver())
+				shown.board().enqueue(new Command.Control(s.paused() ? Command.ControlType.RESUME : Command.ControlType.PAUSE));
 		}
 		case GLFW_KEY_ENTER, GLFW_KEY_KP_ENTER -> {
-			if (!OPTIONS.multi() && board != null && board.isOver() && glfwGetTime() - endTime > 1) newSoloGame();
+			if (!OPTIONS.multi() && shown != null && endTime >= 0 && glfwGetTime() - endTime > 1) newSoloGame();
 		}
 		case GLFW_KEY_F11 -> toggleFullscreen();
 		default -> {}
@@ -320,37 +318,33 @@ public class Game implements IConfig {
 		for (int i = 0; i < OPTIONS.bots(); i++)
 			specs.add(new PlayerSpec(id++, BotController.botName(i), true));
 
-		long seed = OPTIONS.seed() + gamesPlayed;
-		setBoard(new Board(OPTIONS.settings().withSeed(seed), specs), OPTIONS.spectate() ? -1 : 0);
+		long seed = OPTIONS.seed() + GAMES_CREATED.getAndIncrement();
+		Board b = new Board(OPTIONS.settings().withSeed(seed), specs);
+		SIMULATION.play(SimulationLoop.Session.of(b, OPTIONS.spectate() ? -1 : 0));
 	}
 
 	/**
-	 * Remplace la partie affichée
-	 * @param b Nouveau plateau
-	 * @param local Identifiant du joueur local (-1 si aucun)
+	 * Affiche une nouvelle partie prise en charge par la simulation
+	 * @param s Partie
 	 */
-	private void setBoard(Board b, int local) {
-		board = b;
-		localId = local;
-		previous = null;
+	private void show(SimulationLoop.Session s) {
+		shown = s;
+		localId = s.localId();
 		endTime = -1;
-		connectionLost = false;
-		gamesPlayed++;
 		EFFECTS.clear();
 		INPUT.reset();
-		boolean hasBots = b.getPlayers().stream().anyMatch(p -> p.isBot());
-		bots = hasBots ? new BotController(b, b.getSettings().getSeed()) : null;
 	}
 
 	/**
 	 * Démarre le serveur TCP du mode multijoueur
 	 */
 	private void startServer() {
-		server = new GameServer(OPTIONS.port(), new GameServer.Listener() {
+		server = new GameServer(OPTIONS.bind(), OPTIONS.port(), new GameServer.Listener() {
 			@Override
 			public Board onGameRequested(List<PlayerSpec> players) {
 				Board b = createMultiBoard(players);
-				PENDING_BOARD.set(b);
+				connectionLost = false;
+				SIMULATION.play(SimulationLoop.Session.of(b, -1));
 				return b;
 			}
 
@@ -382,7 +376,7 @@ public class Game implements IConfig {
 		int next = players.stream().mapToInt(PlayerSpec::id).max().orElse(-1) + 1;
 		for (int i = 0; i < OPTIONS.bots() && next < MAX_PLAYERS; i++)
 			specs.add(new PlayerSpec(next++, BotController.botName(i), true));
-		return new Board(OPTIONS.settings().withSeed(OPTIONS.seed() + gamesPlayed), specs);
+		return new Board(OPTIONS.settings().withSeed(OPTIONS.seed() + GAMES_CREATED.getAndIncrement()), specs);
 	}
 
 	/**
@@ -390,6 +384,7 @@ public class Game implements IConfig {
 	 */
 	private void cleanup() {
 		if (server != null) server.close();
+		SIMULATION.close();
 		if (audio != null) audio.close();
 		if (fonts != null) fonts.close();
 		if (textures != null) textures.delete();

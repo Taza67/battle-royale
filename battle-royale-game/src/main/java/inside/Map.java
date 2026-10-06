@@ -4,7 +4,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Random;
-import java.util.function.Predicate;
+import java.util.function.ToDoubleFunction;
 
 import inside.geometry.Rectangle;
 import inside.geometry.Vertice;
@@ -268,35 +268,50 @@ public class Map implements IConfig {
 	}
 
 	/**
-	 * Cherche une position libre pour un élément
+	 * Cherche une position libre pour un élément, en préférant les emplacements les mieux notés
 	 * @param random Générateur aléatoire
 	 * @param radiusX Rayon horizontal de l'élément
 	 * @param radiusY Rayon vertical de l'élément
 	 * @param area Zone de recherche
-	 * @param acceptable Condition supplémentaire sur l'emplacement (peut être null)
-	 * @return Position libre, ou la meilleure position trouvée sans la condition supplémentaire
+	 * @param score Note d'un emplacement libre (par exemple la distance au plus proche voisin)
+	 * @param target Note suffisante : le premier emplacement qui l'atteint est retenu
+	 * @return Premier emplacement libre atteignant la note visée, sinon l'emplacement libre le mieux noté
 	 */
-	public Vertice findFreePosition(Random random, float radiusX, float radiusY, Rectangle area, Predicate<Rectangle> acceptable) {
+	public Vertice findFreePosition(Random random, float radiusX, float radiusY, Rectangle area,
+		ToDoubleFunction<Rectangle> score, double target) {
 		Rectangle searchArea = area.expand(-Math.max(radiusX, radiusY));
-		Vertice fallback = null;
+		Vertice best = null;
+		double bestScore = Double.NEGATIVE_INFINITY;
 
 		for (int attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
 			Vertice p = Vertice.random(random, searchArea.getX1(), searchArea.getX2(), searchArea.getY1(), searchArea.getY2());
 			Rectangle r = Rectangle.centered(p.getX(), p.getY(), radiusX, radiusY);
-
 			if (!isFree(r)) continue;
-			if (acceptable == null || acceptable.test(r)) return p;
-			if (fallback == null) fallback = p;
+
+			double s = score.applyAsDouble(r);
+			if (s >= target) return p;
+			if (s > bestScore) {
+				best = p;
+				bestScore = s;
+			}
 		}
 
-		if (fallback != null) return fallback;
+		if (best != null) return best;
 
 		// Recherche exhaustive sur une grille fine
 		for (float y = radiusY; y <= MAP_HEIGHT - radiusY; y += 4)
-			for (float x = radiusX; x <= MAP_WIDTH - radiusX; x += 4)
-				if (isFree(Rectangle.centered(x, y, radiusX, radiusY)))
-					return new Vertice(x, y);
+			for (float x = radiusX; x <= MAP_WIDTH - radiusX; x += 4) {
+				Rectangle r = Rectangle.centered(x, y, radiusX, radiusY);
+				if (!isFree(r)) continue;
 
-		return new Vertice(MAP_WIDTH / 2f, MAP_HEIGHT / 2f);
+				double s = score.applyAsDouble(r);
+				if (s >= target) return new Vertice(x, y);
+				if (s > bestScore) {
+					best = new Vertice(x, y);
+					bestScore = s;
+				}
+			}
+
+		return best != null ? best : new Vertice(MAP_WIDTH / 2f, MAP_HEIGHT / 2f);
 	}
 }

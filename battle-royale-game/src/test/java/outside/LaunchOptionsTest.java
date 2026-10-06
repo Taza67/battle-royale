@@ -26,6 +26,7 @@ class LaunchOptionsTest implements IConfig {
 		assertFalse(solo.multi());
 		assertEquals(LaunchOptions.DEFAULT_SOLO_BOTS, solo.bots());
 		assertEquals(8000, solo.port());
+		assertEquals("127.0.0.1", solo.bind());
 		assertTrue(solo.sound());
 
 		LaunchOptions multi = LaunchOptions.parse("--mode", "multi");
@@ -40,6 +41,8 @@ class LaunchOptionsTest implements IConfig {
 		assertTrue(o.multi());
 		assertEquals(5, o.bots());
 		assertEquals(38042, o.port());
+		assertEquals("0.0.0.0", LaunchOptions.parse("--mode", "multi", "--bind", "0.0.0.0").bind());
+		assertTrue(LaunchOptions.USAGE.contains("--bind ADRESSE"));
 		assertEquals(2.5f, o.warmupSeconds());
 		assertEquals(77, o.seed());
 		assertFalse(o.sound());
@@ -61,6 +64,9 @@ class LaunchOptionsTest implements IConfig {
 				new String[] { "--bots", "100" },
 				new String[] { "--port", "0" },
 				new String[] { "--port", "abc" },
+				new String[] { "--bind" },
+				new String[] { "--bind", " " },
+				new String[] { "--bind", "1.2.3.4 5" },
 				new String[] { "--warmup", "-3" },
 				new String[] { "--seed" },
 				new String[] { "--window", "10x10" },
@@ -132,5 +138,22 @@ class LaunchOptionsTest implements IConfig {
 		String ip = NetworkUtilities.lanIPv4();
 		assertTrue(ip.equals("localhost") || ip.matches("\\d+\\.\\d+\\.\\d+\\.\\d+"), ip);
 		assertFalse(ip.startsWith("127."));
+	}
+
+	@Test
+	void adresseDeLaManetteImposee() {
+		String url = "https://jeu.example.org/battle-royale-server/gamepad/";
+		LaunchOptions o = LaunchOptions.parse("--mode", "multi", "--gamepad-url", url);
+		assertEquals(url, o.gamepadUrl());
+		assertEquals(url, o.effectiveGamepadUrl());
+
+		LaunchOptions d = LaunchOptions.parse("--mode", "multi");
+		assertNull(d.gamepadUrl());
+		assertEquals(NetworkUtilities.gamepadUrl(NetworkUtilities.lanIPv4()), d.effectiveGamepadUrl(), "adresse déduite par défaut");
+		assertTrue(LaunchOptions.USAGE.contains("--gamepad-url URL"));
+
+		for (String bad : new String[] { "", "ftp://x/", "http://", "jeu.example.org", "http://a b/" })
+			assertThrows(IllegalArgumentException.class, () -> LaunchOptions.parse("--gamepad-url", bad), bad);
+		assertThrows(IllegalArgumentException.class, () -> LaunchOptions.parse("--gamepad-url"));
 	}
 }

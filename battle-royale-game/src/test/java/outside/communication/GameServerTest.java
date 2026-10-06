@@ -1,6 +1,7 @@
 package outside.communication;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assumptions.assumeFalse;
 
 import java.io.BufferedInputStream;
 import java.io.DataInputStream;
@@ -15,6 +16,10 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
+import java.util.logging.Handler;
+import java.util.logging.Level;
+import java.util.logging.LogRecord;
+import java.util.logging.Logger;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -27,7 +32,7 @@ import inside.IConfig;
 import inside.Phase;
 
 /**
- * Faux serveur web qui se connecte au serveur TCP du jeu (ports 38000 à 38099 uniquement)
+ * Faux serveur web qui se connecte au serveur TCP du jeu (ports 38200 à 38219 uniquement)
  */
 @Timeout(20)
 class GameServerTest implements IConfig {
@@ -35,9 +40,15 @@ class GameServerTest implements IConfig {
 	private final AtomicReference<Board> board = new AtomicReference<>();
 	private final List<String> statuses = new CopyOnWriteArrayList<>();
 	private final CountDownLatch lost = new CountDownLatch(1);
+	private static final Logger LOGGER = Logger.getLogger(GameServer.class.getName());
+	private Handler logHandler;
 
 	private GameServer start(int port) {
-		server = new GameServer(port, new GameServer.Listener() {
+		return start(GameServer.DEFAULT_BIND_ADDRESS, port);
+	}
+
+	private GameServer start(String bind, int port) {
+		server = new GameServer(bind, port, new GameServer.Listener() {
 			@Override
 			public Board onGameRequested(List<PlayerSpec> players) {
 				Board b = new Board(GameSettings.defaults(1).withWarmup(0), players);
@@ -62,12 +73,17 @@ class GameServerTest implements IConfig {
 	@AfterEach
 	void close() {
 		if (server != null) server.close();
+		if (logHandler != null) LOGGER.removeHandler(logHandler);
 	}
 
 	private static Socket connect(int port) throws IOException, InterruptedException {
+		return connect("127.0.0.1", port);
+	}
+
+	private static Socket connect(String host, int port) throws IOException, InterruptedException {
 		for (int i = 0; i < 100; i++) {
 			try {
-				return new Socket("127.0.0.1", port);
+				return new Socket(host, port);
 			} catch (ConnectException e) {
 				Thread.sleep(20);
 			}
@@ -96,7 +112,7 @@ class GameServerTest implements IConfig {
 	}
 
 	/**
-	 * Fait avancer la simulation (rôle de la boucle principale) jusqu'à ce que la condition soit vraie
+	 * Fait avancer la simulation (rôle du fil de simulation) jusqu'à ce que la condition soit vraie
 	 */
 	private static void tickUntil(Board b, BooleanSupplier condition) throws InterruptedException {
 		long deadline = System.currentTimeMillis() + 5000;
@@ -109,8 +125,8 @@ class GameServerTest implements IConfig {
 
 	@Test
 	void partieCompleteAvecPauseRepriseEtArret() throws Exception {
-		start(38000);
-		try (Socket s = connect(38000)) {
+		start(38200);
+		try (Socket s = connect(38200)) {
 			DataOutputStream out = new DataOutputStream(s.getOutputStream());
 			DataInputStream in = new DataInputStream(new BufferedInputStream(s.getInputStream()));
 
@@ -167,8 +183,8 @@ class GameServerTest implements IConfig {
 
 	@Test
 	void poigneeDeMainRefuseeAvecIdentifiantsEnDouble() throws Exception {
-		start(38001);
-		try (Socket s = connect(38001)) {
+		start(38201);
+		try (Socket s = connect(38201)) {
 			DataOutputStream out = new DataOutputStream(s.getOutputStream());
 			DataInputStream in = new DataInputStream(s.getInputStream());
 			handshake(out, 1, "A", 1, "B");
@@ -178,7 +194,7 @@ class GameServerTest implements IConfig {
 		assertNull(board.get());
 
 		// Le serveur accepte une nouvelle connexion ensuite
-		try (Socket s = connect(38001)) {
+		try (Socket s = connect(38201)) {
 			DataOutputStream out = new DataOutputStream(s.getOutputStream());
 			DataInputStream in = new DataInputStream(s.getInputStream());
 			handshake(out, 1, "A", 2, "B");
@@ -188,8 +204,8 @@ class GameServerTest implements IConfig {
 
 	@Test
 	void perteDeConnexionSignalee() throws Exception {
-		start(38002);
-		try (Socket s = connect(38002)) {
+		start(38202);
+		try (Socket s = connect(38202)) {
 			DataOutputStream out = new DataOutputStream(s.getOutputStream());
 			DataInputStream in = new DataInputStream(s.getInputStream());
 			handshake(out, 0, "A", 1, "B");
@@ -201,14 +217,215 @@ class GameServerTest implements IConfig {
 
 	@Test
 	void fermetureDuServeurLibereLePort() throws Exception {
-		start(38003);
-		connect(38003).close();
+		start(38203);
+		connect(38203).close();
 		server.close();
 		server = null;
 
-		start(38003);
-		try (Socket s = connect(38003)) {
+		start(38203);
+		try (Socket s = connect(38203)) {
 			assertTrue(s.isConnected());
 		}
+	}
+
+	@Test
+	void ecouteSeulementEnLocalParDefaut() throws Exception {
+		String lan = NetworkUtilities.lanIPv4();
+		assumeFalse(lan.equals("localhost"), "aucune adresse réseau locale");
+
+		start(38204);
+		connect(38204).close();
+		assertThrows(ConnectException.class, () -> new Socket(lan, 38204).close(), "injoignable depuis " + lan);
+		server.close();
+		server = null;
+
+		start("0.0.0.0", 38204);
+		try (Socket s = connect(lan, 38204)) {
+			assertTrue(s.isConnected());
+		}
+	}
+
+	@Test
+	void poigneeDeMainAuCompteGouttesFermeeApres5s() throws Exception {
+		start(38205);
+		try (Socket s = connect(38205)) {
+			DataOutputStream out = new DataOutputStream(s.getOutputStream());
+			long begin = System.nanoTime();
+			s.setSoTimeout(10_000);
+			Thread sender = new Thread(() -> {
+				try {
+					out.writeInt(0);
+					out.writeInt(1);
+					out.writeByte(1);
+					out.flush();
+					for (byte octet : new byte[] { 0, 5, 'A', 'l', 'i', 'c', 'e' }) {
+						Thread.sleep(1000);
+						out.writeByte(octet);
+						out.flush();
+					}
+				} catch (IOException | InterruptedException e) {
+					// Connexion fermée par le jeu
+				}
+			});
+			sender.setDaemon(true);
+			sender.start();
+
+			assertEquals(-1, s.getInputStream().read(), "connexion fermée par le jeu");
+			long elapsed = (System.nanoTime() - begin) / 1_000_000;
+			assertTrue(elapsed >= GameServer.HANDSHAKE_TIMEOUT_MS - 200 && elapsed < GameServer.HANDSHAKE_TIMEOUT_MS + 1500,
+				"fermée après " + elapsed + " ms");
+			sender.join(3000);
+		}
+		assertNull(board.get());
+		assertTrue(statuses.stream().anyMatch(m -> m.startsWith("Poignée de main non terminée")), statuses.toString());
+
+		// Une poignée de main normale reste possible ensuite et la boucle n'est plus limitée dans le temps
+		try (Socket s = connect(38205)) {
+			DataOutputStream out = new DataOutputStream(s.getOutputStream());
+			DataInputStream in = new DataInputStream(new BufferedInputStream(s.getInputStream()));
+			handshake(out, 1, "A", 2, "B");
+			assertTrue(in.readBoolean());
+			Thread.sleep(GameServer.HANDSHAKE_TIMEOUT_MS + 500);
+			boolean[] running = new boolean[1];
+			exchange(out, in, new byte[0], running);
+			assertTrue(running[0]);
+		}
+	}
+
+	/**
+	 * Enregistre les messages du journal du serveur de niveau WARNING ou plus
+	 */
+	private List<LogRecord> captureWarnings() {
+		List<LogRecord> records = new CopyOnWriteArrayList<>();
+		logHandler = new Handler() {
+			@Override
+			public void publish(LogRecord r) {
+				if (r.getLevel().intValue() >= Level.WARNING.intValue()) records.add(r);
+			}
+
+			@Override
+			public void flush() {}
+
+			@Override
+			public void close() {}
+		};
+		LOGGER.addHandler(logHandler);
+		return records;
+	}
+
+	private void awaitStatus(String prefix) throws InterruptedException {
+		long deadline = System.currentTimeMillis() + 5000;
+		while (statuses.stream().noneMatch(m -> m.startsWith(prefix))) {
+			assertTrue(System.currentTimeMillis() < deadline, "statut « " + prefix + " » attendu : " + statuses);
+			Thread.sleep(10);
+		}
+	}
+
+	@Test
+	void echangesApresArretPuisFermetureNormale() throws Exception {
+		List<LogRecord> warnings = captureWarnings();
+		start(38206);
+		Board b;
+		try (Socket s = connect(38206)) {
+			DataOutputStream out = new DataOutputStream(s.getOutputStream());
+			DataInputStream in = new DataInputStream(new BufferedInputStream(s.getInputStream()));
+			handshake(out, 1, "A", 2, "B");
+			assertTrue(in.readBoolean());
+			b = board.get();
+
+			out.writeInt(Protocol.STOP);
+			out.flush();
+			boolean[] running = { true };
+			byte[] state = exchange(out, in, new byte[0], running);
+			assertTrue(running[0], "l'arrêt n'est pas encore appliqué par la simulation");
+
+			for (int i = 0; i < 40 && running[0]; i++) {
+				b.tick();
+				state = exchange(out, in, new byte[0], running);
+			}
+			assertFalse(running[0], "enCours finit par valoir false après l'arrêt");
+			assertEquals(2, state[0], "phase terminée");
+			assertTrue(b.getSnapshot().stopped());
+		}
+
+		awaitStatus("Partie arrêtée");
+		assertEquals(1, lost.getCount(), "pas de perte de connexion signalée");
+		assertFalse(statuses.contains("Connexion avec le serveur web perdue"));
+		assertTrue(warnings.isEmpty(), warnings.toString());
+	}
+
+	@Test
+	void fermetureJusteApresArretSansPause() throws Exception {
+		List<LogRecord> warnings = captureWarnings();
+		start(38207);
+		Board b;
+		try (Socket s = connect(38207)) {
+			DataOutputStream out = new DataOutputStream(s.getOutputStream());
+			DataInputStream in = new DataInputStream(s.getInputStream());
+			handshake(out, 1, "A", 2, "B");
+			assertTrue(in.readBoolean());
+			b = board.get();
+
+			out.writeInt(Protocol.STOP);
+			out.flush();
+		}
+
+		awaitStatus("Partie arrêtée");
+		assertFalse(b.isOver(), "la simulation n'a pas encore appliqué l'arrêt");
+		b.tick();
+		assertTrue(b.isOver());
+		assertFalse(b.isPaused(), "aucune pause déposée");
+		assertEquals(1, lost.getCount(), "pas de perte de connexion signalée");
+		assertFalse(statuses.contains("Connexion avec le serveur web perdue"));
+		assertTrue(warnings.isEmpty(), warnings.toString());
+	}
+
+	@Test
+	void erreurDeProtocoleEnPartieTraiteeCommeUnePerteDeConnexion() throws Exception {
+		start(38208);
+		try (Socket s = connect(38208)) {
+			DataOutputStream out = new DataOutputStream(s.getOutputStream());
+			DataInputStream in = new DataInputStream(new BufferedInputStream(s.getInputStream()));
+			handshake(out, 1, "A", 2, "B");
+			assertTrue(in.readBoolean());
+			exchange(out, in, new byte[0], new boolean[1]);
+
+			out.writeInt(-7);
+			out.flush();
+			assertTrue(lost.await(5, TimeUnit.SECONDS), "perte de connexion signalée");
+			assertEquals(-1, in.read(), "connexion fermée par le jeu");
+		}
+		assertTrue(statuses.contains("Connexion avec le serveur web perdue"));
+	}
+
+	@Test
+	void blocDActionsTropGrandTraiteCommeUnePerteDeConnexion() throws Exception {
+		start(38209);
+		try (Socket s = connect(38209)) {
+			DataOutputStream out = new DataOutputStream(s.getOutputStream());
+			DataInputStream in = new DataInputStream(s.getInputStream());
+			handshake(out, 1, "A", 2, "B");
+			assertTrue(in.readBoolean());
+
+			out.writeInt(Protocol.MAX_ACTIONS_SIZE + 1);
+			out.flush();
+			assertTrue(lost.await(5, TimeUnit.SECONDS), "perte de connexion signalée");
+		}
+		assertTrue(statuses.contains("Connexion avec le serveur web perdue"));
+	}
+
+	@Test
+	void poigneeDeMainRefuseeAvecUnPseudoInvalide() throws Exception {
+		start(38210);
+		for (String pseudo : new String[] { " ", "x".repeat(PSEUDO_MAX_LENGTH + 1), "a\u0007b" }) {
+			try (Socket s = connect(38210)) {
+				DataOutputStream out = new DataOutputStream(s.getOutputStream());
+				DataInputStream in = new DataInputStream(s.getInputStream());
+				handshake(out, 1, "A", 2, pseudo);
+				assertFalse(in.readBoolean(), "pseudo « " + pseudo + " » refusé");
+			}
+		}
+		assertNull(board.get());
+		assertTrue(statuses.stream().anyMatch(m -> m.startsWith("Partie refusée : pseudo")), statuses.toString());
 	}
 }

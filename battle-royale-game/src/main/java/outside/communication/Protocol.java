@@ -110,7 +110,23 @@ public final class Protocol implements IConfig {
 		for (PlayerSpec p : players) {
 			if (p.id() < 0 || p.id() >= MAX_PLAYERS) return "identifiant invalide : " + p.id();
 			if (!ids.add(p.id())) return "identifiant en double : " + p.id();
+			String refusal = checkPseudo(p.pseudo());
+			if (refusal != null) return refusal + " (joueur " + p.id() + ")";
 		}
+		return null;
+	}
+
+	/**
+	 * Vérifie un pseudo annoncé : non vide, au plus {@value IConfig#PSEUDO_MAX_LENGTH} caractères, sans caractère de contrôle
+	 * @param pseudo Pseudo
+	 * @return null si le pseudo est valide, sinon la raison du refus
+	 */
+	public static String checkPseudo(String pseudo) {
+		if (pseudo == null || pseudo.isBlank()) return "pseudo vide";
+		if (pseudo.codePointCount(0, pseudo.length()) > PSEUDO_MAX_LENGTH)
+			return "pseudo de plus de " + PSEUDO_MAX_LENGTH + " caractères";
+		if (pseudo.codePoints().anyMatch(c -> Character.isISOControl(c) || Character.getType(c) == Character.FORMAT))
+			return "pseudo avec des caractères de contrôle";
 		return null;
 	}
 

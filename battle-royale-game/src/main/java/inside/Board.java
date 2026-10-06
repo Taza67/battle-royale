@@ -45,6 +45,10 @@ public class Board implements IConfig {
 	 * Nombre maximal d'événements conservés en attente de lecture
 	 */
 	private static final int MAX_PENDING_EVENTS = 2048;
+	/**
+	 * Profondeur de chevauchement en dessous de laquelle deux éléments sont considérés en contact (arrondis)
+	 */
+	private static final float OVERLAP_TOLERANCE = 0.01f;
 
 	/**
 	 * Réglages de la partie
@@ -162,18 +166,20 @@ public class Board implements IConfig {
 	}
 
 	/**
-	 * Cherche une position d'apparition libre et éloignée des autres joueurs
+	 * Cherche une position d'apparition libre et éloignée des autres joueurs ; si aucune ne respecte
+	 * la distance minimale, retient la plus éloignée de son plus proche voisin
 	 * @return Position
 	 */
 	private Vertice spawnPosition() {
 		Rectangle area = MAP.getBounds().expand(-20);
 		return MAP.findFreePosition(RANDOM, PLAYER_RADIUS_X, PLAYER_RADIUS_Y, area, r -> {
+			double nearest = Double.POSITIVE_INFINITY;
 			for (Player other : PLAYERS.values()) {
-				float dx = other.getX() - r.getCenterX(), dy = other.getY() - r.getCenterY();
-				if (dx * dx + dy * dy < SPAWN_MIN_DISTANCE * SPAWN_MIN_DISTANCE) return false;
+				double dx = other.getX() - r.getCenterX(), dy = other.getY() - r.getCenterY();
+				nearest = Math.min(nearest, Math.sqrt(dx * dx + dy * dy));
 			}
-			return true;
-		}) ;
+			return nearest;
+		}, SPAWN_MIN_DISTANCE);
 	}
 
 
@@ -435,7 +441,9 @@ public class Board implements IConfig {
 	}
 
 	/**
-	 * Calcule la position atteignable sur un axe en s'arrêtant au contact du premier obstacle
+	 * Calcule la position atteignable sur un axe en s'arrêtant au contact du premier obstacle.
+	 * Les éléments que le joueur chevauche déjà au départ ne le bloquent pas, pour que deux joueurs
+	 * superposés puissent se séparer ; seuls les nouveaux contacts l'arrêtent.
 	 * @param p Joueur
 	 * @param cx Abscisse visée
 	 * @param cy Ordonnée visée
@@ -446,19 +454,21 @@ public class Board implements IConfig {
 	private float resolveAxis(Player p, float cx, float cy, boolean horizontal, float sign) {
 		float rx = p.getRadiusX(), ry = p.getRadiusY();
 		float origin = horizontal ? p.getX() : p.getY();
+		Rectangle start = (horizontal ? p.getRepresentationAt(origin, cy) : p.getRepresentationAt(cx, origin))
+			.expand(-OVERLAP_TOLERANCE);
 
 		if (horizontal) cx = clamp(cx, rx, MAP_WIDTH - rx);
 		else cy = clamp(cy, ry, MAP_HEIGHT - ry);
 
 		for (int attempt = 0; attempt < 4; attempt++) {
-			Rectangle blocker = findBlocker(p, p.getRepresentationAt(cx, cy));
+			Rectangle blocker = findBlocker(p, p.getRepresentationAt(cx, cy), start);
 			if (blocker == null) return horizontal ? cx : cy;
 
 			float contact;
 			if (horizontal) contact = sign > 0 ? blocker.getX1() - rx : blocker.getX2() + rx;
 			else contact = sign > 0 ? blocker.getY1() - ry : blocker.getY2() + ry;
 
-			// Le joueur chevauchait déjà l'obstacle : il ne bouge pas sur cet axe
+			// Contact déjà atteint (arrondis) : le joueur ne bouge pas sur cet axe
 			if ((sign > 0 && contact < origin) || (sign < 0 && contact > origin)) return origin;
 
 			if (horizontal) cx = contact;
@@ -469,18 +479,24 @@ public class Board implements IConfig {
 	}
 
 	/**
-	 * Cherche un obstacle ou un joueur vivant chevauchant un rectangle
+	 * Cherche un obstacle ou un joueur vivant chevauchant un rectangle, sans chevaucher la position de départ
 	 * @param self Joueur qui se déplace (ignoré)
 	 * @param r Rectangle testé
+	 * @param start Position de départ du joueur (les éléments qui la chevauchent sont ignorés)
 	 * @return Rectangle de l'élément bloquant, ou null
 	 */
-	private Rectangle findBlocker(Player self, Rectangle r) {
-		Obstacle o = MAP.obstacleIntersecting(r, false);
-		if (o != null) return o.getRepresentation();
+	private Rectangle findBlocker(Player self, Rectangle r, Rectangle start) {
+		for (Zone z : MAP.areasOverlapping(r))
+			for (Obstacle o : z.getOBSTACLES()) {
+				Rectangle or = o.getRepresentation();
+				if (or.intersect(r) && !or.intersect(start)) return or;
+			}
 
-		for (Player other : MAP.playersNear(r.expand(Math.max(PLAYER_RADIUS_X, PLAYER_RADIUS_Y))))
-			if (other != self && other.getIsAlive() && other.getRepresentation().intersect(r))
-				return other.getRepresentation();
+		for (Player other : MAP.playersNear(r.expand(Math.max(PLAYER_RADIUS_X, PLAYER_RADIUS_Y)))) {
+			if (other == self || !other.getIsAlive()) continue;
+			Rectangle or = other.getRepresentation();
+			if (or.intersect(r) && !or.intersect(start)) return or;
+		}
 
 		return null;
 	}

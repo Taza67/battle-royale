@@ -57,6 +57,18 @@ class ProtocolTest implements IConfig {
 	}
 
 	@Test
+	void pseudosInvalidesRefuses() {
+		for (String pseudo : new String[] { null, "", "   ", "\t", "a".repeat(PSEUDO_MAX_LENGTH + 1), "Ali\nce", "Bob\u0000",
+				"Zo\u007Fé", "Ève\u200B" })
+			assertNotNull(Protocol.validatePlayers(List.of(new PlayerSpec(1, "A", false), new PlayerSpec(2, pseudo, false))),
+				"pseudo « " + pseudo + " » accepté");
+
+		assertNull(Protocol.validatePlayers(List.of(new PlayerSpec(1, "a".repeat(PSEUDO_MAX_LENGTH), false))));
+		assertNull(Protocol.validatePlayers(List.of(new PlayerSpec(1, "🎮".repeat(PSEUDO_MAX_LENGTH), false))),
+			"longueur comptée en caractères");
+	}
+
+	@Test
 	void decodageDesActions() {
 		byte[] data = { 3, 0, 1, 4, 7, 1, 2, 3, 0, 6, 0 };
 		assertEquals(List.of(new Command.Move(3, 1, 4), new Command.Attack(7, 2), new Command.Move(3, 6, 0)),
