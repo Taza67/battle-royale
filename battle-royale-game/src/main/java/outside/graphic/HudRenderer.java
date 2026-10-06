@@ -1,5 +1,6 @@
 package outside.graphic;
 
+import static inside.IConfig.*;
 import static outside.graphic.GraphicUtilities.*;
 
 import java.text.Normalizer;
@@ -9,7 +10,6 @@ import inside.BoardSnapshot;
 import inside.BoardSnapshot.KillFeedEntry;
 import inside.BoardSnapshot.PlayerState;
 import inside.DamageCause;
-import inside.IConfig;
 import inside.Phase;
 import inside.SafeZone;
 import outside.graphic.Font.Align;
@@ -18,7 +18,7 @@ import outside.graphic.Font.Align;
  * Dessin de l'interface : HUD, bandeaux, pause, écran de fin et salle d'attente
  * @author mourtaza
  */
-public class HudRenderer implements IConfig {
+public class HudRenderer {
 	/**
 	 * Informations de la vue nécessaires au HUD
 	 * @param localId Identifiant du joueur local (-1 si aucun)

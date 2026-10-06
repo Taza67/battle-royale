@@ -1,5 +1,6 @@
 package outside.graphic;
 
+import static inside.IConfig.*;
 import static outside.graphic.GraphicUtilities.*;
 
 import java.util.HashMap;
@@ -9,7 +10,6 @@ import inside.BoardSnapshot;
 import inside.BoardSnapshot.BulletState;
 import inside.BoardSnapshot.PlayerState;
 import inside.Direction;
-import inside.IConfig;
 import inside.GameMap;
 import inside.Obstacle;
 import inside.SafeZone;
@@ -20,7 +20,7 @@ import inside.geometry.Rectangle;
  * Les positions sont interpolées entre les deux dernières images de la simulation.
  * @author mourtaza
  */
-public class WorldRenderer implements IConfig {
+public class WorldRenderer {
 	/**
 	 * Taille d'affichage d'un emoji de joueur
 	 */

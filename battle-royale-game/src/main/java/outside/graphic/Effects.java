@@ -1,5 +1,6 @@
 package outside.graphic;
 
+import static inside.IConfig.*;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -9,7 +10,6 @@ import inside.BoardSnapshot;
 import inside.BoardSnapshot.PlayerState;
 import inside.DamageCause;
 import inside.GameEvent;
-import inside.IConfig;
 import inside.geometry.Rectangle;
 
 /**
@@ -17,7 +17,7 @@ import inside.geometry.Rectangle;
  * Ils sont produits à partir des événements de la simulation et n'ont aucune influence sur elle.
  * @author mourtaza
  */
-public class Effects implements IConfig {
+public class Effects {
 	/**
 	 * Particule
 	 */

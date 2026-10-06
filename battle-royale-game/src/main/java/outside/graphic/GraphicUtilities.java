@@ -1,15 +1,15 @@
 package outside.graphic;
 
+import static inside.IConfig.*;
 import static org.lwjgl.opengl.GL11.*;
 
-import inside.IConfig;
 import inside.geometry.Rectangle;
 
 /**
  * Primitives de dessin OpenGL dans l'espace logique de la carte (1280 × 720, axe Y vers le bas)
  * @author mourtaza
  */
-public final class GraphicUtilities implements IConfig {
+public final class GraphicUtilities {
 	private GraphicUtilities() {}
 
 	/**
