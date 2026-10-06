@@ -133,6 +133,76 @@ class GameSessionTest {
 	}
 
 	@Test
+	void givesEachPseudoARandomStableResumeToken() throws Exception {
+		session.join(taza, "Taza");
+		String token = taza.next("welcome").get("token").getAsString();
+		assertTrue(token.matches("[0-9a-f]{32}"), token);
+		session.join(emile, "Émile");
+		String other = emile.next("welcome").get("token").getAsString();
+		assertTrue(other.matches("[0-9a-f]{32}"), other);
+		assertFalse(token.equals(other));
+
+		taza.drop();
+		FakeConnection back = new FakeConnection("back");
+		session.join(back, "TAZA");
+		assertEquals(token, back.next("welcome").get("token").getAsString());
+	}
+
+	@Test
+	void letsTheRightTokenTakeOverAnOpenSession() throws Exception {
+		assertTrue(session.claimAdmin(admin, ""));
+		Player p = session.join(taza, "Taza");
+		String token = taza.next("welcome").get("token").getAsString();
+		taza.skipAll();
+
+		FakeConnection resumed = new FakeConnection("resumed");
+		assertSame(p, session.join(resumed, "taza", token));
+		JsonObject welcome = resumed.next("welcome");
+		assertEquals(0, welcome.get("id").getAsInt());
+		assertEquals(token, welcome.get("token").getAsString());
+		assertEquals(GameSession.SESSION_TAKEN_OVER, taza.next("rejected").get("reason").getAsString());
+		assertFalse(taza.isOpen());
+		assertEquals(GameSession.SESSION_TAKEN_OVER, taza.closeReason());
+		assertSame(resumed, p.connection());
+
+		// La fermeture de l'ancienne session ne déconnecte pas le joueur repris
+		session.disconnect(taza, p);
+		assertSame(resumed, p.connection());
+		assertTrue(session.playerEntries().get(0).connected());
+	}
+
+	@Test
+	void keepsRefusingAnOpenPseudoWithAWrongOrMissingToken() throws Exception {
+		session.join(taza, "Taza");
+		String token = taza.next("welcome").get("token").getAsString();
+		session.join(emile, "Émile");
+		String emileToken = emile.next("welcome").get("token").getAsString();
+
+		for (String wrong : new String[] { null, "", emileToken, token.toUpperCase(), token + "0" }) {
+			FakeConnection intruder = new FakeConnection("intruder");
+			assertNull(session.join(intruder, "Taza", wrong));
+			assertEquals(GameSession.PSEUDO_TAKEN, intruder.next("rejected").get("reason").getAsString());
+			assertTrue(taza.isOpen());
+		}
+	}
+
+	@Test
+	void neverSendsTokensInPlayersOrEnd() throws Exception {
+		assertTrue(session.claimAdmin(admin, ""));
+		session.join(taza, "Taza");
+		String token = taza.next("welcome").get("token").getAsString();
+		startRound();
+		game.finish(SnapshotBytes.battle().phase(2).counts(1, 1).winner(0).player(0, 2, 100, 10, 10, 0, 1).build());
+		admin.next("end");
+		taza.next("end");
+		for (JsonObject m : admin.all())
+			assertFalse(m.toString().contains(token), m.toString());
+		for (JsonObject m : taza.all())
+			if (!"welcome".equals(m.get("type").getAsString()))
+				assertFalse(m.toString().contains(token), m.toString());
+	}
+
+	@Test
 	void givesTheAdminSeatToTheFirstClaimantWhileConnected() throws Exception {
 		FakeConnection other = new FakeConnection("other");
 		assertTrue(session.claimAdmin(admin, "n'importe quoi"));

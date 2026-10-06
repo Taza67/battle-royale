@@ -11,8 +11,10 @@ import communication.game.Zone;
 class ServerMessageTest {
 	@Test
 	void serializesWelcomeAndRejected() {
-		assertEquals("{\"type\":\"welcome\",\"id\":3,\"pseudo\":\"Taza\",\"state\":\"lobby\"}",
-			Json.write(new ServerMessage.Welcome(3, "Taza", "lobby")));
+		assertEquals("{\"type\":\"welcome\",\"id\":3,\"pseudo\":\"Taza\",\"state\":\"lobby\",\"token\":\"0f\"}",
+			Json.write(new ServerMessage.Welcome(3, "Taza", "lobby", "0f")));
+		assertEquals("Welcome[id=3, pseudo=Taza, state=lobby, token=***]",
+			new ServerMessage.Welcome(3, "Taza", "lobby", "0f").toString());
 		assertEquals("{\"type\":\"rejected\",\"reason\":\"Pseudo déjà utilisé\"}",
 			Json.write(new ServerMessage.Rejected("Pseudo déjà utilisé")));
 	}
@@ -54,7 +56,7 @@ class ServerMessageTest {
 
 	@Test
 	void escapesPseudosSafely() {
-		String json = Json.write(new ServerMessage.Welcome(1, "a\"b\\<c>", "lobby"));
+		String json = Json.write(new ServerMessage.Welcome(1, "a\"b\\<c>", "lobby", "0f"));
 		assertEquals("a\"b\\<c>", Json.GSON.fromJson(json, com.google.gson.JsonObject.class).get("pseudo").getAsString());
 	}
 }

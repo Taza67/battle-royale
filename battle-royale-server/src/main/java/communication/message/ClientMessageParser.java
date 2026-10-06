@@ -55,8 +55,11 @@ public final class ClientMessageParser {
 	 */
 	private static ClientMessage parseFields(String type, JsonObject object) throws InvalidMessageException {
 		switch (type) {
-			case "join":
-				return new ClientMessage.Join(validatePseudo(requireString(object, "pseudo")));
+			case "join": {
+				String pseudo = validatePseudo(requireString(object, "pseudo"));
+				String token = optionalString(object, "token");
+				return new ClientMessage.Join(pseudo, token.isEmpty() ? null : token);
+			}
 			case "move":
 				return new ClientMessage.Move(
 					requireInt(object, "direction", 0, ClientMessage.MAX_DIRECTION),

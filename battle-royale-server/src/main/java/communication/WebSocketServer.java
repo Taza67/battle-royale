@@ -152,7 +152,7 @@ public final class WebSocketServer extends Endpoint {
 	private void onJoin(ClientMessage.Join join) {
 		switch (role) {
 			case UNREGISTERED:
-				Player p = game.join(connection, join.pseudo());
+				Player p = game.join(connection, join.pseudo(), join.token());
 				if (p != null) {
 					player = p;
 					role = Role.PLAYER;

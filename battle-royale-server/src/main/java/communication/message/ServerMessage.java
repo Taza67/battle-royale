@@ -25,15 +25,24 @@ public sealed interface ServerMessage {
 	 * @param id Identifiant attribué
 	 * @param pseudo Pseudo retenu
 	 * @param state État courant de la partie
+	 * @param token Jeton de reprise du pseudo
 	 */
-	record Welcome(String type, int id, String pseudo, String state) implements ServerMessage {
+	record Welcome(String type, int id, String pseudo, String state, String token) implements ServerMessage {
 		/**
 		 * Construit le message
 		 * @param id Identifiant attribué
 		 * @param pseudo Pseudo retenu
 		 * @param state État courant de la partie
+		 * @param token Jeton de reprise du pseudo
 		 */
-		public Welcome(int id, String pseudo, String state) { this("welcome", id, pseudo, state); }
+		public Welcome(int id, String pseudo, String state, String token) { this("welcome", id, pseudo, state, token); }
+
+		/**
+		 * Masque le jeton dans les journaux
+		 * @return Représentation textuelle sans le jeton
+		 */
+		@Override
+		public String toString() { return "Welcome[id=" + id + ", pseudo=" + pseudo + ", state=" + state + ", token=***]"; }
 	}
 
 	/**

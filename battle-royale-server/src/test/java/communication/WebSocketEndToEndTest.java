@@ -145,6 +145,14 @@ class WebSocketEndToEndTest {
 		return o.toString();
 	}
 
+	private static String join(String pseudo, String token) {
+		JsonObject o = new JsonObject();
+		o.addProperty("type", "join");
+		o.addProperty("pseudo", pseudo);
+		o.addProperty("token", token);
+		return o.toString();
+	}
+
 	private static String adminJoin(String password) {
 		JsonObject o = new JsonObject();
 		o.addProperty("type", "admin-join");
@@ -192,6 +200,38 @@ class WebSocketEndToEndTest {
 		taza.close();
 		Client back = new Client().send(join("taza"));
 		assertEquals(0, back.next("welcome").get("id").getAsInt());
+	}
+
+	@Test
+	void letsTheResumeTokenTakeOverAnOpenSession() throws Exception {
+		startServer(UNUSED_GAME_PORT, null);
+		Client admin = new Client().send(adminJoin(""));
+		admin.next("admin-welcome");
+		Client taza = new Client().send(join("Taza"));
+		String token = taza.next("welcome").get("token").getAsString();
+		assertTrue(token.matches("[0-9a-f]{32}"), token);
+
+		Client wrong = new Client().send(join("Taza", "0".repeat(32)));
+		assertEquals(GameSession.PSEUDO_TAKEN, wrong.next("rejected").get("reason").getAsString());
+		Client missing = new Client().send(join("Taza"));
+		assertEquals(GameSession.PSEUDO_TAKEN, missing.next("rejected").get("reason").getAsString());
+
+		Client resumed = new Client().send(join("taza", token));
+		JsonObject welcome = resumed.next("welcome");
+		assertEquals(0, welcome.get("id").getAsInt());
+		assertEquals(token, welcome.get("token").getAsString());
+		assertEquals(GameSession.SESSION_TAKEN_OVER, taza.next("rejected").get("reason").getAsString());
+		assertEquals(1000, taza.closed.get(3, TimeUnit.SECONDS));
+
+		// La fermeture de l'ancienne session ne déconnecte pas le joueur
+		Thread.sleep(200);
+		assertEquals(1, session.playerEntries().size());
+		assertTrue(session.playerEntries().get(0).connected());
+		JsonObject players;
+		do {
+			players = admin.next("players");
+			assertFalse(players.toString().contains(token), players.toString());
+		} while (players.getAsJsonArray("players").size() == 0);
 	}
 
 	@Test

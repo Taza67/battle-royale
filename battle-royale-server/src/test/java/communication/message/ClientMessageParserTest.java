@@ -11,6 +11,19 @@ import org.junit.jupiter.params.provider.ValueSource;
 
 class ClientMessageParserTest {
 	@Test
+	void parsesOptionalResumeToken() throws Exception {
+		assertEquals(new ClientMessage.Join("Taza", "abc123"),
+			ClientMessageParser.parse("{\"type\":\"join\",\"pseudo\":\"Taza\",\"token\":\"abc123\"}"));
+		assertEquals(new ClientMessage.Join("Taza", null),
+			ClientMessageParser.parse("{\"type\":\"join\",\"pseudo\":\"Taza\",\"token\":\"\"}"));
+		assertEquals(new ClientMessage.Join("Taza", null),
+			ClientMessageParser.parse("{\"type\":\"join\",\"pseudo\":\"Taza\",\"token\":null}"));
+		assertEquals("Join[pseudo=Taza, token=***]", new ClientMessage.Join("Taza", "abc123").toString());
+		assertThrows(InvalidMessageException.class,
+			() -> ClientMessageParser.parse("{\"type\":\"join\",\"pseudo\":\"Taza\",\"token\":42}"));
+	}
+
+	@Test
 	void parsesJoinAndTrimsPseudo() throws Exception {
 		ClientMessage message = ClientMessageParser.parse("{\"type\":\"join\",\"pseudo\":\"  Taza \"}");
 		assertEquals(new ClientMessage.Join("Taza"), message);

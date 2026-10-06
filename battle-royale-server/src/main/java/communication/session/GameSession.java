@@ -2,10 +2,12 @@ package communication.session;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.HexFormat;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
@@ -64,6 +66,8 @@ public final class GameSession implements AutoCloseable {
 	public static final String GAME_FULL = "Partie complète";
 	/** Refus : mauvais mot de passe administrateur */
 	public static final String WRONG_PASSWORD = "Mot de passe administrateur incorrect";
+	/** Refus envoyé à l'ancienne session d'un joueur reprise grâce au jeton */
+	public static final String SESSION_TAKEN_OVER = "Session reprise par une autre connexion";
 	/** Refus : place d'administrateur occupée */
 	public static final String ADMIN_TAKEN = "Un administrateur est déjà connecté";
 	/** Refus envoyé à l'ancienne session administrateur remplacée */
@@ -90,6 +94,7 @@ public final class GameSession implements AutoCloseable {
 	public static final String SHUTTING_DOWN = "Serveur en cours d'arrêt";
 
 	private static final Logger LOG = Logger.getLogger(GameSession.class.getName());
+	private static final SecureRandom RANDOM = new SecureRandom();
 
 	private final Object lock = new Object();
 	private final GameLinkSettings linkSettings;
@@ -99,6 +104,10 @@ public final class GameSession implements AutoCloseable {
 
 	private final Map<String, Player> playersByKey = new HashMap<>();
 	private final TreeMap<Integer, Player> playersById = new TreeMap<>();
+	/**
+	 * Jetons de reprise par pseudo (en minuscules), conservés pendant toute la vie du serveur
+	 */
+	private final Map<String, String> tokens = new HashMap<>();
 	private ClientConnection admin;
 	private GameState state = GameState.LOBBY;
 	private boolean starting;
@@ -168,12 +177,26 @@ public final class GameSession implements AutoCloseable {
 	}
 
 	/**
-	 * Inscrit un joueur ou le reconnecte s'il existe déjà ; envoie `welcome` ou `rejected`
+	 * Inscrit un joueur ou le reconnecte s'il existe déjà, sans jeton de reprise
 	 * @param c Connexion du joueur
 	 * @param pseudo Pseudo validé
 	 * @return Joueur inscrit, ou null si l'inscription est refusée
+	 * @see #join(ClientConnection, String, String)
 	 */
 	public Player join(ClientConnection c, String pseudo) {
+		return join(c, pseudo, null);
+	}
+
+	/**
+	 * Inscrit un joueur ou le reconnecte s'il existe déjà ; envoie `welcome` ou `rejected`.
+	 * Si le pseudo est associé à une session ouverte, le bon jeton de reprise permet à la
+	 * nouvelle connexion de remplacer l'ancienne, qui reçoit `rejected` puis est fermée.
+	 * @param c Connexion du joueur
+	 * @param pseudo Pseudo validé
+	 * @param token Jeton de reprise fourni, null s'il est absent
+	 * @return Joueur inscrit, ou null si l'inscription est refusée
+	 */
+	public Player join(ClientConnection c, String pseudo, String token) {
 		synchronized (lock) {
 			if (closed) {
 				reject(c, SHUTTING_DOWN);
@@ -187,13 +210,19 @@ public final class GameSession implements AutoCloseable {
 				}
 				ClientConnection current = existing.connection();
 				if (current != null && current != c && current.isOpen()) {
-					LOG.info(() -> "Pseudo " + pseudo + " refusé pour " + c.id() + " : session " + current.id() + " ouverte");
-					reject(c, PSEUDO_TAKEN);
-					return null;
+					if (!tokenMatches(pseudo, token)) {
+						LOG.info(() -> "Pseudo " + pseudo + " refusé pour " + c.id() + " : session " + current.id() + " ouverte");
+						reject(c, PSEUDO_TAKEN);
+						return null;
+					}
+					LOG.info(() -> "Session " + current.id() + " de " + existing + " reprise par " + c.id());
+					reject(current, SESSION_TAKEN_OVER);
+					current.close(SESSION_TAKEN_OVER);
 				}
 				existing.attach(c);
 				LOG.info(() -> existing + " reconnecté (" + c.id() + "), partie " + state.wireName());
-				c.send(Json.write(new ServerMessage.Welcome(existing.getId(), existing.getPseudo(), state.wireName())));
+				c.send(Json.write(new ServerMessage.Welcome(existing.getId(), existing.getPseudo(), state.wireName(),
+					tokenFor(existing.getPseudo()))));
 				replayTo(existing);
 				playersChanged();
 				return existing;
@@ -212,7 +241,7 @@ public final class GameSession implements AutoCloseable {
 			playersByKey.put(key(pseudo), player);
 			playersById.put(id, player);
 			LOG.info(() -> player + " inscrit (" + c.id() + ")");
-			c.send(Json.write(new ServerMessage.Welcome(id, player.getPseudo(), state.wireName())));
+			c.send(Json.write(new ServerMessage.Welcome(id, player.getPseudo(), state.wireName(), tokenFor(player.getPseudo()))));
 			playersChanged();
 			return player;
 		}
@@ -738,6 +767,31 @@ public final class GameSession implements AutoCloseable {
 			if (!playersById.containsKey(id))
 				return id;
 		return -1;
+	}
+
+	/**
+	 * Retourne le jeton de reprise d'un pseudo, créé à la première demande
+	 * @param pseudo Pseudo
+	 * @return Jeton aléatoire de 128 bits en hexadécimal
+	 */
+	private String tokenFor(String pseudo) {
+		return tokens.computeIfAbsent(key(pseudo), k -> {
+			byte[] bytes = new byte[16];
+			RANDOM.nextBytes(bytes);
+			return HexFormat.of().formatHex(bytes);
+		});
+	}
+
+	/**
+	 * Compare en temps constant le jeton fourni à celui du pseudo
+	 * @param pseudo Pseudo
+	 * @param token Jeton fourni, éventuellement null
+	 * @return true si le jeton est celui du pseudo
+	 */
+	private boolean tokenMatches(String pseudo, String token) {
+		String expected = tokens.get(key(pseudo));
+		return token != null && expected != null
+			&& MessageDigest.isEqual(token.getBytes(StandardCharsets.UTF_8), expected.getBytes(StandardCharsets.UTF_8));
 	}
 
 	private static void reject(ClientConnection c, String reason) {
