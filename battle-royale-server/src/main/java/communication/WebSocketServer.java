@@ -47,6 +47,10 @@ public final class WebSocketServer extends Endpoint {
 	 * Préfixe du refus envoyé pour un `admin-join` invalide
 	 */
 	public static final String INVALID_ADMIN_JOIN = "Connexion administrateur invalide";
+	/**
+	 * Refus envoyé à une session déjà inscrite qui renvoie `join` ou `admin-join`
+	 */
+	public static final String ALREADY_REGISTERED = "Session déjà inscrite";
 
 	private static final Logger LOG = Logger.getLogger(WebSocketServer.class.getName());
 
@@ -137,8 +141,12 @@ public final class WebSocketServer extends Endpoint {
 	 * @param e Erreur de validation
 	 */
 	private void rejectInvalidRegistration(InvalidMessageException e) {
-		if (role != Role.UNREGISTERED)
+		boolean registration = "join".equals(e.getType()) || "admin-join".equals(e.getType());
+		if (role != Role.UNREGISTERED) {
+			if (registration)
+				rejectAlreadyRegistered(e.getType());
 			return;
+		}
 		String reason;
 		if ("join".equals(e.getType()))
 			reason = INVALID_PSEUDO + " : " + e.getMessage();
@@ -159,21 +167,29 @@ public final class WebSocketServer extends Endpoint {
 				}
 				break;
 			case PLAYER:
-				LOG.warning(() -> "Nouvelle inscription ignorée : " + connection.id() + " est déjà " + player);
-				break;
 			case ADMIN:
-				LOG.warning(() -> "Inscription de joueur ignorée depuis la session administrateur " + connection.id());
+				rejectAlreadyRegistered("join");
 				break;
 		}
 	}
 
 	private void onAdminJoin(ClientMessage.AdminJoin adminJoin) {
-		if (role == Role.PLAYER) {
-			LOG.warning(() -> "Connexion administrateur refusée : " + connection.id() + " est le joueur " + player);
+		if (role != Role.UNREGISTERED) {
+			rejectAlreadyRegistered("admin-join");
 			return;
 		}
 		if (game.claimAdmin(connection, adminJoin.password()))
 			role = Role.ADMIN;
+	}
+
+	/**
+	 * Refuse une nouvelle inscription d'une session qui a déjà un rôle ; la session le conserve
+	 * @param type Type du message refusé
+	 */
+	private void rejectAlreadyRegistered(String type) {
+		LOG.warning(() -> type + " refusé : " + connection.id() + " est déjà inscrite ("
+			+ (role == Role.PLAYER ? String.valueOf(player) : "administrateur") + ")");
+		connection.send(Json.write(new ServerMessage.Rejected(ALREADY_REGISTERED)));
 	}
 
 	private void onMove(ClientMessage.Move move) {

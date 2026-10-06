@@ -203,6 +203,31 @@ class WebSocketEndToEndTest {
 	}
 
 	@Test
+	void rejectsJoinAndAdminJoinFromRegisteredSessions() throws Exception {
+		startServer(UNUSED_GAME_PORT, null);
+		Client admin = new Client().send(adminJoin(""));
+		admin.next("admin-welcome");
+		Client taza = new Client().send(join("Taza"));
+		taza.next("welcome");
+
+		for (String again : new String[] { join("Taza"), join("Autre"), adminJoin(""), join("") }) {
+			taza.send(again);
+			assertEquals(WebSocketServer.ALREADY_REGISTERED, taza.next("rejected").get("reason").getAsString(), again);
+		}
+		for (String again : new String[] { adminJoin(""), join("Admin") }) {
+			admin.send(again);
+			assertEquals(WebSocketServer.ALREADY_REGISTERED, admin.next("rejected").get("reason").getAsString(), again);
+		}
+
+		// Les deux sessions gardent leur rôle
+		assertEquals(1, session.playerEntries().size());
+		assertTrue(session.playerEntries().get(0).connected());
+		admin.send(command("pause"));
+		assertEquals(GameSession.NOT_RUNNING, admin.next("ack").get("error").getAsString());
+		assertTrue(taza.receivesNo("welcome", 100));
+	}
+
+	@Test
 	void letsTheResumeTokenTakeOverAnOpenSession() throws Exception {
 		startServer(UNUSED_GAME_PORT, null);
 		Client admin = new Client().send(adminJoin(""));
