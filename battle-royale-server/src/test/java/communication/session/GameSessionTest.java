@@ -203,6 +203,28 @@ class GameSessionTest {
 	}
 
 	@Test
+	void closesTheSessionAfterFiveWrongAdminPasswords() throws Exception {
+		session.close();
+		session = new GameSession(GameLinkSettings.of("localhost", FakeGameServer.PORT), "s3cret");
+		FakeConnection guesser = new FakeConnection("guesser");
+		for (int i = 1; i < GameSession.MAX_WRONG_PASSWORDS; i++) {
+			assertFalse(session.claimAdmin(guesser, "essai" + i));
+			assertEquals(GameSession.WRONG_PASSWORD, guesser.next("rejected").get("reason").getAsString());
+			assertTrue(guesser.isOpen());
+		}
+		assertFalse(session.claimAdmin(guesser, "essai5"));
+		assertEquals(GameSession.WRONG_PASSWORD, guesser.next("rejected").get("reason").getAsString());
+		assertFalse(guesser.isOpen());
+		assertEquals(GameSession.TOO_MANY_WRONG_PASSWORDS, guesser.closeReason());
+
+		// Le compteur est propre à chaque connexion
+		FakeConnection other = new FakeConnection("other");
+		assertFalse(session.claimAdmin(other, "mauvais"));
+		assertTrue(other.isOpen());
+		assertTrue(session.claimAdmin(other, "s3cret"));
+	}
+
+	@Test
 	void givesTheAdminSeatToTheFirstClaimantWhileConnected() throws Exception {
 		FakeConnection other = new FakeConnection("other");
 		assertTrue(session.claimAdmin(admin, "n'importe quoi"));

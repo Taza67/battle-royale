@@ -91,6 +91,15 @@ public final class WebSocketServer extends Endpoint {
 				public <T> T getEndpointInstance(Class<T> endpointClass) {
 					return endpointClass.cast(new WebSocketServer(game));
 				}
+
+				/**
+				 * Accepte un en-tête `Origin` absent ou désignant l'hôte de la requête ;
+				 * la requête est fournie par {@link OriginCheck.HandshakeFilter}
+				 */
+				@Override
+				public boolean checkOrigin(String originHeaderValue) {
+					return OriginCheck.allowsCurrent(originHeaderValue);
+				}
 			})
 			.build();
 	}

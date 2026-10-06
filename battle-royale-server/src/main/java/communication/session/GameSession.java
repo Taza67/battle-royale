@@ -14,6 +14,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.WeakHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -68,6 +69,10 @@ public final class GameSession implements AutoCloseable {
 	public static final String WRONG_PASSWORD = "Mot de passe administrateur incorrect";
 	/** Refus envoyé à l'ancienne session d'un joueur reprise grâce au jeton */
 	public static final String SESSION_TAKEN_OVER = "Session reprise par une autre connexion";
+	/** Raison de fermeture après trop de mots de passe administrateur erronés */
+	public static final String TOO_MANY_WRONG_PASSWORDS = "Trop de mots de passe administrateur incorrects";
+	/** Nombre de mots de passe administrateur erronés au bout duquel la session est fermée */
+	public static final int MAX_WRONG_PASSWORDS = 5;
 	/** Refus : place d'administrateur occupée */
 	public static final String ADMIN_TAKEN = "Un administrateur est déjà connecté";
 	/** Refus envoyé à l'ancienne session administrateur remplacée */
@@ -108,6 +113,10 @@ public final class GameSession implements AutoCloseable {
 	 * Jetons de reprise par pseudo (en minuscules), conservés pendant toute la vie du serveur
 	 */
 	private final Map<String, String> tokens = new HashMap<>();
+	/**
+	 * Mots de passe administrateur erronés par connexion ; les connexions fermées sont oubliées
+	 */
+	private final Map<ClientConnection, Integer> wrongPasswords = new WeakHashMap<>();
 	private ClientConnection admin;
 	private GameState state = GameState.LOBBY;
 	private boolean starting;
@@ -261,8 +270,14 @@ public final class GameSession implements AutoCloseable {
 			}
 			if (adminPassword != null) {
 				if (!MessageDigest.isEqual(password.getBytes(StandardCharsets.UTF_8), adminPassword.getBytes(StandardCharsets.UTF_8))) {
-					LOG.warning(() -> "Mot de passe administrateur incorrect (" + c.id() + ")");
+					int attempts = wrongPasswords.merge(c, 1, Integer::sum);
+					LOG.warning(() -> "Mot de passe administrateur incorrect (" + c.id() + ", tentative " + attempts + ")");
 					reject(c, WRONG_PASSWORD);
+					if (attempts >= MAX_WRONG_PASSWORDS) {
+						wrongPasswords.remove(c);
+						LOG.warning(() -> "Session " + c.id() + " fermée après " + attempts + " mots de passe administrateur incorrects");
+						c.close(TOO_MANY_WRONG_PASSWORDS);
+					}
 					return false;
 				}
 				ClientConnection previous = admin;
