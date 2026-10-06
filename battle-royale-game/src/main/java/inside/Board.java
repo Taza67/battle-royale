@@ -95,7 +95,11 @@ public class Board implements IConfig {
 	/**
 	 * Événements produits et pas encore lus
 	 */
-	private final List<GameEvent> EVENTS;
+	private final Deque<GameEvent> EVENTS;
+	/**
+	 * Événements abandonnés par saturation de la file depuis la dernière lecture
+	 */
+	private int droppedEvents;
 	/**
 	 * Dernières éliminations
 	 */
@@ -163,7 +167,7 @@ public class Board implements IConfig {
 		BULLETS = new ArrayList<>();
 		COMMANDS = new ConcurrentLinkedQueue<>();
 		SUSPENDED = new ArrayDeque<>();
-		EVENTS = new ArrayList<>();
+		EVENTS = new ArrayDeque<>();
 		KILL_FEED = new ArrayDeque<>();
 
 		for (PlayerSpec spec : players) {
@@ -220,6 +224,10 @@ public class Board implements IConfig {
 	 * @return Événements
 	 */
 	public List<GameEvent> drainEvents() {
+		if (droppedEvents > 0) {
+			LOGGER.warning(droppedEvents + " événement(s) abandonné(s) : file d'événements saturée");
+			droppedEvents = 0;
+		}
 		List<GameEvent> events = new ArrayList<>(EVENTS);
 		EVENTS.clear();
 		return events;
@@ -704,8 +712,11 @@ public class Board implements IConfig {
 	 * @param e Événement
 	 */
 	private void addEvent(GameEvent e) {
-		if (EVENTS.size() >= MAX_PENDING_EVENTS) EVENTS.remove(0);
-		EVENTS.add(e);
+		if (EVENTS.size() >= MAX_PENDING_EVENTS) {
+			EVENTS.pollFirst();
+			droppedEvents++;
+		}
+		EVENTS.addLast(e);
 	}
 
 	/**
