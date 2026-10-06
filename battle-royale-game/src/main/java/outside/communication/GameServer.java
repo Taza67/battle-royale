@@ -42,6 +42,11 @@ public class GameServer implements Runnable, AutoCloseable {
 	 * Délai accordé au serveur web pour terminer la poignée de main, en millisecondes
 	 */
 	public static final int HANDSHAKE_TIMEOUT_MS = 5000;
+	/**
+	 * Délai d'attente maximal d'un message du serveur web pendant une partie, en millisecondes :
+	 * une connexion restée muette est considérée perdue
+	 */
+	public static final int READ_TIMEOUT_MS = 15_000;
 
 	/**
 	 * Écouteur des événements du serveur (appelé depuis le fil réseau)
@@ -139,13 +144,15 @@ public class GameServer implements Runnable, AutoCloseable {
 	public void run() {
 		try (ServerSocket server = new ServerSocket()) {
 			server.setReuseAddress(true);
-			server.bind(new InetSocketAddress(InetAddress.getByName(BIND_ADDRESS), PORT));
+			// File d'attente réduite à 1 : une seconde connexion pendant une partie est refusée
+			server.bind(new InetSocketAddress(InetAddress.getByName(BIND_ADDRESS), PORT), 1);
 			serverSocket = server;
 			LISTENER.onStatus("En attente du serveur web (" + BIND_ADDRESS + ":" + PORT + ")", false);
 
 			while (!closed) {
 				try (Socket socket = server.accept()) {
 					client = socket;
+					if (closed) break;
 					socket.setTcpNoDelay(true);
 					LISTENER.onStatus("Serveur web connecté : " + socket.getRemoteSocketAddress(), false);
 					handle(socket);
@@ -182,7 +189,9 @@ public class GameServer implements Runnable, AutoCloseable {
 			LISTENER.onStatus("Poignée de main non terminée en " + HANDSHAKE_TIMEOUT_MS / 1000 + " s, connexion fermée", true);
 			return;
 		}
+		// Après la poignée de main, les lectures restent bornées : un client muet ne bloque pas le serveur
 		raw.clearDeadline();
+		socket.setSoTimeout(READ_TIMEOUT_MS);
 
 		String refusal = Protocol.validatePlayers(players);
 		Board board = refusal == null ? LISTENER.onGameRequested(players) : null;
@@ -207,7 +216,7 @@ public class GameServer implements Runnable, AutoCloseable {
 				LOGGER.log(Level.FINE, "Connexion fermée après la fin de la partie", e);
 				LISTENER.onStatus("Partie terminée, serveur web déconnecté", false);
 			} else {
-				boolean closedByPeer = e instanceof EOFException || e instanceof SocketException;
+				boolean closedByPeer = e instanceof EOFException || e instanceof SocketException || e instanceof SocketTimeoutException;
 				LOGGER.log(closedByPeer ? Level.FINE : Level.WARNING, "Échange interrompu avec le serveur web", e);
 				LISTENER.onConnectionLost(board);
 				LISTENER.onStatus("Connexion avec le serveur web perdue", true);
