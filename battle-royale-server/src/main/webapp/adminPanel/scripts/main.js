@@ -9,8 +9,7 @@ import { LIBELLES_ETAT, entier, normaliserEtat } from "../../common/scripts/prot
 import { TableauJoueurs, evenementsEntre, normaliserJoueur } from "./joueurs.js";
 
 const CLE_SESSION = "battle-royale.admin";
-const TENTATIVES_RECONNEXION = 3;
-const DELAI_RECONNEXION = 1500;
+const RAISON_REMPLACEE = "Session administrateur reprise par une autre connexion";
 const DELAI_ACQUITTEMENT = 8000;
 const TAILLE_JOURNAL = 60;
 
@@ -51,7 +50,6 @@ const session = {
 	motDePasse: "",
 	admise: false,
 	automatique: false,
-	echecs: 0,
 	partie: null,
 	joueurs: [],
 	listeRecue: false,
@@ -112,7 +110,6 @@ function seConnecter(evenement) {
 
 	session.souhaitee = true;
 	session.automatique = false;
-	session.echecs = 0;
 	session.motDePasse = element("mot-de-passe").value;
 	element("erreur-connexion").textContent = "";
 	envoyerConnexion();
@@ -130,6 +127,8 @@ function revenirConnexion(raison) {
 	element("mot-de-passe").focus();
 }
 
+// La connexion administrateur n'est renvoyée automatiquement qu'à l'ouverture
+// d'une nouvelle socket, jamais après un refus.
 connexion.surOuverture(() => {
 	session.admise = false;
 	envoyerConnexion();
@@ -149,7 +148,6 @@ connexion.sur("admin-welcome", message => {
 
 	session.admise = true;
 	session.automatique = true;
-	session.echecs = 0;
 	ecrireSession({ motDePasse: session.motDePasse });
 
 	changerPartie(normaliserEtat(message.state) ?? "lobby", false);
@@ -163,11 +161,9 @@ connexion.sur("admin-welcome", message => {
 connexion.sur("rejected", message => {
 	const raison = typeof message.reason === "string" && message.reason !== "" ? message.reason : "Connexion refusée.";
 
-	if (session.automatique && session.echecs < TENTATIVES_RECONNEXION) {
-		session.echecs++;
-		setTimeout(envoyerConnexion, DELAI_RECONNEXION);
+	// Une session déjà admise qui reçoit un autre refus reste administrateur.
+	if (session.admise && raison !== RAISON_REMPLACEE)
 		return;
-	}
 
 	revenirConnexion(raison);
 });
