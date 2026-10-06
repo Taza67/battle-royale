@@ -332,7 +332,7 @@ public class Game implements IConfig {
 		int id = 0;
 		if (!OPTIONS.spectate()) specs.add(new PlayerSpec(id++, OPTIONS.pseudo(), false));
 		for (int i = 0; i < OPTIONS.bots(); i++)
-			specs.add(new PlayerSpec(id++, BotController.botName(i), true));
+			specs.add(new PlayerSpec(id++, BotController.botPseudo(i), true));
 
 		long seed = OPTIONS.seed() + GAMES_CREATED.getAndIncrement();
 		Board b = new Board(OPTIONS.settings().withSeed(seed), specs);
@@ -391,7 +391,7 @@ public class Game implements IConfig {
 		List<PlayerSpec> specs = new ArrayList<>(players);
 		int next = players.stream().mapToInt(PlayerSpec::id).max().orElse(-1) + 1;
 		for (int i = 0; i < OPTIONS.bots() && next < MAX_PLAYERS; i++)
-			specs.add(new PlayerSpec(next++, BotController.botName(i), true));
+			specs.add(new PlayerSpec(next++, BotController.botPseudo(i), true));
 		return new Board(OPTIONS.settings().withSeed(OPTIONS.seed() + GAMES_CREATED.getAndIncrement()), specs);
 	}
 
