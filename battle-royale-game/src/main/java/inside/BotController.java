@@ -383,7 +383,9 @@ public class BotController implements IConfig {
 			Player attacker = BOARD.getPlayer(bot.getLastAttacker());
 			if (attacker != null && attacker.getIsAlive()) return attacker;
 		}
-		return nearestEnemy(bot, VISION_RANGE * (0.35f + 0.65f * m.aggression));
+		// Les robots sont d'abord prudents, puis de plus en plus agressifs à mesure que la zone se resserre
+		float pressure = Math.min(1, 0.15f + 0.2f * BOARD.getSafeZone().getWaveIndex());
+		return nearestEnemy(bot, VISION_RANGE * pressure * (0.35f + 0.65f * m.aggression));
 	}
 
 	/**
