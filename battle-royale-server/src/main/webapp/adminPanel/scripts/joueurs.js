@@ -52,7 +52,7 @@ export function evenementsEntre(avant, apres) {
 function comparateur(etatPartie) {
 	if (etatPartie === "running" || etatPartie === "paused") {
 		const poids = { winner: 0, alive: 1, eliminated: 2 };
-		return (a, b) => poids[a.statut] - poids[b.statut]
+		return (a, b) => (poids[a.statut] ?? 1) - (poids[b.statut] ?? 1)
 			|| (a.statut === "eliminated" ? a.rang - b.rang : b.vie - a.vie)
 			|| a.id - b.id;
 	}
@@ -154,8 +154,8 @@ export class TableauJoueurs {
 		pastille.textContent = joueur.connecte ? "Connecté" : "Déconnecté";
 
 		const statut = cellules[3].firstElementChild;
-		statut.dataset.statut = enPartie ? joueur.statut : "";
-		statut.textContent = enPartie ? LIBELLES_STATUT[joueur.statut] : "Inscrit";
+		statut.dataset.statut = enPartie ? joueur.statut ?? "" : "";
+		statut.textContent = enPartie ? LIBELLES_STATUT[joueur.statut] ?? "Inconnu" : "Inscrit";
 
 		const vie = cellules[4].firstElementChild;
 		vie.dataset.niveau = niveauVie(proportion);

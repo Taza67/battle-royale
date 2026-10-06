@@ -43,15 +43,15 @@ export function afficherEtat(etat) {
 	element("texte-vie").textContent = `${etat.vie} / ${etat.vieMaximale}`;
 
 	const statut = element("info-statut");
-	statut.dataset.statut = etat.statut;
-	statut.textContent = LIBELLES_STATUT[etat.statut].toUpperCase();
+	statut.dataset.statut = etat.statut ?? "";
+	statut.textContent = (LIBELLES_STATUT[etat.statut] ?? "Inconnu").toUpperCase();
 
 	element("info-kills").textContent = String(etat.kills);
 	element("info-vivants").textContent = `${etat.vivants} / ${etat.total}`;
 	element("info-rang").textContent = etat.rang > 0 ? ordinal(etat.rang) : "–";
 
-	element("info-phase").textContent = LIBELLES_PHASE[etat.phase].toUpperCase();
-	element("info-phase").dataset.phase = etat.phase;
+	element("info-phase").textContent = (LIBELLES_PHASE[etat.phase] ?? "?").toUpperCase();
+	element("info-phase").dataset.phase = etat.phase ?? "";
 	element("info-compte").textContent = etat.phase === "over" ? "–" : `${etat.secondes} s`;
 	element("info-compte").title = etat.phase === "warmup" ? "Secondes avant le début du combat" : "Secondes avant la prochaine étape de la zone";
 
@@ -61,7 +61,7 @@ export function afficherEtat(etat) {
 
 	const manette = element("manette");
 	manette.dataset.statut = etat.statut;
-	element("message-carte").hidden = etat.statut === "alive";
+	element("message-carte").hidden = etat.statut !== "eliminated" && etat.statut !== "winner";
 	element("message-carte").textContent = etat.statut === "winner" ? "VAINQUEUR !" : "ÉLIMINÉ";
 }
 

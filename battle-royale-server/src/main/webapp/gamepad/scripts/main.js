@@ -401,7 +401,8 @@ function actualiser() {
 }
 
 function actualiserCommandes() {
-	const statut = session.dernierEtat?.statut ?? "alive";
+	// Sans état reçu le joueur est vivant ; un statut inconnu n'active pas les commandes.
+	const statut = session.dernierEtat === null ? "alive" : session.dernierEtat.statut;
 	commandes.activer(
 		ecranCourant() === "ecran-manette" && connexion.estConnectee && session.inscrit
 		&& session.partie === "running" && statut === "alive"

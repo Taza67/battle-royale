@@ -45,30 +45,38 @@ export function normaliserEtat(etat) {
 }
 
 /**
- * Normalise un statut de joueur, transmis en texte ou sous sa valeur numérique (0, 1, 2).
+ * Normalise un statut de joueur, transmis en texte ou sous sa valeur numérique
+ * (0, 1, 2) ; retourne `null` s'il est inconnu, pour qu'un statut inattendu ne
+ * soit pas confondu avec `alive`.
  */
 export function normaliserStatut(statut) {
 	switch (statut) {
 		case 0: case "0": case "eliminated": case "dead":
 			return "eliminated";
+		case 1: case "1": case "alive":
+			return "alive";
 		case 2: case "2": case "winner":
 			return "winner";
 		default:
-			return "alive";
+			return null;
 	}
 }
 
 /**
- * Normalise une phase de manche, transmise en texte ou sous sa valeur numérique (0, 1, 2).
+ * Normalise une phase de manche, transmise en texte ou sous sa valeur numérique
+ * (0, 1, 2) ; retourne `null` si elle est inconnue, pour qu'une phase inattendue
+ * ne soit pas confondue avec `battle`.
  */
 export function normaliserPhase(phase) {
 	switch (phase) {
 		case 0: case "0": case "warmup":
 			return "warmup";
+		case 1: case "1": case "battle":
+			return "battle";
 		case 2: case "2": case "over": case "ended":
 			return "over";
 		default:
-			return "battle";
+			return null;
 	}
 }
 
