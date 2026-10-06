@@ -68,6 +68,50 @@ public class BotController {
 	 * Marge gardée à l'intérieur de la zone sûre
 	 */
 	private static final float ZONE_MARGIN = 24;
+	/**
+	 * Fraction de la portée de vision en dessous de laquelle un robot affaibli fuit
+	 */
+	private static final float FLEE_RANGE_FACTOR = 0.6f;
+	/**
+	 * Portée de tir effective retenue par les robots (marge sur la portée réelle)
+	 */
+	private static final float SHOOT_RANGE = BULLET_RANGE * 0.9f;
+	/**
+	 * Portée de contact à l'épée retenue par les robots (marge sur la portée réelle)
+	 */
+	private static final float CONTACT_RANGE = MELEE_RANGE * 0.9f;
+	/**
+	 * Distance au carré sous laquelle un robot est arrivé à son point d'errance (20 px)
+	 */
+	private static final float WANDER_ARRIVAL_SQ = 400;
+	/**
+	 * Déplacement au carré en dessous duquel un robot est considéré bloqué (0,5 px)
+	 */
+	private static final float STUCK_MIN_MOVE_SQ = 0.25f;
+	/**
+	 * Nombre de décisions sans progression avant de déclencher un dégagement
+	 */
+	private static final int STUCK_LIMIT = 8;
+	/**
+	 * Durée d'un dégagement, en pas de simulation
+	 */
+	private static final int ESCAPE_TICKS = TICKS_PER_SECOND / 2;
+	/**
+	 * Durée de base d'une errance, en secondes
+	 */
+	private static final int WANDER_MIN_SECONDS = 2;
+	/**
+	 * Amplitude aléatoire ajoutée à la durée d'errance, en secondes
+	 */
+	private static final int WANDER_SPREAD_SECONDS = 4;
+	/**
+	 * Pression de chasse de base et gain par vague de la zone sûre
+	 */
+	private static final float PRESSURE_BASE = 0.15f, PRESSURE_PER_WAVE = 0.2f;
+	/**
+	 * Champ de perception de base et part modulée par le tempérament
+	 */
+	private static final float PERCEPTION_BASE = 0.35f, PERCEPTION_AGGRESSION = 0.65f;
 
 	/**
 	 * Prénoms des robots
@@ -199,7 +243,7 @@ public class BotController {
 		float distance = (float)Math.sqrt(dx * dx + dy * dy);
 
 		// 2. Fuite quand le robot est affaibli
-		if (bot.getLifePoints() < FLEE_LIFE && enemy.getLifePoints() >= bot.getLifePoints() && distance < VISION_RANGE * 0.6f) {
+		if (bot.getLifePoints() < FLEE_LIFE && enemy.getLifePoints() >= bot.getLifePoints() && distance < VISION_RANGE * FLEE_RANGE_FACTOR) {
 			Vertice fallback = fallBackInside(safe, bot.getX() - dx, bot.getY() - dy);
 			goTo(bot, m, fallback.getX(), fallback.getY(), 4);
 			tryShoot(bot, dx, dy, distance);
@@ -209,14 +253,14 @@ public class BotController {
 		boolean finish = enemy.getLifePoints() < bot.getLifePoints() || board.getAliveCount() <= HUNT_ALIVE;
 
 		// 3. Les tireurs gardent leurs distances et cherchent l'alignement
-		if (m.aggression < MARKSMAN_AGGRESSION && !finish && distance > MELEE_RANGE * 0.9f) {
+		if (m.aggression < MARKSMAN_AGGRESSION && !finish && distance > CONTACT_RANGE) {
 			if (tryShoot(bot, dx, dy, distance)) return;
 			keepDistance(bot, m, safe, dx, dy, distance);
 			return;
 		}
 
 		// 4. Corps à corps
-		if (distance < MELEE_RANGE * 0.9f) {
+		if (distance < CONTACT_RANGE) {
 			int d = Direction.fromVector(dx, dy);
 			m.stuck = 0;
 			move(bot, d, 1);
@@ -274,7 +318,7 @@ public class BotController {
 	 * @return true si un tir a été commandé
 	 */
 	private boolean tryShoot(Player bot, float dx, float dy, float distance) {
-		if (!bot.getWeapon().canShoot() || distance > BULLET_RANGE * 0.9f) return false;
+		if (!bot.getWeapon().canShoot() || distance > SHOOT_RANGE) return false;
 		if (random.nextFloat() > SHOOT_PROBABILITY) return false;
 
 		int d = Direction.fromVector(dx, dy);
@@ -295,12 +339,12 @@ public class BotController {
 	 */
 	private void wander(Player bot, Memory m, long now, Rectangle safe) {
 		float dx = m.wanderX - bot.getX(), dy = m.wanderY - bot.getY();
-		if (now >= m.wanderUntil || dx * dx + dy * dy < 400 || !safe.contains(m.wanderX, m.wanderY)) {
+		if (now >= m.wanderUntil || dx * dx + dy * dy < WANDER_ARRIVAL_SQ || !safe.contains(m.wanderX, m.wanderY)) {
 			Rectangle area = safe.expand(-ZONE_MARGIN);
 			if (area.getWidth() <= 0 || area.getHeight() <= 0) area = safe;
 			m.wanderX = area.getX1() + random.nextFloat() * area.getWidth();
 			m.wanderY = area.getY1() + random.nextFloat() * area.getHeight();
-			m.wanderUntil = now + TICKS_PER_SECOND * (2 + random.nextInt(4));
+			m.wanderUntil = now + TICKS_PER_SECOND * (WANDER_MIN_SECONDS + random.nextInt(WANDER_SPREAD_SECONDS));
 		}
 		goTo(bot, m, m.wanderX, m.wanderY, 2);
 	}
@@ -357,12 +401,12 @@ public class BotController {
 		m.lastX = bot.getX();
 		m.lastY = bot.getY();
 
-		if (!wantsToMove || dx * dx + dy * dy > 0.25f) {
+		if (!wantsToMove || dx * dx + dy * dy > STUCK_MIN_MOVE_SQ) {
 			m.stuck = 0;
 			return;
 		}
 
-		if (++m.stuck < 8) return;
+		if (++m.stuck < STUCK_LIMIT) return;
 		m.stuck = 0;
 		m.turn = -m.turn;
 
@@ -371,7 +415,7 @@ public class BotController {
 			int d = Direction.rotate(start, k);
 			if (isClear(bot, d)) {
 				m.escapeDirection = d;
-				m.escapeUntil = now + TICKS_PER_SECOND / 2;
+				m.escapeUntil = now + ESCAPE_TICKS;
 				return;
 			}
 		}
@@ -401,8 +445,8 @@ public class BotController {
 			if (attacker != null && attacker.isAlive()) return attacker;
 		}
 		// Les robots sont d'abord prudents, puis de plus en plus agressifs à mesure que la zone se resserre
-		float pressure = Math.min(1, 0.15f + 0.2f * board.getSafeZone().getWaveIndex());
-		return nearestEnemy(bot, VISION_RANGE * pressure * (0.35f + 0.65f * m.aggression));
+		float pressure = Math.min(1, PRESSURE_BASE + PRESSURE_PER_WAVE * board.getSafeZone().getWaveIndex());
+		return nearestEnemy(bot, VISION_RANGE * pressure * (PERCEPTION_BASE + PERCEPTION_AGGRESSION * m.aggression));
 	}
 
 	/**

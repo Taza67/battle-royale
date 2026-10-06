@@ -65,6 +65,18 @@ public class Board {
 	 * Profondeur de chevauchement en dessous de laquelle deux éléments sont considérés en contact (arrondis)
 	 */
 	private static final float OVERLAP_TOLERANCE = 0.01f;
+	/**
+	 * Nombre maximal d'itérations de résolution d'un contact par axe (glissement le long des obstacles)
+	 */
+	private static final int MAX_SLIDE_STEPS = 4;
+	/**
+	 * Écart minimal entre le joueur et le départ d'un projectile, en pixels
+	 */
+	private static final float BULLET_SPAWN_GAP = 1;
+	/**
+	 * Marge intérieure de la zone de recherche d'une position d'apparition
+	 */
+	private static final float SPAWN_AREA_MARGIN = 20;
 
 	/**
 	 * Réglages de la partie
@@ -196,7 +208,7 @@ public class Board {
 	 * @return Position
 	 */
 	private Vertice spawnPosition() {
-		Rectangle area = map.getBounds().expand(-20);
+		Rectangle area = map.getBounds().expand(-SPAWN_AREA_MARGIN);
 		return map.findFreePosition(random, PLAYER_RADIUS_X, PLAYER_RADIUS_Y, area, r -> {
 			double nearest = Double.POSITIVE_INFINITY;
 			for (Player other : players.values()) {
@@ -431,7 +443,7 @@ public class Board {
 	 */
 	private void shoot(Player p) {
 		int d = p.getViewDirection();
-		float offset = Math.max(p.getRadiusX(), p.getRadiusY()) + BULLET_RADIUS + 1;
+		float offset = Math.max(p.getRadiusX(), p.getRadiusY()) + BULLET_RADIUS + BULLET_SPAWN_GAP;
 		float bx = p.getX() + Direction.dx(d) * offset, by = p.getY() + Direction.dy(d) * offset;
 		Bullet b = new Bullet(nextBulletId++, p.getId(), bx, by, d);
 
@@ -499,7 +511,7 @@ public class Board {
 		if (horizontal) cx = clamp(cx, rx, MAP_WIDTH - rx);
 		else cy = clamp(cy, ry, MAP_HEIGHT - ry);
 
-		for (int attempt = 0; attempt < 4; attempt++) {
+		for (int attempt = 0; attempt < MAX_SLIDE_STEPS; attempt++) {
 			Rectangle blocker = findBlocker(p, p.getRepresentationAt(cx, cy), start);
 			if (blocker == null) return horizontal ? cx : cy;
 

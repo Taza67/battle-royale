@@ -29,6 +29,22 @@ public class GameMap {
 	 * Nombre maximal d'essais pour placer un élément aléatoirement
 	 */
 	private static final int MAX_ATTEMPTS = 400;
+	/**
+	 * Nombre d'essais pour placer un obstacle généré
+	 */
+	private static final int OBSTACLE_ATTEMPTS = MAX_ATTEMPTS / 4;
+	/**
+	 * Pas des sondes de ligne de vue, en pixels
+	 */
+	private static final float LINE_OF_SIGHT_STEP = 6;
+	/**
+	 * Pas de la recherche exhaustive d'emplacement libre, en pixels
+	 */
+	private static final float FALLBACK_SEARCH_STEP = 4;
+	/**
+	 * Probabilités cumulées des types d'obstacle générés (forêt fréquente, rocher courant, eau rare)
+	 */
+	private static final float FOREST_PROBABILITY = 0.4f, ROCK_PROBABILITY = 0.75f;
 
 	/**
 	 * Rectangle représentant les limites de la carte
@@ -72,7 +88,7 @@ public class GameMap {
 		List<Obstacle> obstacles = new ArrayList<>();
 
 		for (int i = 0; i < obstaclesNumber; i++) {
-			for (int attempt = 0; attempt < MAX_ATTEMPTS / 4; attempt++) {
+			for (int attempt = 0; attempt < OBSTACLE_ATTEMPTS; attempt++) {
 				Obstacle.TypeObstacle type = randomType(random);
 				Obstacle candidate = Obstacle.random(type, random, 0, 0);
 				float rx = candidate.getRadiusX(), ry = candidate.getRadiusY();
@@ -106,8 +122,8 @@ public class GameMap {
 	 */
 	private static Obstacle.TypeObstacle randomType(Random random) {
 		float r = random.nextFloat();
-		if (r < 0.4f) return Obstacle.TypeObstacle.FORET;
-		if (r < 0.75f) return Obstacle.TypeObstacle.ROCHER;
+		if (r < FOREST_PROBABILITY) return Obstacle.TypeObstacle.FORET;
+		if (r < ROCK_PROBABILITY) return Obstacle.TypeObstacle.ROCHER;
 		return Obstacle.TypeObstacle.EAU;
 	}
 
@@ -213,7 +229,7 @@ public class GameMap {
 	public boolean hasLineOfSight(float x1, float y1, float x2, float y2) {
 		float dx = x2 - x1, dy = y2 - y1;
 		float length = (float)Math.sqrt(dx * dx + dy * dy);
-		int steps = Math.max(1, (int)Math.ceil(length / 6f));
+		int steps = Math.max(1, (int)Math.ceil(length / LINE_OF_SIGHT_STEP));
 
 		for (int s = 0; s <= steps; s++) {
 			float t = s / (float)steps;
@@ -293,8 +309,8 @@ public class GameMap {
 		if (best != null) return best;
 
 		// Recherche exhaustive sur une grille fine, bornée à la zone demandée
-		for (float y = searchArea.getY1(); y <= searchArea.getY2(); y += 4)
-			for (float x = searchArea.getX1(); x <= searchArea.getX2(); x += 4) {
+		for (float y = searchArea.getY1(); y <= searchArea.getY2(); y += FALLBACK_SEARCH_STEP)
+			for (float x = searchArea.getX1(); x <= searchArea.getX2(); x += FALLBACK_SEARCH_STEP) {
 				Rectangle r = Rectangle.centered(x, y, radiusX, radiusY);
 				if (!isFree(r)) continue;
 
