@@ -2,6 +2,7 @@ package outside.graphic;
 
 import static outside.graphic.GraphicUtilities.*;
 
+import java.text.Normalizer;
 import java.util.List;
 
 import inside.BoardSnapshot;
@@ -233,7 +234,7 @@ public class HudRenderer implements IConfig {
 		String title, subtitle;
 		Color color = Color.GOLD;
 		if (winner != null) {
-			title = winner.id() == info.localId() ? "Victoire !" : "Victoire de " + winner.pseudo();
+			title = winner.id() == info.localId() ? "Victoire !" : "Victoire " + of(winner.pseudo());
 			subtitle = winner.kills() + " élimination" + (winner.kills() > 1 ? "s" : "") + "   -   " + winner.life() + " PV restants";
 		} else if (s.stopped()) {
 			title = "Partie arrêtée";
@@ -258,7 +259,7 @@ public class HudRenderer implements IConfig {
 		// Classement
 		List<PlayerState> ranking = s.ranking();
 		float x1 = MAP_WIDTH / 2 - 270, x2 = MAP_WIDTH / 2 + 270, y = top + 92;
-		int rows = Math.min(ranking.size(), winner != null ? 9 : 11);
+		int rows = Math.min(ranking.size(), winner != null ? 12 : 14);
 		panel(x1, y - 8, x2, y + 30 + rows * 28 + 8, 10, new Color(0.08f, 0.1f, 0.15f, 0.85f * a));
 		FONTS.SMALL.draw("Rang", x1 + 20, y, Color.LIGHT_GREY.withAlpha(a), Align.LEFT);
 		FONTS.SMALL.draw("Joueur", x1 + 110, y, Color.LIGHT_GREY.withAlpha(a), Align.LEFT);
@@ -282,6 +283,18 @@ public class HudRenderer implements IConfig {
 
 		String hint = info.multi() ? "En attente d'une nouvelle partie du serveur web" : "Entrée : rejouer   -   Échap : quitter";
 		FONTS.SMALL.drawShadowed(hint, MAP_WIDTH / 2, MAP_HEIGHT - 40, Color.WHITE.withAlpha(a * (0.7f + 0.3f * (float)Math.sin(time * 3))), Align.CENTER);
+	}
+
+	/**
+	 * Construit le complément « de pseudo », avec élision devant une voyelle
+	 * @param name Pseudo
+	 * @return « d'Inès » ou « de Hugo »
+	 */
+	static String of(String name) {
+		if (name.isEmpty()) return "de " + name;
+		String first = Normalizer.normalize(name.substring(0, 1), Normalizer.Form.NFD);
+		char c = Character.toLowerCase(first.charAt(0));
+		return ("aeiouy".indexOf(c) >= 0 ? "d'" : "de ") + name;
 	}
 
 	/**
