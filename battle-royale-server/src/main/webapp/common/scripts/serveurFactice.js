@@ -2,11 +2,12 @@
 // Il implémente le côté serveur du protocole WebSocket décrit dans
 // docs/PROTOCOLE.md et simule une manche complète avec des joueurs robots.
 
+import { pseudoValide } from "./protocole.js";
+
 const LARGEUR_CARTE = 1280;
 const HAUTEUR_CARTE = 720;
 const VIE_MAXIMALE = 100;
 const JOUEURS_MAXIMUM = 50;
-const LONGUEUR_PSEUDO_MAXIMALE = 16;
 const ESSAIS_MOT_DE_PASSE = 5;
 
 const REFUS = Object.freeze({
@@ -377,7 +378,7 @@ export class ServeurFactice {
 			return;
 		}
 
-		if (pseudo.length < 1 || pseudo.length > LONGUEUR_PSEUDO_MAXIMALE) {
+		if (!pseudoValide(pseudo)) {
 			socket.livrer({ type: "rejected", reason: REFUS.pseudoInvalide });
 			return;
 		}
@@ -531,8 +532,8 @@ export class ServeurFactice {
 			case "start":
 				if (!["lobby", "over", "stopped"].includes(this.#etat))
 					return "La partie est déjà en cours.";
-				if (this.#joueurs.size < 2)
-					return "Il faut au moins deux joueurs inscrits.";
+				if (![...this.#joueurs.values()].some(joueur => joueur.connecte))
+					return "Il faut au moins un joueur connecté.";
 				this.#demarrer();
 				return null;
 			case "pause":

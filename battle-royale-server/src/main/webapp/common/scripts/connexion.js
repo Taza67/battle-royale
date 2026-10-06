@@ -9,6 +9,7 @@ const HOTES_LOCAUX = ["localhost", "127.0.0.1", "[::1]"];
 const ATTENTE_INITIALE = 500;
 const ATTENTE_MAXIMALE = 10000;
 const PERIODE_SURVEILLANCE = 500;
+const PERIODE_ENTRETIEN = 20000;
 
 const OUVERT = 1;
 
@@ -101,6 +102,7 @@ export class Connexion {
 	#silenceMaximal = 0;
 	#dernierMessage = 0;
 	#surveillance = null;
+	#entretien = null;
 
 	/**
 	 * @param {object} options
@@ -147,6 +149,9 @@ export class Connexion {
 			return;
 
 		this.#active = true;
+		// Le serveur ferme les sessions muettes : un petit message périodique
+		// maintient la connexion et force les sockets mortes à se déclarer.
+		this.#entretien = setInterval(() => this.envoyer({ type: "ping" }), PERIODE_ENTRETIEN);
 		this.#connecter();
 	}
 
@@ -156,6 +161,8 @@ export class Connexion {
 	fermer() {
 		this.#active = false;
 		clearTimeout(this.#minuteur);
+		clearInterval(this.#entretien);
+		this.#entretien = null;
 		this.surveiller(0);
 
 		if (this.#socket !== null) {

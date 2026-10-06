@@ -2,10 +2,7 @@
 // (arrivées, déconnexions, éliminations) entre deux listes successives.
 
 import { LIBELLES_STATUT, VIE_MAXIMALE, entier, normaliserStatut } from "../../common/scripts/protocole.js";
-import { creerElement, ordinal, poserAvatar } from "../../common/scripts/interface.js";
-
-const SEUIL_ORANGE = 0.5;
-const SEUIL_ROUGE = 0.25;
+import { creerElement, niveauVie, ordinal, poserAvatar } from "../../common/scripts/interface.js";
 
 /**
  * Normalise un élément du message `players`.
@@ -46,13 +43,20 @@ export function evenementsEntre(avant, apres) {
 			evenements.push({ texte: `${joueur.pseudo} est éliminé${joueur.rang > 0 ? ` (${ordinal(joueur.rang)})` : ""}.`, genre: "erreur" });
 	}
 
+	// Un joueur retiré de la liste (non retenu pour la manche, par exemple)
+	// disparaît sans autre événement : il faut le signaler.
+	const presents = new Set(apres.map(joueur => joueur.id));
+	for (const joueur of avant)
+		if (!presents.has(joueur.id))
+			evenements.push({ texte: `${joueur.pseudo} a été retiré de la partie.`, genre: "info" });
+
 	return evenements;
 }
 
 function comparateur(etatPartie) {
 	if (etatPartie === "running" || etatPartie === "paused") {
 		const poids = { winner: 0, alive: 1, eliminated: 2 };
-		return (a, b) => poids[a.statut] - poids[b.statut]
+		return (a, b) => (poids[a.statut] ?? 1) - (poids[b.statut] ?? 1)
 			|| (a.statut === "eliminated" ? a.rang - b.rang : b.vie - a.vie)
 			|| a.id - b.id;
 	}
@@ -61,12 +65,6 @@ function comparateur(etatPartie) {
 		return (a, b) => (a.rang || Infinity) - (b.rang || Infinity) || a.id - b.id;
 
 	return (a, b) => a.id - b.id;
-}
-
-function niveauVie(proportion) {
-	if (proportion > SEUIL_ORANGE)
-		return "haut";
-	return proportion > SEUIL_ROUGE ? "moyen" : "bas";
 }
 
 function creerLigne() {
@@ -154,8 +152,8 @@ export class TableauJoueurs {
 		pastille.textContent = joueur.connecte ? "Connecté" : "Déconnecté";
 
 		const statut = cellules[3].firstElementChild;
-		statut.dataset.statut = enPartie ? joueur.statut : "";
-		statut.textContent = enPartie ? LIBELLES_STATUT[joueur.statut] : "Inscrit";
+		statut.dataset.statut = enPartie ? joueur.statut ?? "" : "";
+		statut.textContent = enPartie ? LIBELLES_STATUT[joueur.statut] ?? "Inconnu" : "Inscrit";
 
 		const vie = cellules[4].firstElementChild;
 		vie.dataset.niveau = niveauVie(proportion);

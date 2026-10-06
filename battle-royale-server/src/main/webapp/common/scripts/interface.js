@@ -14,6 +14,19 @@ const MESSAGE_VICTOIRE_ROBOT = "Victoire d'un robot";
 const DUREE_NOTIFICATION = 3500;
 const NOMBRE_AVATARS = 50;
 
+const SEUIL_ORANGE = 0.5;
+const SEUIL_ROUGE = 0.25;
+
+/**
+ * Retourne le niveau d'une barre de vie selon la proportion restante
+ * (`haut`, `moyen` ou `bas`).
+ */
+export function niveauVie(proportion) {
+	if (proportion > SEUIL_ORANGE)
+		return "haut";
+	return proportion > SEUIL_ROUGE ? "moyen" : "bas";
+}
+
 /**
  * Crée un élément HTML.
  *
@@ -106,16 +119,18 @@ export function lierIndicateurConnexion(element, connexion, demo = false) {
 }
 
 /**
- * Pose l'avatar d'un joueur (`images/<id>.png`) sur une image, avec le logo en secours.
+ * Pose l'avatar d'un joueur (`common/images/<id>.png`) sur une image, avec le
+ * logo en secours. Les chemins sont relatifs aux pages `gamepad/` et
+ * `adminPanel/` qui utilisent cette fonction.
  */
 export function poserAvatar(image, id) {
 	const numero = Number.isInteger(id) && id >= 0 ? id % NOMBRE_AVATARS : null;
 
 	image.onerror = () => {
 		image.onerror = null;
-		image.src = "./images/logo.png";
+		image.src = "../common/images/logo.png";
 	};
-	image.src = numero === null ? "./images/logo.png" : `./images/${numero}.png`;
+	image.src = numero === null ? "../common/images/logo.png" : `../common/images/${numero}.png`;
 }
 
 /**

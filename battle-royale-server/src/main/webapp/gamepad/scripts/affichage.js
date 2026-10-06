@@ -1,10 +1,7 @@
 // Affichage des informations du joueur sur la manette et de l'écran de fin.
 
 import { LIBELLES_PHASE, LIBELLES_STATUT } from "../../common/scripts/protocole.js";
-import { ordinal, poserAvatar, remplirClassement, resumerFin } from "../../common/scripts/interface.js";
-
-const SEUIL_ORANGE = 0.5;
-const SEUIL_ROUGE = 0.25;
+import { niveauVie, ordinal, poserAvatar, remplirClassement, resumerFin } from "../../common/scripts/interface.js";
 
 const element = identifiant => document.getElementById(identifiant);
 
@@ -16,17 +13,6 @@ export function afficherProfil(pseudo, id) {
 		cible.textContent = pseudo;
 	for (const image of document.querySelectorAll("img[data-avatar]"))
 		poserAvatar(image, id);
-}
-
-/**
- * Retourne la couleur de la barre de vie selon la proportion restante.
- */
-export function niveauVie(proportion) {
-	if (proportion > SEUIL_ORANGE)
-		return "haut";
-	if (proportion > SEUIL_ROUGE)
-		return "moyen";
-	return "bas";
 }
 
 /**
@@ -43,15 +29,15 @@ export function afficherEtat(etat) {
 	element("texte-vie").textContent = `${etat.vie} / ${etat.vieMaximale}`;
 
 	const statut = element("info-statut");
-	statut.dataset.statut = etat.statut;
-	statut.textContent = LIBELLES_STATUT[etat.statut].toUpperCase();
+	statut.dataset.statut = etat.statut ?? "";
+	statut.textContent = (LIBELLES_STATUT[etat.statut] ?? "Inconnu").toUpperCase();
 
 	element("info-kills").textContent = String(etat.kills);
 	element("info-vivants").textContent = `${etat.vivants} / ${etat.total}`;
 	element("info-rang").textContent = etat.rang > 0 ? ordinal(etat.rang) : "–";
 
-	element("info-phase").textContent = LIBELLES_PHASE[etat.phase].toUpperCase();
-	element("info-phase").dataset.phase = etat.phase;
+	element("info-phase").textContent = (LIBELLES_PHASE[etat.phase] ?? "?").toUpperCase();
+	element("info-phase").dataset.phase = etat.phase ?? "";
 	element("info-compte").textContent = etat.phase === "over" ? "–" : `${etat.secondes} s`;
 	element("info-compte").title = etat.phase === "warmup" ? "Secondes avant le début du combat" : "Secondes avant la prochaine étape de la zone";
 
@@ -61,7 +47,7 @@ export function afficherEtat(etat) {
 
 	const manette = element("manette");
 	manette.dataset.statut = etat.statut;
-	element("message-carte").hidden = etat.statut === "alive";
+	element("message-carte").hidden = etat.statut !== "eliminated" && etat.statut !== "winner";
 	element("message-carte").textContent = etat.statut === "winner" ? "VAINQUEUR !" : "ÉLIMINÉ";
 }
 

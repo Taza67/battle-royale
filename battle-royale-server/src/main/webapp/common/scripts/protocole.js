@@ -6,8 +6,22 @@ export const CARTE = Object.freeze({ width: 1280, height: 720 });
 /** Points de vie maximum par défaut. */
 export const VIE_MAXIMALE = 100;
 
-/** Longueur maximale d'un pseudo. */
+/** Longueur maximale d'un pseudo, en points de code Unicode. */
 export const LONGUEUR_PSEUDO_MAXIMALE = 16;
+
+const CARACTERES_PSEUDO_INTERDITS = /[\p{Cc}\p{Cf}]/u;
+
+/**
+ * Applique la règle du serveur : un pseudo tient sur 1 à 16 points de code
+ * Unicode et exclut les caractères de contrôle et de format.
+ */
+export function pseudoValide(pseudo) {
+	if (typeof pseudo !== "string")
+		return false;
+
+	const longueur = [...pseudo].length;
+	return longueur >= 1 && longueur <= LONGUEUR_PSEUDO_MAXIMALE && !CARACTERES_PSEUDO_INTERDITS.test(pseudo);
+}
 
 /** Formes d'attaque. */
 export const ATTAQUE = Object.freeze({ corpsACorps: 1, tir: 2 });
@@ -45,30 +59,38 @@ export function normaliserEtat(etat) {
 }
 
 /**
- * Normalise un statut de joueur, transmis en texte ou sous sa valeur numérique (0, 1, 2).
+ * Normalise un statut de joueur, transmis en texte ou sous sa valeur numérique
+ * (0, 1, 2) ; retourne `null` s'il est inconnu, pour qu'un statut inattendu ne
+ * soit pas confondu avec `alive`.
  */
 export function normaliserStatut(statut) {
 	switch (statut) {
 		case 0: case "0": case "eliminated": case "dead":
 			return "eliminated";
+		case 1: case "1": case "alive":
+			return "alive";
 		case 2: case "2": case "winner":
 			return "winner";
 		default:
-			return "alive";
+			return null;
 	}
 }
 
 /**
- * Normalise une phase de manche, transmise en texte ou sous sa valeur numérique (0, 1, 2).
+ * Normalise une phase de manche, transmise en texte ou sous sa valeur numérique
+ * (0, 1, 2) ; retourne `null` si elle est inconnue, pour qu'une phase inattendue
+ * ne soit pas confondue avec `battle`.
  */
 export function normaliserPhase(phase) {
 	switch (phase) {
 		case 0: case "0": case "warmup":
 			return "warmup";
+		case 1: case "1": case "battle":
+			return "battle";
 		case 2: case "2": case "over": case "ended":
 			return "over";
 		default:
-			return "battle";
+			return null;
 	}
 }
 
