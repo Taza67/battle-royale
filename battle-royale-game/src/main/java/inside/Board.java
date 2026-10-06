@@ -14,6 +14,8 @@ import java.util.TreeMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.logging.Logger;
 
+import static inside.Clamps.clamp;
+
 import inside.BoardSnapshot.BulletState;
 import inside.BoardSnapshot.KillFeedEntry;
 import inside.BoardSnapshot.PlayerState;
@@ -770,14 +772,4 @@ public class Board {
 		publishSnapshot();
 	}
 
-	/**
-	 * Borne une valeur
-	 * @param v Valeur
-	 * @param min Minimum
-	 * @param max Maximum
-	 * @return Valeur bornée
-	 */
-	private static float clamp(float v, float min, float max) {
-		return Math.max(min, Math.min(max, v));
-	}
 }

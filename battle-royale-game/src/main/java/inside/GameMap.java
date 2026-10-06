@@ -1,6 +1,8 @@
 package inside;
 
 import static inside.IConfig.*;
+import static inside.Clamps.clamp;
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -128,7 +130,7 @@ public class GameMap {
 	 * @return GridCell
 	 */
 	public GridCell getArea(int i, int j) {
-		return cells[clamp(i, AREAS_HEIGHT)][clamp(j, AREAS_WIDTH)];
+		return cells[clamp(i, 0, AREAS_HEIGHT - 1)][clamp(j, 0, AREAS_WIDTH - 1)];
 	}
 
 	/**
@@ -147,7 +149,7 @@ public class GameMap {
 	 * @return Colonne, entre 0 et AREAS_WIDTH - 1
 	 */
 	public static int columnOf(float x) {
-		return clamp((int)Math.floor(x / ONE_ZONE_WIDTH), AREAS_WIDTH);
+		return clamp((int)Math.floor(x / ONE_ZONE_WIDTH), 0, AREAS_WIDTH - 1);
 	}
 
 	/**
@@ -156,17 +158,7 @@ public class GameMap {
 	 * @return Ligne, entre 0 et AREAS_HEIGHT - 1
 	 */
 	public static int rowOf(float y) {
-		return clamp((int)Math.floor(y / ONE_ZONE_HEIGHT), AREAS_HEIGHT);
-	}
-
-	/**
-	 * Ramène un indice dans [0, size - 1]
-	 * @param v Indice
-	 * @param size Taille
-	 * @return Indice borné
-	 */
-	private static int clamp(int v, int size) {
-		return Math.max(0, Math.min(size - 1, v));
+		return clamp((int)Math.floor(y / ONE_ZONE_HEIGHT), 0, AREAS_HEIGHT - 1);
 	}
 
 	/**

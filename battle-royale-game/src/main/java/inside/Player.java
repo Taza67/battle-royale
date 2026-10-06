@@ -1,5 +1,7 @@
 package inside;
 
+import static inside.Clamps.clamp;
+
 import static inside.IConfig.*;
 /**
  * Classe représentant un joueur sur le plateau de jeu
@@ -130,7 +132,7 @@ public class Player extends Element {
 	 * @return Vitesse en pixels par seconde
 	 */
 	public static float pixelsPerSecond(int speed) {
-		return SPEEDS[Math.max(0, Math.min(MAX_SPEED_LEVEL, speed))];
+		return SPEEDS[clamp(speed, 0, MAX_SPEED_LEVEL)];
 	}
 
 	/**
@@ -265,7 +267,7 @@ public class Player extends Element {
 	 */
 	public void setMoveIntent(int direction, int speed, long now) {
 		if (!isAlive || !Direction.isValid(direction)) return;
-		moveSpeed = Math.max(0, Math.min(MAX_SPEED_LEVEL, speed));
+		moveSpeed = clamp(speed, 0, MAX_SPEED_LEVEL);
 		if (moveSpeed > 0) {
 			moveDirection = direction;
 			viewDirection = direction;
