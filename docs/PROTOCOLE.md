@@ -108,6 +108,7 @@ Point d'accès : `ws(s)://<hôte>/battle-royale-server/websocketserver`, constru
 | `{"type":"attack","form":1}` | attaque (`1` corps-à-corps, `2` tir) ; au plus 4 attaques en file par joueur, les suivantes sont ignorées sans réponse |
 | `{"type":"admin-join","password":"…"}` | connexion de l'administrateur |
 | `{"type":"admin-command","command":"start"}` | `start`, `pause`, `resume` ou `stop` |
+| `{"type":"ping"}` | entretien de la connexion, envoyé par les clients toutes les `20 s` ; ignoré par le serveur |
 
 ### Serveur → joueur
 
