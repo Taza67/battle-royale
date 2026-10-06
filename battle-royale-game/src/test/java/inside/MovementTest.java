@@ -134,15 +134,61 @@ class MovementTest implements IConfig {
 
 	@Test
 	void apparitionSansChevauchementSurUneCarteGeneree() {
-		for (long seed = 0; seed < 20; seed++) {
-			Board b = new Board(GameSettings.defaults(seed), specs(30));
-			List<Player> players = b.getPlayers();
-			for (Player p : players) {
-				assertTrue(b.getMap().getBounds().contain(p.getRepresentation()));
-				assertTrue(b.getMap().isFree(p.getRepresentation()), "joueur dans un obstacle (graine " + seed + ")");
-				for (Player q : players)
-					if (p != q) assertFalse(p.getRepresentation().intersect(q.getRepresentation()));
+		for (int n : new int[] { 30, 50, 75, MAX_PLAYERS - 1, MAX_PLAYERS }) {
+			for (long seed = 0; seed < 20; seed++) {
+				Board b = new Board(GameSettings.defaults(seed), specs(n));
+				List<Player> players = b.getPlayers();
+				for (Player p : players) {
+					assertTrue(b.getMap().getBounds().contain(p.getRepresentation()));
+					assertTrue(b.getMap().isFree(p.getRepresentation()), "joueur dans un obstacle (graine " + seed + ")");
+					for (Player q : players)
+						if (p != q) assertFalse(p.getRepresentation().intersect(q.getRepresentation()),
+							n + " joueurs, graine " + seed + " : " + p.getID() + " chevauche " + q.getID());
+				}
 			}
 		}
+	}
+
+	@Test
+	void tousLesJoueursPeuventBougerAvec99Joueurs() {
+		for (long seed = 0; seed < 5; seed++) {
+			Board b = new Board(GameSettings.defaults(seed).withWarmup(60), specs(MAX_PLAYERS - 1));
+			for (Player p : b.getPlayers()) {
+				float x = p.getX(), y = p.getY();
+				boolean moved = false;
+				for (int d = 0; d < 8 && !moved; d += 2) {
+					hold(b, p.getID(), d, MAX_SPEED_LEVEL, 3);
+					moved = p.getX() != x || p.getY() != y;
+				}
+				assertTrue(moved, "joueur " + p.getID() + " bloqué dans toutes les directions (graine " + seed + ")");
+			}
+		}
+	}
+
+	@Test
+	void joueursSuperposesPeuventSeSeparer() {
+		Board b = empty(2, 0);
+		b.teleport(0, 300, 360);
+		b.teleport(1, 305, 362);
+		hold(b, 0, WEST, MAX_SPEED_LEVEL, 30);
+		hold(b, 1, EAST, MAX_SPEED_LEVEL, 30);
+
+		Player p = b.getPlayer(0), q = b.getPlayer(1);
+		assertTrue(p.getX() < 300 - 50, "le joueur 0 s'éloigne : x = " + p.getX());
+		assertTrue(q.getX() > 305 + 50, "le joueur 1 s'éloigne : x = " + q.getX());
+		assertFalse(p.getRepresentation().intersect(q.getRepresentation()));
+	}
+
+	@Test
+	void unChevauchementInitialNeTraversePasLesAutresJoueurs() {
+		Board b = empty(3, 0);
+		b.teleport(0, 300, 360);
+		b.teleport(1, 305, 360);
+		b.teleport(2, 360, 360);
+		hold(b, 0, EAST, MAX_SPEED_LEVEL, 60);
+
+		Player p = b.getPlayer(0), r = b.getPlayer(2);
+		assertEquals(r.getX() - 2 * PLAYER_RADIUS_X, p.getX(), 1e-3f, "arrêté par le nouveau contact");
+		assertFalse(p.getRepresentation().intersect(r.getRepresentation()));
 	}
 }
