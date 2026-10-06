@@ -67,41 +67,41 @@ public class Board {
 	/**
 	 * Réglages de la partie
 	 */
-	private final GameSettings SETTINGS;
+	private final GameSettings settings;
 	/**
 	 * Générateur aléatoire de la partie
 	 */
-	private final Random RANDOM;
+	private final Random random;
 	/**
 	 * Carte du jeu
 	 * @see GameMap
 	 */
-	private final GameMap MAP;
+	private final GameMap map;
 	/**
 	 * Zone sûre
 	 * @see SafeZone
 	 */
-	private final SafeZone SAFE_ZONE;
+	private final SafeZone safeZone;
 	/**
 	 * Joueurs indexés par identifiant (triés)
 	 */
-	private final TreeMap<Integer, Player> PLAYERS;
+	private final TreeMap<Integer, Player> players;
 	/**
 	 * Projectiles actifs
 	 */
-	private final List<Bullet> BULLETS;
+	private final List<Bullet> bullets;
 	/**
 	 * File des commandes en attente, alimentée par n'importe quel fil
 	 */
-	private final Queue<Command> COMMANDS;
+	private final Queue<Command> commands;
 	/**
 	 * Commandes de jeu reçues pendant une pause, réappliquées à la reprise
 	 */
-	private final Deque<Command> SUSPENDED;
+	private final Deque<Command> suspended;
 	/**
 	 * Événements produits et pas encore lus
 	 */
-	private final Deque<GameEvent> EVENTS;
+	private final Deque<GameEvent> events;
 	/**
 	 * Événements abandonnés par saturation de la file depuis la dernière lecture
 	 */
@@ -109,7 +109,7 @@ public class Board {
 	/**
 	 * Dernières éliminations
 	 */
-	private final Deque<KillFeedEntry> KILL_FEED;
+	private final Deque<KillFeedEntry> killFeed;
 
 	/**
 	 * Dernière image publiée
@@ -164,25 +164,25 @@ public class Board {
 		if (players.size() > MAX_PLAYERS)
 			throw new IllegalArgumentException("Trop de joueurs : " + players.size());
 
-		SETTINGS = settings;
-		RANDOM = new Random(settings.getSeed());
-		MAP = map != null ? map : GameMap.generate(RANDOM, settings.getObstaclesNumber());
-		SAFE_ZONE = new SafeZone(MAP.getBounds(), settings.getWaves(), RANDOM,
-			c -> MAP.isFree(Rectangle.centered(c.getX(), c.getY(), PLAYER_RADIUS_X * 2, PLAYER_RADIUS_Y * 2)));
-		PLAYERS = new TreeMap<>();
-		BULLETS = new ArrayList<>();
-		COMMANDS = new ConcurrentLinkedQueue<>();
-		SUSPENDED = new ArrayDeque<>();
-		EVENTS = new ArrayDeque<>();
-		KILL_FEED = new ArrayDeque<>();
+		this.settings = settings;
+		random = new Random(settings.getSeed());
+		this.map = map != null ? map : GameMap.generate(random, settings.getObstaclesNumber());
+		safeZone = new SafeZone(this.map.getBounds(), settings.getWaves(), random,
+			c -> this.map.isFree(Rectangle.centered(c.getX(), c.getY(), PLAYER_RADIUS_X * 2, PLAYER_RADIUS_Y * 2)));
+		this.players = new TreeMap<>();
+		bullets = new ArrayList<>();
+		commands = new ConcurrentLinkedQueue<>();
+		suspended = new ArrayDeque<>();
+		events = new ArrayDeque<>();
+		killFeed = new ArrayDeque<>();
 
 		for (PlayerSpec spec : players) {
-			if (PLAYERS.containsKey(spec.id()))
+			if (this.players.containsKey(spec.id()))
 				throw new IllegalArgumentException("Identifiant de joueur en double : " + spec.id());
 			Vertice p = spawnPosition();
 			Player player = new Player(spec.id(), spec.pseudo(), spec.bot(), p.getX(), p.getY());
-			PLAYERS.put(spec.id(), player);
-			MAP.updatePlayerArea(player);
+			this.players.put(spec.id(), player);
+			this.map.updatePlayerArea(player);
 		}
 
 		publishSnapshot();
@@ -194,10 +194,10 @@ public class Board {
 	 * @return Position
 	 */
 	private Vertice spawnPosition() {
-		Rectangle area = MAP.getBounds().expand(-20);
-		return MAP.findFreePosition(RANDOM, PLAYER_RADIUS_X, PLAYER_RADIUS_Y, area, r -> {
+		Rectangle area = map.getBounds().expand(-20);
+		return map.findFreePosition(random, PLAYER_RADIUS_X, PLAYER_RADIUS_Y, area, r -> {
 			double nearest = Double.POSITIVE_INFINITY;
-			for (Player other : PLAYERS.values()) {
+			for (Player other : players.values()) {
 				double dx = other.getX() - r.getCenterX(), dy = other.getY() - r.getCenterY();
 				nearest = Math.min(nearest, Math.sqrt(dx * dx + dy * dy));
 			}
@@ -218,11 +218,11 @@ public class Board {
 	 */
 	public void enqueue(Command c) {
 		if (c == null) return;
-		if (COMMANDS.size() >= MAX_PENDING_COMMANDS) {
-			COMMANDS.poll();
+		if (commands.size() >= MAX_PENDING_COMMANDS) {
+			commands.poll();
 			LOGGER.fine("File de commandes saturée : la plus ancienne commande est abandonnée");
 		}
-		COMMANDS.add(c);
+		commands.add(c);
 	}
 
 	/**
@@ -234,26 +234,26 @@ public class Board {
 			LOGGER.warning(droppedEvents + " événement(s) abandonné(s) : file d'événements saturée");
 			droppedEvents = 0;
 		}
-		List<GameEvent> events = new ArrayList<>(EVENTS);
-		EVENTS.clear();
-		return events;
+		List<GameEvent> drained = new ArrayList<>(events);
+		events.clear();
+		return drained;
 	}
 
 	/**
 	 * Retourne la carte
 	 * @return Carte
 	 */
-	public GameMap getMap() { return MAP; }
+	public GameMap getMap() { return map; }
 	/**
 	 * Retourne la zone sûre
 	 * @return Zone sûre
 	 */
-	public SafeZone getSafeZone() { return SAFE_ZONE; }
+	public SafeZone getSafeZone() { return safeZone; }
 	/**
 	 * Retourne les réglages de la partie
 	 * @return Réglages
 	 */
-	public GameSettings getSettings() { return SETTINGS; }
+	public GameSettings getSettings() { return settings; }
 	/**
 	 * Retourne la phase de la partie
 	 * @return Phase
@@ -283,25 +283,25 @@ public class Board {
 	 * Retourne les joueurs, triés par identifiant (fil de la simulation)
 	 * @return Collection non modifiable
 	 */
-	public List<Player> getPlayers() { return List.copyOf(PLAYERS.values()); }
+	public List<Player> getPlayers() { return List.copyOf(players.values()); }
 	/**
 	 * Retourne un joueur (fil de la simulation)
 	 * @param id Identifiant
 	 * @return Joueur ou null
 	 */
-	public Player getPlayer(int id) { return PLAYERS.get(id); }
+	public Player getPlayer(int id) { return players.get(id); }
 	/**
 	 * Retourne les projectiles actifs (fil de la simulation)
 	 * @return Liste non modifiable
 	 */
-	public List<Bullet> getBullets() { return Collections.unmodifiableList(BULLETS); }
+	public List<Bullet> getBullets() { return Collections.unmodifiableList(bullets); }
 	/**
 	 * Retourne le nombre de joueurs vivants
 	 * @return Nombre de joueurs vivants
 	 */
 	public int getAliveCount() {
 		int n = 0;
-		for (Player p : PLAYERS.values())
+		for (Player p : players.values())
 			if (p.getIsAlive()) n++;
 		return n;
 	}
@@ -310,7 +310,7 @@ public class Board {
 	 * @return Nombre de pas, 0 après l'échauffement
 	 */
 	public long getWarmupTicksLeft() {
-		return phase == Phase.WARMUP ? Math.max(0, SETTINGS.getWarmupTicks() - tick) : 0;
+		return phase == Phase.WARMUP ? Math.max(0, settings.getWarmupTicks() - tick) : 0;
 	}
 
 
@@ -323,10 +323,10 @@ public class Board {
 		if (phase != Phase.ENDED && !paused) {
 			tick++;
 
-			if (phase == Phase.WARMUP && tick >= SETTINGS.getWarmupTicks())
+			if (phase == Phase.WARMUP && tick >= settings.getWarmupTicks())
 				startBattle();
 
-			for (Player p : PLAYERS.values())
+			for (Player p : players.values())
 				if (p.getIsAlive()) movePlayer(p);
 
 			resolveMelee();
@@ -339,7 +339,7 @@ public class Board {
 
 			resolveEliminations();
 
-			for (Player p : PLAYERS.values())
+			for (Player p : players.values())
 				p.getWeapon().update();
 
 			checkEnd();
@@ -353,10 +353,10 @@ public class Board {
 	 */
 	private void applyCommands() {
 		Command c;
-		while ((c = COMMANDS.poll()) != null) {
+		while ((c = commands.poll()) != null) {
 			if (c instanceof Command.Control control) applyControl(control.type());
 			else if (phase == Phase.ENDED) continue;
-			else if (paused) SUSPENDED.addLast(c);
+			else if (paused) suspended.addLast(c);
 			else if (c instanceof Command.Move move) applyMove(move);
 			else if (c instanceof Command.Attack attack) applyAttack(attack);
 		}
@@ -381,14 +381,14 @@ public class Board {
 				paused = false;
 				// Les commandes déposées pendant la pause reprennent leur place dans la file
 				Command s;
-				while ((s = SUSPENDED.pollFirst()) != null) COMMANDS.offer(s);
+				while ((s = suspended.pollFirst()) != null) commands.offer(s);
 				addEvent(GameEvent.global(GameEvent.Type.RESUMED, tick, 0));
 			}
 			break;
 		case STOP:
 			stopped = true;
 			paused = false;
-			SUSPENDED.clear();
+			suspended.clear();
 			endGame();
 			break;
 		}
@@ -399,7 +399,7 @@ public class Board {
 	 * @param move Commande
 	 */
 	private void applyMove(Command.Move move) {
-		Player p = PLAYERS.get(move.playerId());
+		Player p = players.get(move.playerId());
 		if (p == null || !p.getIsAlive()) return;
 
 		if (move.speed() <= 0) p.stop();
@@ -411,7 +411,7 @@ public class Board {
 	 * @param attack Commande
 	 */
 	private void applyAttack(Command.Attack attack) {
-		Player p = PLAYERS.get(attack.playerId());
+		Player p = players.get(attack.playerId());
 		if (p == null || !p.getIsAlive()) return;
 
 		if (attack.form() == ATTACK_MELEE) {
@@ -435,12 +435,12 @@ public class Board {
 
 		addEvent(new GameEvent(GameEvent.Type.SHOT, tick, p.getID(), -1, 0, bx, by, DamageCause.BULLET));
 
-		if (!MAP.getBounds().contains(bx, by) || MAP.obstacleIntersecting(b.getRepresentation(), true) != null) {
+		if (!map.getBounds().contains(bx, by) || map.obstacleIntersecting(b.getRepresentation(), true) != null) {
 			addEvent(new GameEvent(GameEvent.Type.BULLET_BLOCKED, tick, p.getID(), -1, 0, bx, by, DamageCause.BULLET));
 			return;
 		}
 
-		BULLETS.add(b);
+		bullets.add(b);
 	}
 
 	/**
@@ -448,8 +448,8 @@ public class Board {
 	 */
 	private void startBattle() {
 		phase = Phase.BATTLE;
-		BULLETS.clear();
-		SAFE_ZONE.start();
+		bullets.clear();
+		safeZone.start();
 		addEvent(GameEvent.global(GameEvent.Type.BATTLE_STARTED, tick, 0));
 	}
 
@@ -474,7 +474,7 @@ public class Board {
 
 		p.setPosition(nx, ny);
 		p.setMoving(nx != ox || ny != oy);
-		MAP.updatePlayerArea(p);
+		map.updatePlayerArea(p);
 	}
 
 	/**
@@ -523,13 +523,13 @@ public class Board {
 	 * @return Rectangle de l'élément bloquant, ou null
 	 */
 	private Rectangle findBlocker(Player self, Rectangle r, Rectangle start) {
-		for (GridCell z : MAP.areasOverlapping(r))
+		for (GridCell z : map.areasOverlapping(r))
 			for (Obstacle o : z.getOBSTACLES()) {
 				Rectangle or = o.getRepresentation();
 				if (or.intersect(r) && !or.intersect(start)) return or;
 			}
 
-		for (Player other : MAP.playersNear(r.expand(Math.max(PLAYER_RADIUS_X, PLAYER_RADIUS_Y)))) {
+		for (Player other : map.playersNear(r.expand(Math.max(PLAYER_RADIUS_X, PLAYER_RADIUS_Y)))) {
 			if (other == self || !other.getIsAlive()) continue;
 			Rectangle or = other.getRepresentation();
 			if (or.intersect(r) && !or.intersect(start)) return or;
@@ -542,11 +542,11 @@ public class Board {
 	 * Applique les coups d'épée en cours (chaque cible est touchée au plus une fois par coup)
 	 */
 	private void resolveMelee() {
-		for (Player p : PLAYERS.values()) {
+		for (Player p : players.values()) {
 			if (!p.getIsAlive() || !p.getWeapon().isSwinging()) continue;
 
 			Rectangle reach = Rectangle.centered(p.getX(), p.getY(), MELEE_RANGE, MELEE_RANGE);
-			for (Player target : MAP.playersNear(reach.expand(PLAYER_RADIUS_X))) {
+			for (Player target : map.playersNear(reach.expand(PLAYER_RADIUS_X))) {
 				if (target == p || !target.getIsAlive() || !Weapon.isInReach(p, target)) continue;
 				if (!p.getWeapon().registerHit(target.getID())) continue;
 
@@ -565,7 +565,7 @@ public class Board {
 		int substeps = Math.max(1, (int)Math.ceil(distance / BULLET_SUBSTEP));
 		float substep = distance / substeps;
 
-		Iterator<Bullet> it = BULLETS.iterator();
+		Iterator<Bullet> it = bullets.iterator();
 		while (it.hasNext()) {
 			Bullet b = it.next();
 
@@ -583,7 +583,7 @@ public class Board {
 	 * @param b Projectile
 	 */
 	private void stepBullet(Bullet b) {
-		if (!MAP.getBounds().contains(b.getX(), b.getY())) {
+		if (!map.getBounds().contains(b.getX(), b.getY())) {
 			b.destroy();
 			addEvent(new GameEvent(GameEvent.Type.BULLET_BLOCKED, tick, b.getOwnerId(), -1, 0,
 				clamp(b.getX(), 0, MAP_WIDTH), clamp(b.getY(), 0, MAP_HEIGHT), DamageCause.BULLET));
@@ -591,7 +591,7 @@ public class Board {
 		}
 
 		Rectangle r = b.getRepresentation();
-		if (MAP.obstacleIntersecting(r, true) != null) {
+		if (map.obstacleIntersecting(r, true) != null) {
 			b.destroy();
 			addEvent(new GameEvent(GameEvent.Type.BULLET_BLOCKED, tick, b.getOwnerId(), -1, 0, b.getX(), b.getY(), DamageCause.BULLET));
 			return;
@@ -603,7 +603,7 @@ public class Board {
 			return;
 		}
 
-		for (Player target : MAP.playersNear(r.expand(PLAYER_RADIUS_X))) {
+		for (Player target : map.playersNear(r.expand(PLAYER_RADIUS_X))) {
 			if (target.getID() == b.getOwnerId() || !target.getIsAlive() || !target.getRepresentation().intersect(r)) continue;
 
 			int damage = phase == Phase.BATTLE ? target.reduceLifePoints(BULLET_DAMAGE, b.getOwnerId(), DamageCause.BULLET, tick) : 0;
@@ -618,13 +618,13 @@ public class Board {
 	 * Fait avancer la zone sûre
 	 */
 	private void updateZone() {
-		switch (SAFE_ZONE.update()) {
+		switch (safeZone.update()) {
 		case SHRINK_STARTED:
-			addEvent(GameEvent.global(GameEvent.Type.ZONE_SHRINKING, tick, SAFE_ZONE.getWaveIndex() + 1));
+			addEvent(GameEvent.global(GameEvent.Type.ZONE_SHRINKING, tick, safeZone.getWaveIndex() + 1));
 			break;
 		case SHRINK_ENDED:
 		case CLOSED:
-			addEvent(GameEvent.global(GameEvent.Type.ZONE_SHRUNK, tick, SAFE_ZONE.getWaveIndex() + 1));
+			addEvent(GameEvent.global(GameEvent.Type.ZONE_SHRUNK, tick, safeZone.getWaveIndex() + 1));
 			break;
 		default:
 		}
@@ -634,12 +634,12 @@ public class Board {
 	 * Inflige les dégâts de lave aux joueurs hors de la zone sûre
 	 */
 	private void applyLava() {
-		float damage = SAFE_ZONE.getLavaDamagePerSecond() * TICK_DURATION;
+		float damage = safeZone.getLavaDamagePerSecond() * TICK_DURATION;
 
-		for (Player p : PLAYERS.values()) {
+		for (Player p : players.values()) {
 			if (!p.getIsAlive()) continue;
 
-			boolean outside = !SAFE_ZONE.getCurrent().contain(p.getRepresentation());
+			boolean outside = !safeZone.getCurrent().contain(p.getRepresentation());
 			p.setInLava(outside);
 			if (outside) {
 				int whole = p.accumulateLava(damage);
@@ -653,7 +653,7 @@ public class Board {
 	 */
 	private void resolveEliminations() {
 		List<Player> dying = new ArrayList<>();
-		for (Player p : PLAYERS.values())
+		for (Player p : players.values())
 			if (p.isDying()) dying.add(p);
 
 		if (dying.isEmpty()) return;
@@ -664,15 +664,15 @@ public class Board {
 			int killer = p.getLastDamageCause() == DamageCause.LAVA
 				&& (p.getLastAttackTick() < 0 || tick - p.getLastAttackTick() > LAVA_KILL_CREDIT_TICKS)
 					? -1 : p.getLastAttacker();
-			Player k = killer >= 0 ? PLAYERS.get(killer) : null;
+			Player k = killer >= 0 ? players.get(killer) : null;
 			if (k != null) k.addKill();
 			else killer = -1;
 
 			p.kill(++eliminations, rank, tick);
-			MAP.removePlayer(p);
+			map.removePlayer(p);
 
-			KILL_FEED.addLast(new KillFeedEntry(tick, killer, p.getID(), p.getLastDamageCause()));
-			while (KILL_FEED.size() > KILL_FEED_SIZE) KILL_FEED.removeFirst();
+			killFeed.addLast(new KillFeedEntry(tick, killer, p.getID(), p.getLastDamageCause()));
+			while (killFeed.size() > KILL_FEED_SIZE) killFeed.removeFirst();
 			addEvent(new GameEvent(GameEvent.Type.ELIMINATION, tick, killer, p.getID(), rank, p.getX(), p.getY(), p.getLastDamageCause()));
 		}
 	}
@@ -696,7 +696,7 @@ public class Board {
 		if (phase == Phase.ENDED) return;
 
 		List<Player> survivors = new ArrayList<>();
-		for (Player p : PLAYERS.values())
+		for (Player p : players.values())
 			if (p.getIsAlive()) survivors.add(p);
 		survivors.sort(Comparator.comparingInt(Player::getKills).reversed()
 			.thenComparing(Comparator.comparingInt(Player::getLifePoints).reversed())
@@ -712,7 +712,7 @@ public class Board {
 		}
 
 		phase = Phase.ENDED;
-		BULLETS.clear();
+		bullets.clear();
 		addEvent(new GameEvent(GameEvent.Type.GAME_OVER, tick, winnerId, -1, survivors.size(), 0, 0, null));
 	}
 
@@ -721,39 +721,39 @@ public class Board {
 	 * @param e Événement
 	 */
 	private void addEvent(GameEvent e) {
-		if (EVENTS.size() >= MAX_PENDING_EVENTS) {
-			EVENTS.pollFirst();
+		if (events.size() >= MAX_PENDING_EVENTS) {
+			events.pollFirst();
 			droppedEvents++;
 		}
-		EVENTS.addLast(e);
+		events.addLast(e);
 	}
 
 	/**
 	 * Publie l'image immuable de l'état courant
 	 */
 	private void publishSnapshot() {
-		List<PlayerState> players = new ArrayList<>(PLAYERS.size());
-		for (Player p : PLAYERS.values()) {
+		List<PlayerState> playerStates = new ArrayList<>(players.size());
+		for (Player p : players.values()) {
 			Weapon w = p.getWeapon();
-			players.add(new PlayerState(p.getID(), p.getPseudo(), p.isBot(), p.getX(), p.getY(), p.getLifePoints(),
+			playerStates.add(new PlayerState(p.getID(), p.getPseudo(), p.isBot(), p.getX(), p.getY(), p.getLifePoints(),
 				p.getIsAlive(), p.getID() == winnerId, p.getKills(), p.getRank(), p.getViewDirection(), p.isMoving(),
 				w.getSwingProgress(), p.getLastHitTick(), p.isInLava(), w.getMeleeCooldownLeft(), w.getShootCooldownLeft(),
 				p.getLastAttacker(), p.getEliminationOrder()));
 		}
 
-		List<BulletState> bullets = new ArrayList<>(BULLETS.size());
-		for (Bullet b : BULLETS)
-			bullets.add(new BulletState(b.getID(), b.getOwnerId(), b.getX(), b.getY(), b.getDx(), b.getDy()));
+		List<BulletState> bulletStates = new ArrayList<>(bullets.size());
+		for (Bullet b : bullets)
+			bulletStates.add(new BulletState(b.getID(), b.getOwnerId(), b.getX(), b.getY(), b.getDx(), b.getDy()));
 
 		int secondsLeft;
 		if (phase == Phase.WARMUP) secondsLeft = (int)((getWarmupTicksLeft() + TICKS_PER_SECOND - 1) / TICKS_PER_SECOND);
-		else if (phase == Phase.BATTLE) secondsLeft = SAFE_ZONE.getSecondsLeft();
+		else if (phase == Phase.BATTLE) secondsLeft = safeZone.getSecondsLeft();
 		else secondsLeft = 0;
 
-		snapshot = new BoardSnapshot(tick, phase, paused, stopped, getAliveCount(), PLAYERS.size(), winnerId,
-			SAFE_ZONE.getCurrent(), SAFE_ZONE.getNext(), SAFE_ZONE.getStage(), secondsLeft,
-			SAFE_ZONE.getWaveIndex() + 1, SAFE_ZONE.getWaveCount(), SAFE_ZONE.getLavaDamagePerSecond(),
-			players, bullets, new ArrayList<>(KILL_FEED));
+		snapshot = new BoardSnapshot(tick, phase, paused, stopped, getAliveCount(), players.size(), winnerId,
+			safeZone.getCurrent(), safeZone.getNext(), safeZone.getStage(), secondsLeft,
+			safeZone.getWaveIndex() + 1, safeZone.getWaveCount(), safeZone.getLavaDamagePerSecond(),
+			playerStates, bulletStates, new ArrayList<>(killFeed));
 	}
 
 	/**
@@ -763,10 +763,10 @@ public class Board {
 	 * @param y Nouvelle ordonnée
 	 */
 	void teleport(int id, float x, float y) {
-		Player p = PLAYERS.get(id);
+		Player p = players.get(id);
 		if (p == null) return;
 		p.setPosition(x, y);
-		if (p.getIsAlive()) MAP.updatePlayerArea(p);
+		if (p.getIsAlive()) map.updatePlayerArea(p);
 		publishSnapshot();
 	}
 
