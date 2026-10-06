@@ -15,6 +15,12 @@ final class Boards implements IConfig {
 	 */
 	static final List<ZoneWave> STILL_ZONE = List.of(new ZoneWave(10_000, 10, 0.5f, 3));
 
+	/**
+	 * Échauffement qui ne finit jamais : les plateaux à un seul joueur destinés à tester
+	 * les mécaniques restent en phase WARMUP (une partie solo est gagnée dès le combat)
+	 */
+	static final float NO_BATTLE = 3_600;
+
 	private Boards() {}
 
 	/**

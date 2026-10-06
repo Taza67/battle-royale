@@ -73,6 +73,11 @@ public class Game implements IConfig {
 	private int localId = -1;
 	private double endTime = -1;
 
+	/**
+	 * Position et taille de la fenêtre avant le passage en plein écran
+	 */
+	private int windowedX = 80, windowedY = 80, windowedW = 0, windowedH = 0;
+
 	private volatile String status;
 	private volatile boolean statusError;
 	private volatile double statusTime = -100;
@@ -266,8 +271,8 @@ public class Game implements IConfig {
 			down(GLFW_KEY_LEFT) || down(GLFW_KEY_A),
 			down(GLFW_KEY_RIGHT) || down(GLFW_KEY_D),
 			down(GLFW_KEY_LEFT_SHIFT) || down(GLFW_KEY_RIGHT_SHIFT),
-			down(GLFW_KEY_SPACE) || down(GLFW_KEY_J),
-			down(GLFW_KEY_K) || down(GLFW_KEY_ENTER) || down(GLFW_KEY_KP_ENTER));
+			down(GLFW_KEY_K) || down(GLFW_KEY_ENTER) || down(GLFW_KEY_KP_ENTER),
+			down(GLFW_KEY_SPACE) || down(GLFW_KEY_J));
 	}
 
 	private boolean down(int key) {
@@ -300,8 +305,21 @@ public class Game implements IConfig {
 	private void toggleFullscreen() {
 		long monitor = glfwGetWindowMonitor(window);
 		if (monitor != 0) {
-			glfwSetWindowMonitor(window, 0, 80, 80, OPTIONS.windowWidth(), OPTIONS.windowHeight(), GLFW_DONT_CARE);
+			glfwSetWindowMonitor(window, 0, windowedX, windowedY,
+				windowedW > 0 ? windowedW : OPTIONS.windowWidth(),
+				windowedH > 0 ? windowedH : OPTIONS.windowHeight(), GLFW_DONT_CARE);
 		} else {
+			// Mémorise la position et la taille fenêtrée pour les restaurer à la sortie
+			try (MemoryStack stack = MemoryStack.stackPush()) {
+				var x = stack.mallocInt(1);
+				var y = stack.mallocInt(1);
+				var w = stack.mallocInt(1);
+				var h = stack.mallocInt(1);
+				glfwGetWindowPos(window, x, y);
+				glfwGetWindowSize(window, w, h);
+				windowedX = x.get(0); windowedY = y.get(0);
+				windowedW = w.get(0); windowedH = h.get(0);
+			}
 			long primary = glfwGetPrimaryMonitor();
 			GLFWVidMode mode = glfwGetVideoMode(primary);
 			if (mode != null) glfwSetWindowMonitor(window, primary, 0, 0, mode.width(), mode.height(), mode.refreshRate());
@@ -316,7 +334,7 @@ public class Game implements IConfig {
 		int id = 0;
 		if (!OPTIONS.spectate()) specs.add(new PlayerSpec(id++, OPTIONS.pseudo(), false));
 		for (int i = 0; i < OPTIONS.bots(); i++)
-			specs.add(new PlayerSpec(id++, BotController.botName(i), true));
+			specs.add(new PlayerSpec(id++, BotController.botPseudo(i), true));
 
 		long seed = OPTIONS.seed() + GAMES_CREATED.getAndIncrement();
 		Board b = new Board(OPTIONS.settings().withSeed(seed), specs);
@@ -375,7 +393,7 @@ public class Game implements IConfig {
 		List<PlayerSpec> specs = new ArrayList<>(players);
 		int next = players.stream().mapToInt(PlayerSpec::id).max().orElse(-1) + 1;
 		for (int i = 0; i < OPTIONS.bots() && next < MAX_PLAYERS; i++)
-			specs.add(new PlayerSpec(next++, BotController.botName(i), true));
+			specs.add(new PlayerSpec(next++, BotController.botPseudo(i), true));
 		return new Board(OPTIONS.settings().withSeed(OPTIONS.seed() + GAMES_CREATED.getAndIncrement()), specs);
 	}
 

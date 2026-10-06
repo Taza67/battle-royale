@@ -70,7 +70,10 @@ class LaunchOptionsTest implements IConfig {
 				new String[] { "--warmup", "-3" },
 				new String[] { "--seed" },
 				new String[] { "--window", "10x10" },
+				new String[] { "--window", "1280x720x9" },
+				new String[] { "--window", "100000x100000" },
 				new String[] { "--pseudo", "un pseudo beaucoup trop long" },
+				new String[] { "--pseudo", "émoji\uD83D\uDE00" },
 				new String[] { "--spectate", "--bots", "1" },
 				new String[] { "--mode", "multi", "--spectate" },
 				new String[] { "--inconnue" }))

@@ -23,7 +23,7 @@ class MatchTest implements IConfig {
 
 	@Test
 	void pauseFigeLaSimulationEtRepriseLaRelance() {
-		Board b = empty(1, 0);
+		Board b = empty(1, NO_BATTLE);
 		b.teleport(0, 300, 360);
 		b.enqueue(new Command.Control(Command.ControlType.PAUSE));
 		long tick = b.getTick();
@@ -61,7 +61,7 @@ class MatchTest implements IConfig {
 		assertTrue(s.isOver());
 		assertTrue(s.stopped());
 		assertEquals(-1, s.winnerId());
-		for (BoardSnapshot.PlayerState p : s.players()) assertEquals(1, p.rank());
+		assertEquals(List.of(1, 2, 3), s.players().stream().map(BoardSnapshot.PlayerState::rank).sorted().toList());
 		assertEquals(1, count(events, GameEvent.Type.GAME_OVER));
 
 		// Plus rien ne bouge après la fin
@@ -71,15 +71,16 @@ class MatchTest implements IConfig {
 	}
 
 	@Test
-	void partieSoloSeTermineDansLaLave() {
+	void partieSoloEstGagneeDesLeDebutDuCombat() {
 		List<ZoneWave> waves = List.of(new ZoneWave(0.5f, 0.5f, 0f, 200));
 		Board b = new Board(new GameSettings(0, 9, 0, waves), new Map(List.of()), specs(1));
 		run(b, 20 * TICKS_PER_SECOND);
 
 		assertTrue(b.isOver());
-		assertEquals(-1, b.getWinnerId());
-		assertEquals(0, b.getAliveCount());
+		assertEquals(0, b.getWinnerId());
+		assertEquals(1, b.getAliveCount());
 		assertEquals(1, b.getPlayer(0).getRank());
+		assertEquals(2, b.getSnapshot().player(0).status());
 	}
 
 	@Test

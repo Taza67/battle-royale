@@ -59,13 +59,13 @@ class ProtocolTest implements IConfig {
 	@Test
 	void pseudosInvalidesRefuses() {
 		for (String pseudo : new String[] { null, "", "   ", "\t", "a".repeat(PSEUDO_MAX_LENGTH + 1), "Ali\nce", "Bob\u0000",
-				"Zo\u007Fé", "Ève\u200B" })
+				"Zo\u007Fé", "Ève\u200B", "🎮", "" })
 			assertNotNull(Protocol.validatePlayers(List.of(new PlayerSpec(1, "A", false), new PlayerSpec(2, pseudo, false))),
 				"pseudo « " + pseudo + " » accepté");
 
 		assertNull(Protocol.validatePlayers(List.of(new PlayerSpec(1, "a".repeat(PSEUDO_MAX_LENGTH), false))));
-		assertNull(Protocol.validatePlayers(List.of(new PlayerSpec(1, "🎮".repeat(PSEUDO_MAX_LENGTH), false))),
-			"longueur comptée en caractères");
+		assertNull(Protocol.validatePlayers(List.of(new PlayerSpec(1, "é".repeat(PSEUDO_MAX_LENGTH), false))),
+			"longueur comptée en caractères, Latin-1 affichable");
 	}
 
 	@Test

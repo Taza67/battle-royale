@@ -276,6 +276,7 @@ public class Map implements IConfig {
 	 * @param score Note d'un emplacement libre (par exemple la distance au plus proche voisin)
 	 * @param target Note suffisante : le premier emplacement qui l'atteint est retenu
 	 * @return Premier emplacement libre atteignant la note visée, sinon l'emplacement libre le mieux noté
+	 * @throws IllegalStateException si la zone de recherche n'offre aucun emplacement libre
 	 */
 	public Vertice findFreePosition(Random random, float radiusX, float radiusY, Rectangle area,
 		ToDoubleFunction<Rectangle> score, double target) {
@@ -298,9 +299,9 @@ public class Map implements IConfig {
 
 		if (best != null) return best;
 
-		// Recherche exhaustive sur une grille fine
-		for (float y = radiusY; y <= MAP_HEIGHT - radiusY; y += 4)
-			for (float x = radiusX; x <= MAP_WIDTH - radiusX; x += 4) {
+		// Recherche exhaustive sur une grille fine, bornée à la zone demandée
+		for (float y = searchArea.getY1(); y <= searchArea.getY2(); y += 4)
+			for (float x = searchArea.getX1(); x <= searchArea.getX2(); x += 4) {
 				Rectangle r = Rectangle.centered(x, y, radiusX, radiusY);
 				if (!isFree(r)) continue;
 
@@ -312,6 +313,11 @@ public class Map implements IConfig {
 				}
 			}
 
-		return best != null ? best : new Vertice(MAP_WIDTH / 2f, MAP_HEIGHT / 2f);
+		if (best != null) return best;
+
+		// Dernier recours : le centre de la zone demandée, seulement s'il est libre
+		Vertice center = searchArea.getCenter();
+		if (isFree(Rectangle.centered(center.getX(), center.getY(), radiusX, radiusY))) return center;
+		throw new IllegalStateException("Aucun emplacement libre dans la zone de recherche");
 	}
 }

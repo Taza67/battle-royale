@@ -8,6 +8,7 @@ import inside.GameSettings;
 import inside.IConfig;
 import outside.communication.GameServer;
 import outside.communication.NetworkUtilities;
+import outside.communication.Protocol;
 
 /**
  * Options de lancement du jeu, lues sur la ligne de commande
@@ -107,13 +108,15 @@ public record LaunchOptions(boolean multi, int bots, int port, String bind, floa
 			}
 			case "--pseudo" -> {
 				pseudo = value(args, ++i, a).strip();
-				if (pseudo.isEmpty() || pseudo.length() > 16) throw new IllegalArgumentException("Le pseudo doit faire de 1 à 16 caractères");
+				String refusal = Protocol.checkPseudo(pseudo);
+				if (refusal != null) throw new IllegalArgumentException("Pseudo invalide : " + refusal);
 			}
 			case "--spectate" -> spectate = true;
 			case "--no-sound" -> sound = false;
 			case "--window" -> {
 				String v = value(args, ++i, a);
-				String[] parts = v.toLowerCase().split("x");
+				String[] parts = v.toLowerCase().split("x", -1);
+				if (parts.length != 2) throw new IllegalArgumentException("Taille de fenêtre invalide : " + v + " (ex. 1600x900)");
 				try {
 					width = Integer.parseInt(parts[0]);
 					height = Integer.parseInt(parts[1]);
@@ -121,6 +124,7 @@ public record LaunchOptions(boolean multi, int bots, int port, String bind, floa
 					throw new IllegalArgumentException("Taille de fenêtre invalide : " + v + " (ex. 1600x900)");
 				}
 				if (width < 320 || height < 180) throw new IllegalArgumentException("Fenêtre trop petite : " + v);
+				if (width > 7680 || height > 4320) throw new IllegalArgumentException("Fenêtre trop grande : " + v);
 			}
 			case "--gamepad-url" -> {
 				gamepadUrl = value(args, ++i, a).strip();

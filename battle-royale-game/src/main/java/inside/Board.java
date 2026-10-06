@@ -3,6 +3,7 @@ package inside;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.Deque;
 import java.util.Iterator;
 import java.util.List;
@@ -10,6 +11,7 @@ import java.util.Queue;
 import java.util.Random;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.logging.Logger;
 
 import inside.BoardSnapshot.BulletState;
 import inside.BoardSnapshot.KillFeedEntry;
@@ -37,6 +39,8 @@ public class Board implements IConfig {
 	 */
 	public record PlayerSpec(int id, String pseudo, boolean bot) {}
 
+	private static final Logger LOGGER = Logger.getLogger(Board.class.getName());
+
 	/**
 	 * Nombre d'éliminations conservées dans le fil des éliminations
 	 */
@@ -45,6 +49,15 @@ public class Board implements IConfig {
 	 * Nombre maximal d'événements conservés en attente de lecture
 	 */
 	private static final int MAX_PENDING_EVENTS = 2048;
+	/**
+	 * Nombre maximal de commandes en attente (les plus anciennes sont abandonnées au-delà)
+	 */
+	private static final int MAX_PENDING_COMMANDS = 4096;
+	/**
+	 * Fenêtre de temps (en pas, ~10 s) pendant laquelle une mort par lave est créditée
+	 * au dernier joueur ayant infligé des dégâts à la victime
+	 */
+	private static final long LAVA_KILL_CREDIT_TICKS = 10L * TICKS_PER_SECOND;
 	/**
 	 * Profondeur de chevauchement en dessous de laquelle deux éléments sont considérés en contact (arrondis)
 	 */
@@ -81,9 +94,17 @@ public class Board implements IConfig {
 	 */
 	private final Queue<Command> COMMANDS;
 	/**
+	 * Commandes de jeu reçues pendant une pause, réappliquées à la reprise
+	 */
+	private final Deque<Command> SUSPENDED;
+	/**
 	 * Événements produits et pas encore lus
 	 */
-	private final List<GameEvent> EVENTS;
+	private final Deque<GameEvent> EVENTS;
+	/**
+	 * Événements abandonnés par saturation de la file depuis la dernière lecture
+	 */
+	private int droppedEvents;
 	/**
 	 * Dernières éliminations
 	 */
@@ -94,29 +115,29 @@ public class Board implements IConfig {
 	 */
 	private volatile BoardSnapshot snapshot;
 	/**
-	 * Phase de la partie
+	 * Phase de la partie (volatile : lue par les autres fils)
 	 */
-	private Phase phase = Phase.WARMUP;
+	private volatile Phase phase = Phase.WARMUP;
 	/**
-	 * Indique si la partie est en pause
+	 * Indique si la partie est en pause (volatile : lue par les autres fils)
 	 */
-	private boolean paused;
+	private volatile boolean paused;
 	/**
-	 * Indique si la partie a été arrêtée par l'administrateur
+	 * Indique si la partie a été arrêtée par l'administrateur (volatile : lue par les autres fils)
 	 */
-	private boolean stopped;
+	private volatile boolean stopped;
 	/**
-	 * Nombre de pas de simulation effectués (hors pause)
+	 * Nombre de pas de simulation effectués (hors pause ; volatile : lu par les autres fils)
 	 */
-	private long tick;
+	private volatile long tick;
 	/**
 	 * Nombre d'éliminations depuis le début
 	 */
 	private int eliminations;
 	/**
-	 * Identifiant du vainqueur, -1 si aucun
+	 * Identifiant du vainqueur, -1 si aucun (volatile : lu par les autres fils)
 	 */
-	private int winnerId = -1;
+	private volatile int winnerId = -1;
 	/**
 	 * Identifiant du prochain projectile
 	 */
@@ -150,7 +171,8 @@ public class Board implements IConfig {
 		PLAYERS = new TreeMap<>();
 		BULLETS = new ArrayList<>();
 		COMMANDS = new ConcurrentLinkedQueue<>();
-		EVENTS = new ArrayList<>();
+		SUSPENDED = new ArrayDeque<>();
+		EVENTS = new ArrayDeque<>();
 		KILL_FEED = new ArrayDeque<>();
 
 		for (PlayerSpec spec : players) {
@@ -194,7 +216,12 @@ public class Board implements IConfig {
 	 * @param c Commande
 	 */
 	public void enqueue(Command c) {
-		if (c != null) COMMANDS.add(c);
+		if (c == null) return;
+		if (COMMANDS.size() >= MAX_PENDING_COMMANDS) {
+			COMMANDS.poll();
+			LOGGER.fine("File de commandes saturée : la plus ancienne commande est abandonnée");
+		}
+		COMMANDS.add(c);
 	}
 
 	/**
@@ -202,6 +229,10 @@ public class Board implements IConfig {
 	 * @return Événements
 	 */
 	public List<GameEvent> drainEvents() {
+		if (droppedEvents > 0) {
+			LOGGER.warning(droppedEvents + " événement(s) abandonné(s) : file d'événements saturée");
+			droppedEvents = 0;
+		}
 		List<GameEvent> events = new ArrayList<>(EVENTS);
 		EVENTS.clear();
 		return events;
@@ -323,7 +354,8 @@ public class Board implements IConfig {
 		Command c;
 		while ((c = COMMANDS.poll()) != null) {
 			if (c instanceof Command.Control control) applyControl(control.type());
-			else if (phase == Phase.ENDED || paused) continue;
+			else if (phase == Phase.ENDED) continue;
+			else if (paused) SUSPENDED.addLast(c);
 			else if (c instanceof Command.Move move) applyMove(move);
 			else if (c instanceof Command.Attack attack) applyAttack(attack);
 		}
@@ -346,12 +378,16 @@ public class Board implements IConfig {
 		case RESUME:
 			if (paused) {
 				paused = false;
+				// Les commandes déposées pendant la pause reprennent leur place dans la file
+				Command s;
+				while ((s = SUSPENDED.pollFirst()) != null) COMMANDS.offer(s);
 				addEvent(GameEvent.global(GameEvent.Type.RESUMED, tick, 0));
 			}
 			break;
 		case STOP:
 			stopped = true;
 			paused = false;
+			SUSPENDED.clear();
 			endGame();
 			break;
 		}
@@ -560,6 +596,12 @@ public class Board implements IConfig {
 			return;
 		}
 
+		// Portée épuisée : la balle s'arrête avant de pouvoir toucher qui que ce soit
+		if (b.isOutOfRange()) {
+			b.destroy();
+			return;
+		}
+
 		for (Player target : MAP.playersNear(r.expand(PLAYER_RADIUS_X))) {
 			if (target.getID() == b.getOwnerId() || !target.getIsAlive() || !target.getRepresentation().intersect(r)) continue;
 
@@ -569,8 +611,6 @@ public class Board implements IConfig {
 			b.destroy();
 			return;
 		}
-
-		if (b.isOutOfRange()) b.destroy();
 	}
 
 	/**
@@ -598,7 +638,7 @@ public class Board implements IConfig {
 		for (Player p : PLAYERS.values()) {
 			if (!p.getIsAlive()) continue;
 
-			boolean outside = !SAFE_ZONE.isSafe(p.getX(), p.getY());
+			boolean outside = !SAFE_ZONE.getCurrent().contain(p.getRepresentation());
 			p.setInLava(outside);
 			if (outside) {
 				int whole = p.accumulateLava(damage);
@@ -619,7 +659,10 @@ public class Board implements IConfig {
 
 		int rank = getAliveCount() - dying.size() + 1;
 		for (Player p : dying) {
-			int killer = (p.getLastDamageCause() != DamageCause.LAVA) ? p.getLastAttacker() : -1;
+			// Mort par lave : créditée au dernier attaquant s'il a frappé récemment
+			int killer = p.getLastDamageCause() == DamageCause.LAVA
+				&& (p.getLastAttackTick() < 0 || tick - p.getLastAttackTick() > LAVA_KILL_CREDIT_TICKS)
+					? -1 : p.getLastAttacker();
 			Player k = killer >= 0 ? PLAYERS.get(killer) : null;
 			if (k != null) k.addKill();
 			else killer = -1;
@@ -635,18 +678,18 @@ public class Board implements IConfig {
 
 	/**
 	 * Termine la partie quand il reste au plus un joueur en vie
-	 * (une partie à un seul joueur se termine à son élimination)
+	 * (une partie à un seul joueur est gagnée dès le début du combat)
 	 */
 	private void checkEnd() {
 		if (phase != Phase.BATTLE) return;
 
-		int alive = getAliveCount(), total = PLAYERS.size();
-		if ((total >= 2 && alive <= 1) || alive == 0)
+		if (getAliveCount() <= 1)
 			endGame();
 	}
 
 	/**
-	 * Termine la partie : le dernier survivant gagne ; s'il en reste plusieurs (arrêt), ils partagent la première place
+	 * Termine la partie : le dernier survivant gagne ; s'il en reste plusieurs (arrêt),
+	 * ils reçoivent des rangs distincts (départage par éliminations, puis points de vie, puis identifiant)
 	 */
 	private void endGame() {
 		if (phase == Phase.ENDED) return;
@@ -654,10 +697,14 @@ public class Board implements IConfig {
 		List<Player> survivors = new ArrayList<>();
 		for (Player p : PLAYERS.values())
 			if (p.getIsAlive()) survivors.add(p);
+		survivors.sort(Comparator.comparingInt(Player::getKills).reversed()
+			.thenComparing(Comparator.comparingInt(Player::getLifePoints).reversed())
+			.thenComparingInt(Player::getID));
 
 		winnerId = survivors.size() == 1 ? survivors.get(0).getID() : -1;
-		for (Player p : survivors) {
-			p.setRank(1);
+		for (int i = 0; i < survivors.size(); i++) {
+			Player p = survivors.get(i);
+			p.setRank(i + 1);
 			p.stop();
 			p.setMoving(false);
 			p.getWeapon().cancelSwing();
@@ -673,8 +720,11 @@ public class Board implements IConfig {
 	 * @param e Événement
 	 */
 	private void addEvent(GameEvent e) {
-		if (EVENTS.size() >= MAX_PENDING_EVENTS) EVENTS.remove(0);
-		EVENTS.add(e);
+		if (EVENTS.size() >= MAX_PENDING_EVENTS) {
+			EVENTS.pollFirst();
+			droppedEvents++;
+		}
+		EVENTS.addLast(e);
 	}
 
 	/**

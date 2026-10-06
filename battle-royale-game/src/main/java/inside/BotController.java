@@ -87,6 +87,16 @@ public class BotController implements IConfig {
 	}
 
 	/**
+	 * Pseudo affiché d'un robot : le nom suivi du marqueur « (robot) » pour qu'un humain
+	 * portant le même nom reste distinguable dans le fil des éliminations et le classement
+	 * @param index Numéro du robot
+	 * @return Pseudo
+	 */
+	public static String botPseudo(int index) {
+		return botName(index) + " (robot)";
+	}
+
+	/**
 	 * Mémoire d'un robot
 	 */
 	private static final class Memory {

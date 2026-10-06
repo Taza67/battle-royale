@@ -63,7 +63,7 @@ public class AudioUtilities implements AutoCloseable {
 			enabled = alGetError() == AL_NO_ERROR;
 		} catch (Throwable t) {
 			LOGGER.log(Level.INFO, "Son indisponible : " + t.getMessage());
-			enabled = false;
+			close();
 		}
 	}
 
@@ -188,7 +188,7 @@ public class AudioUtilities implements AutoCloseable {
 	@Override
 	public void close() {
 		try {
-			if (enabled) {
+			if (context != 0) {
 				for (int source : SOURCES) alDeleteSources(source);
 				for (int buffer : BUFFERS.values()) alDeleteBuffers(buffer);
 			}

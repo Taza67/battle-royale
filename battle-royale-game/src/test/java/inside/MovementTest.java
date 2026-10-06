@@ -23,7 +23,7 @@ class MovementTest implements IConfig {
 
 	@Test
 	void deplacementContinuAVitesseConstante() {
-		Board b = empty(1, 0);
+		Board b = empty(1, NO_BATTLE);
 		b.teleport(0, 300, 360);
 		hold(b, 0, EAST, MAX_SPEED_LEVEL, TICKS_PER_SECOND);
 
@@ -34,7 +34,7 @@ class MovementTest implements IConfig {
 
 	@Test
 	void diagonaleNormalisee() {
-		Board b = empty(1, 0);
+		Board b = empty(1, NO_BATTLE);
 		b.teleport(0, 300, 400);
 		hold(b, 0, NORTH_EAST, MAX_SPEED_LEVEL, TICKS_PER_SECOND);
 
@@ -46,7 +46,7 @@ class MovementTest implements IConfig {
 
 	@Test
 	void intentionExpireApres250ms() {
-		Board b = empty(1, 0);
+		Board b = empty(1, NO_BATTLE);
 		b.teleport(0, 300, 360);
 		b.enqueue(new Command.Move(0, EAST, MAX_SPEED_LEVEL));
 		run(b, TICKS_PER_SECOND);
@@ -60,7 +60,7 @@ class MovementTest implements IConfig {
 
 	@Test
 	void vitesseZeroArreteLeJoueur() {
-		Board b = empty(1, 0);
+		Board b = empty(1, NO_BATTLE);
 		b.teleport(0, 300, 360);
 		hold(b, 0, EAST, MAX_SPEED_LEVEL, 10);
 		float x = b.getPlayer(0).getX();
@@ -74,7 +74,7 @@ class MovementTest implements IConfig {
 	@Test
 	void glissementLeLongDUnObstacle() {
 		Rectangle rock = new Rectangle(330, 250, 380, 470);
-		Board b = on(new Map(List.of(new Obstacle(TypeObstacle.ROCHER, rock))), 1, 0);
+		Board b = on(new Map(List.of(new Obstacle(TypeObstacle.ROCHER, rock))), 1, NO_BATTLE);
 		b.teleport(0, 315, 360);
 		hold(b, 0, NORTH_EAST, MAX_SPEED_LEVEL, 30);
 
@@ -87,7 +87,7 @@ class MovementTest implements IConfig {
 	@Test
 	void lEauBloqueAussiLesJoueurs() {
 		Rectangle water = new Rectangle(330, 250, 380, 470);
-		Board b = on(new Map(List.of(new Obstacle(TypeObstacle.EAU, water))), 1, 0);
+		Board b = on(new Map(List.of(new Obstacle(TypeObstacle.EAU, water))), 1, NO_BATTLE);
 		b.teleport(0, 300, 360);
 		hold(b, 0, EAST, MAX_SPEED_LEVEL, 30);
 		assertEquals(water.getX1() - PLAYER_RADIUS_X, b.getPlayer(0).getX(), 1e-3f);
@@ -107,7 +107,7 @@ class MovementTest implements IConfig {
 
 	@Test
 	void joueurBorneAuxCoinsDeLaCarte() {
-		Board b = empty(1, 0);
+		Board b = empty(1, NO_BATTLE);
 		b.teleport(0, 30, 30);
 		hold(b, 0, NORTH_WEST, MAX_SPEED_LEVEL, TICKS_PER_SECOND);
 		assertEquals(PLAYER_RADIUS_X, b.getPlayer(0).getX(), 1e-3f);
@@ -123,7 +123,7 @@ class MovementTest implements IConfig {
 
 	@Test
 	void directionInvalideIgnoree() {
-		Board b = empty(1, 0);
+		Board b = empty(1, NO_BATTLE);
 		b.teleport(0, 300, 360);
 		b.enqueue(new Command.Move(0, 9, 4));
 		b.enqueue(new Command.Move(0, -1, 4));
