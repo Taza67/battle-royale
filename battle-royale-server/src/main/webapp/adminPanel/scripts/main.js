@@ -111,6 +111,7 @@ function seConnecter(evenement) {
 	session.souhaitee = true;
 	session.automatique = false;
 	session.motDePasse = element("mot-de-passe").value;
+	element("mot-de-passe").setAttribute("aria-invalid", "false");
 	element("erreur-connexion").textContent = "";
 	envoyerConnexion();
 	actualiser();
@@ -130,6 +131,7 @@ function revenirConnexion(raison) {
 	ecrireSession(null);
 
 	element("erreur-connexion").textContent = raison;
+	element("mot-de-passe").setAttribute("aria-invalid", "true");
 	actualiser();
 	element("mot-de-passe").focus();
 }
@@ -410,6 +412,10 @@ element("copier-url").addEventListener("click", async () => {
 });
 
 element("formulaire-connexion").addEventListener("submit", seConnecter);
+element("mot-de-passe").addEventListener("input", () => {
+	element("mot-de-passe").removeAttribute("aria-invalid");
+	element("erreur-connexion").textContent = "";
+});
 for (const bouton of boutons) {
 	bouton.addEventListener("click", () => {
 		if (bouton.dataset.commande === "stop")
