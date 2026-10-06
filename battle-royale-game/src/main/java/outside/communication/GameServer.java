@@ -76,19 +76,19 @@ public class GameServer implements Runnable, AutoCloseable {
 	/**
 	 * Adresse d'écoute
 	 */
-	private final String BIND_ADDRESS;
+	private final String bindAddress;
 	/**
 	 * Port d'écoute
 	 */
-	private final int PORT;
+	private final int port;
 	/**
 	 * Écouteur
 	 */
-	private final Listener LISTENER;
+	private final Listener listener;
 	/**
 	 * Fil du serveur
 	 */
-	private final Thread THREAD;
+	private final Thread thread;
 	/**
 	 * Socket d'écoute
 	 */
@@ -114,60 +114,60 @@ public class GameServer implements Runnable, AutoCloseable {
 	 * @param listener Écouteur
 	 */
 	public GameServer(String bindAddress, int port, Listener listener) {
-		BIND_ADDRESS = bindAddress;
-		PORT = port;
-		LISTENER = listener;
-		THREAD = new Thread(this, "serveur-tcp-" + port);
-		THREAD.setDaemon(true);
+		this.bindAddress = bindAddress;
+		this.port = port;
+		this.listener = listener;
+		thread = new Thread(this, "serveur-tcp-" + port);
+		thread.setDaemon(true);
 	}
 
 	/**
 	 * Démarre le fil du serveur
 	 */
 	public void start() {
-		THREAD.start();
+		thread.start();
 	}
 
 	/**
 	 * Retourne le port d'écoute
 	 * @return Port
 	 */
-	public int getPort() { return PORT; }
+	public int getPort() { return port; }
 
 	/**
 	 * Retourne l'adresse d'écoute
 	 * @return Adresse
 	 */
-	public String getBindAddress() { return BIND_ADDRESS; }
+	public String getBindAddress() { return bindAddress; }
 
 	@Override
 	public void run() {
 		try (ServerSocket server = new ServerSocket()) {
 			server.setReuseAddress(true);
 			// File d'attente réduite à 1 : une seconde connexion pendant une partie est refusée
-			server.bind(new InetSocketAddress(InetAddress.getByName(BIND_ADDRESS), PORT), 1);
+			server.bind(new InetSocketAddress(InetAddress.getByName(bindAddress), port), 1);
 			serverSocket = server;
-			LISTENER.onStatus("En attente du serveur web (" + BIND_ADDRESS + ":" + PORT + ")", false);
+			listener.onStatus("En attente du serveur web (" + bindAddress + ":" + port + ")", false);
 
 			while (!closed) {
 				try (Socket socket = server.accept()) {
 					client = socket;
 					if (closed) break;
 					socket.setTcpNoDelay(true);
-					LISTENER.onStatus("Serveur web connecté : " + socket.getRemoteSocketAddress(), false);
+					listener.onStatus("Serveur web connecté : " + socket.getRemoteSocketAddress(), false);
 					handle(socket);
 				} catch (IOException e) {
 					if (closed) break;
 					LOGGER.log(Level.WARNING, "Erreur de connexion avec le serveur web", e);
-					LISTENER.onStatus("Erreur de connexion : " + e.getMessage(), true);
+					listener.onStatus("Erreur de connexion : " + e.getMessage(), true);
 				} finally {
 					client = null;
 				}
 			}
 		} catch (IOException e) {
 			if (!closed) {
-				LOGGER.log(Level.SEVERE, "Impossible d'écouter sur " + BIND_ADDRESS + ":" + PORT, e);
-				LISTENER.onStatus("Impossible d'écouter sur " + BIND_ADDRESS + ":" + PORT + " : " + e.getMessage(), true);
+				LOGGER.log(Level.SEVERE, "Impossible d'écouter sur " + bindAddress + ":" + port, e);
+				listener.onStatus("Impossible d'écouter sur " + bindAddress + ":" + port + " : " + e.getMessage(), true);
 			}
 		}
 	}
@@ -186,7 +186,7 @@ public class GameServer implements Runnable, AutoCloseable {
 		try {
 			players = Protocol.readHandshake(in);
 		} catch (SocketTimeoutException e) {
-			LISTENER.onStatus("Poignée de main non terminée en " + HANDSHAKE_TIMEOUT_MS / 1000 + " s, connexion fermée", true);
+			listener.onStatus("Poignée de main non terminée en " + HANDSHAKE_TIMEOUT_MS / 1000 + " s, connexion fermée", true);
 			return;
 		}
 		// Après la poignée de main, les lectures restent bornées : un client muet ne bloque pas le serveur
@@ -194,15 +194,15 @@ public class GameServer implements Runnable, AutoCloseable {
 		socket.setSoTimeout(READ_TIMEOUT_MS);
 
 		String refusal = Protocol.validatePlayers(players);
-		Board board = refusal == null ? LISTENER.onGameRequested(players) : null;
+		Board board = refusal == null ? listener.onGameRequested(players) : null;
 
 		out.writeBoolean(board != null);
 		out.flush();
 		if (board == null) {
-			LISTENER.onStatus("Partie refusée : " + (refusal != null ? refusal : "le jeu n'est pas prêt"), true);
+			listener.onStatus("Partie refusée : " + (refusal != null ? refusal : "le jeu n'est pas prêt"), true);
 			return;
 		}
-		LISTENER.onStatus("Partie lancée avec " + players.size() + " joueur(s)", false);
+		listener.onStatus("Partie lancée avec " + players.size() + " joueur(s)", false);
 
 		stopRequested = false;
 		try {
@@ -211,15 +211,15 @@ public class GameServer implements Runnable, AutoCloseable {
 			if (closed) return;
 			if (stopRequested) {
 				LOGGER.log(Level.FINE, "Connexion fermée après l'arrêt de la partie", e);
-				LISTENER.onStatus("Partie arrêtée par l'administrateur", false);
+				listener.onStatus("Partie arrêtée par l'administrateur", false);
 			} else if (board.getSnapshot().isOver()) {
 				LOGGER.log(Level.FINE, "Connexion fermée après la fin de la partie", e);
-				LISTENER.onStatus("Partie terminée, serveur web déconnecté", false);
+				listener.onStatus("Partie terminée, serveur web déconnecté", false);
 			} else {
 				boolean closedByPeer = e instanceof EOFException || e instanceof SocketException || e instanceof SocketTimeoutException;
 				LOGGER.log(closedByPeer ? Level.FINE : Level.WARNING, "Échange interrompu avec le serveur web", e);
-				LISTENER.onConnectionLost(board);
-				LISTENER.onStatus("Connexion avec le serveur web perdue", true);
+				listener.onConnectionLost(board);
+				listener.onStatus("Connexion avec le serveur web perdue", true);
 			}
 		}
 	}
@@ -273,7 +273,7 @@ public class GameServer implements Runnable, AutoCloseable {
 			}
 		}
 		try {
-			THREAD.join(1000);
+			thread.join(1000);
 		} catch (InterruptedException e) {
 			Thread.currentThread().interrupt();
 		}
@@ -288,7 +288,7 @@ public class GameServer implements Runnable, AutoCloseable {
 		/**
 		 * Connexion lue
 		 */
-		private final Socket SOCKET;
+		private final Socket socket;
 		/**
 		 * Échéance (System.nanoTime), 0 si aucune
 		 */
@@ -296,7 +296,7 @@ public class GameServer implements Runnable, AutoCloseable {
 
 		DeadlineInputStream(Socket socket, long deadline) throws IOException {
 			super(socket.getInputStream());
-			SOCKET = socket;
+			this.socket = socket;
 			this.deadline = deadline;
 		}
 
@@ -306,14 +306,14 @@ public class GameServer implements Runnable, AutoCloseable {
 		 */
 		void clearDeadline() throws SocketException {
 			deadline = 0;
-			SOCKET.setSoTimeout(0);
+			socket.setSoTimeout(0);
 		}
 
 		private void arm() throws IOException {
 			if (deadline == 0) return;
 			long left = (deadline - System.nanoTime()) / 1_000_000L;
 			if (left <= 0) throw new SocketTimeoutException("Échéance de la poignée de main dépassée");
-			SOCKET.setSoTimeout((int)left);
+			socket.setSoTimeout((int)left);
 		}
 
 		@Override

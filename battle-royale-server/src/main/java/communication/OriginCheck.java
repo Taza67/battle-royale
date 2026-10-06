@@ -22,7 +22,7 @@ import javax.servlet.http.HttpServletRequest;
  *
  */
 public final class OriginCheck {
-	private static final Logger LOG = Logger.getLogger(OriginCheck.class.getName());
+	private static final Logger LOGGER = Logger.getLogger(OriginCheck.class.getName());
 	private static final ThreadLocal<HttpServletRequest> CURRENT = new ThreadLocal<>();
 
 	private OriginCheck() {}
@@ -62,12 +62,12 @@ public final class OriginCheck {
 			return true;
 		HttpServletRequest request = CURRENT.get();
 		if (request == null) {
-			LOG.warning(() -> "Origine " + origin + " refusée : requête de poignée de main inconnue");
+			LOGGER.warning(() -> "Origine " + origin + " refusée : requête de poignée de main inconnue");
 			return false;
 		}
 		boolean allowed = allows(origin, request.getHeader("Host"), effectiveScheme(request));
 		if (!allowed)
-			LOG.warning(() -> "Connexion WebSocket refusée : origine " + origin + " différente de l'hôte "
+			LOGGER.warning(() -> "Connexion WebSocket refusée : origine " + origin + " différente de l'hôte "
 				+ request.getHeader("Host"));
 		return allowed;
 	}
