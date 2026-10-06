@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.logging.Logger;
 
 import inside.Board.PlayerSpec;
 import inside.BoardSnapshot;
@@ -59,6 +60,8 @@ public final class Protocol implements IConfig {
 	 * Taille maximale acceptée pour un bloc d'actions
 	 */
 	public static final int MAX_ACTIONS_SIZE = 1 << 16;
+
+	private static final Logger LOGGER = Logger.getLogger(Protocol.class.getName());
 
 	private Protocol() {}
 
@@ -117,7 +120,8 @@ public final class Protocol implements IConfig {
 	}
 
 	/**
-	 * Vérifie un pseudo annoncé : non vide, au plus {@value IConfig#PSEUDO_MAX_LENGTH} caractères, sans caractère de contrôle
+	 * Vérifie un pseudo annoncé : non vide, au plus {@value IConfig#PSEUDO_MAX_LENGTH} caractères,
+	 * sans caractère de contrôle et composé de caractères réellement affichables par le jeu (Latin-1)
 	 * @param pseudo Pseudo
 	 * @return null si le pseudo est valide, sinon la raison du refus
 	 */
@@ -127,11 +131,14 @@ public final class Protocol implements IConfig {
 			return "pseudo de plus de " + PSEUDO_MAX_LENGTH + " caractères";
 		if (pseudo.codePoints().anyMatch(c -> Character.isISOControl(c) || Character.getType(c) == Character.FORMAT))
 			return "pseudo avec des caractères de contrôle";
+		if (pseudo.codePoints().anyMatch(c -> c > 0xFF))
+			return "pseudo avec des caractères non affichables";
 		return null;
 	}
 
 	/**
-	 * Décode un bloc d'actions. Un bloc tronqué ou un type d'action inconnu arrête le décodage.
+	 * Décode un bloc d'actions. Un bloc tronqué ou un type d'action inconnu arrête le décodage ;
+	 * les octets ignorés sont journalisés.
 	 * @param data Octets d'actions
 	 * @return Commandes décodées, dans l'ordre
 	 */
@@ -154,6 +161,9 @@ public final class Protocol implements IConfig {
 				break;
 			}
 		}
+
+		if (i < data.length)
+			LOGGER.fine(data.length - i + " octet(s) d'actions ignorés (bloc tronqué ou type inconnu)");
 
 		return commands;
 	}
