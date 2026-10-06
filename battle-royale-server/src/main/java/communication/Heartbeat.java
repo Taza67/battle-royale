@@ -5,6 +5,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  * Envoie périodiquement un ping WebSocket à toutes les connexions ouvertes,
@@ -18,6 +20,7 @@ final class Heartbeat implements AutoCloseable {
 	 */
 	static final long PING_INTERVAL_MILLIS = 10_000;
 
+	private static final Logger LOG = Logger.getLogger(Heartbeat.class.getName());
 	private static final Heartbeat SHARED = new Heartbeat(PING_INTERVAL_MILLIS);
 
 	private final Set<WebSocketConnection> connections = ConcurrentHashMap.newKeySet();
@@ -69,10 +72,15 @@ final class Heartbeat implements AutoCloseable {
 	 */
 	private void beat() {
 		for (WebSocketConnection c : connections) {
-			if (c.isOpen())
-				c.ping();
-			else
-				connections.remove(c);
+			try {
+				if (c.isOpen())
+					c.ping();
+				else
+					connections.remove(c);
+			} catch (Throwable t) {
+				// Une erreur sur une connexion ne doit pas arrêter le planificateur
+				LOG.log(Level.WARNING, "Ping impossible vers " + c.id(), t);
+			}
 		}
 	}
 
