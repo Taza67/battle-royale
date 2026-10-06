@@ -79,7 +79,7 @@ public class Vertice {
 	 * @param v Point à soustraire
 	 * @return Nouveau point
 	 */
-	public Vertice substract(Vertice v) {
+	public Vertice subtract(Vertice v) {
 		return new Vertice(x - v.x, y - v.y);
 	}
 
@@ -106,7 +106,7 @@ public class Vertice {
 	 * @return Distance
 	 */
 	public float distance(Vertice v) {
-		return substract(v).length();
+		return subtract(v).length();
 	}
 
 	/**
