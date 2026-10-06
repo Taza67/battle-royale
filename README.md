@@ -1,128 +1,133 @@
-# Battle Royale
+<a id="readme-top"></a>
 
-Battle royale en vue de dessus pour un grand écran partagé : le jeu (Java, LWJGL/OpenGL) s'affiche sur un ordinateur, les joueurs se connectent avec leur téléphone, qui devient une manette web. Un panneau d'administration lance, met en pause et arrête les manches.
+[![Contributors][contributors-shield]][contributors-url]
+[![Issues][issues-shield]][issues-url]
+[![License][license-shield]][license-url]
+[![Java][java-shield]][java-url]
+
+<div align="center">
+
+<h3 align="center">battle-royale</h3>
+
+  <p align="center">
+    Battle royale en vue de dessus pour un grand écran partagé : le jeu Java/OpenGL s'affiche sur un ordinateur et chaque joueur utilise son téléphone comme manette web. Zone qui se resserre, tir et épée, robots, classement — jusqu'à 50 joueurs.
+    <br />
+    <br />
+    <a href="https://github.com/Taza67/battle-royale/issues/new?labels=bug">Report Bug</a>
+    &middot;
+    <a href="https://github.com/Taza67/battle-royale/issues/new?labels=enhancement">Request Feature</a>
+  </p>
+</div>
+
+<details>
+  <summary>Table of Contents</summary>
+  <ol>
+    <li>
+      <a href="#about-the-project">About The Project</a>
+      <ul>
+        <li><a href="#built-with">Built With</a></li>
+      </ul>
+    </li>
+    <li>
+      <a href="#getting-started">Getting Started</a>
+      <ul>
+        <li><a href="#prerequisites">Prerequisites</a></li>
+        <li><a href="#installation">Installation</a></li>
+      </ul>
+    </li>
+    <li><a href="#usage">Usage</a></li>
+    <li><a href="#contributing">Contributing</a></li>
+    <li><a href="#license">License</a></li>
+    <li><a href="#contact">Contact</a></li>
+  </ol>
+</details>
+
+## About The Project
+
+`battle-royale` est un battle royale jouable en groupe autour d'un écran partagé : le jeu (Java, LWJGL/OpenGL) tourne sur un ordinateur pendant que les joueurs se connectent depuis leur téléphone, qui devient une manette web avec joystick, boutons d'attaque, barre de vie et minicarte. Un panneau d'administration web lance, met en pause et arrête les manches.
+
+La simulation est autoritaire à pas fixe (60 Hz) avec snapshots immuables ; la zone sûre se resserre par vagues vers un centre aléatoire et la lave inflige des dégâts croissants hors zone. Robots pour compléter une partie, mode solo au clavier, spectateur, reconnexion par jeton de session, mode démonstration des pages web sans serveur (`?mock=1`).
 
 Projet initialement réalisé en équipe par Mourtaza Akil, Marie-Louise Desselier, Hany Bayazid et Kevin Lieske.
 
-## Fonctionnalités
+### Built With
 
-- Simulation autoritaire à pas fixe (60 Hz) sur un fil dédié, rendu découplé à partir d'instantanés immuables.
-- Déplacement à 8 directions et 5 vitesses, collisions avec glissement le long des obstacles, deux attaques (tir et coup au corps à corps) avec temps de recharge.
-- Zone sûre qui se resserre par vagues vers un centre aléatoire, dégâts croissants hors zone.
-- Robots pour compléter une partie, mode solo au clavier et mode spectateur.
-- HUD (vie, éliminations, survivants, zone et compte à rebours), fil des éliminations, minicarte, écran de fin et classement.
-- Manette web tactile : joystick, attaques, barre de vie, minicarte, reconnexion automatique avec jeton de reprise de session.
-- Panneau d'administration : liste des joueurs, commandes de manche, résultats ; mot de passe optionnel.
-- Mode démonstration sans serveur pour les pages web (`?mock=1`).
+* [Java](https://www.java.com/) 17
+* [LWJGL](https://www.lwjgl.org/) (OpenGL)
+* [Apache Tomcat](https://tomcat.apache.org/) (embarqué, WebSocket)
+* [Gradle](https://gradle.org/)
 
-## Architecture
+<p align="right"><a href="#readme-top" title="Retour en haut">↑</a></p>
 
-```text
-téléphones / navigateur ──WebSocket JSON──▶ battle-royale-server ──TCP binaire──▶ battle-royale-game
-   gamepad/  adminPanel/                    Tomcat embarqué :8080                  127.0.0.1:8000
-```
+## Getting Started
 
-| Module | Contenu |
-| --- | --- |
-| `battle-royale-game/` | Jeu : moteur (`inside`), rendu, son, entrées et serveur TCP (`outside`) |
-| `battle-royale-server/` | Serveur web : Tomcat embarqué, point d'accès WebSocket, liaison TCP avec le jeu, sessions |
-| `battle-royale-server/src/main/webapp/` | Pages web : accueil, manette (`gamepad/`), administration (`adminPanel/`), code partagé (`common/`) |
-| `docs/PROTOCOLE.md` | Contrat des deux protocoles (TCP jeu ↔ serveur, WebSocket serveur ↔ navigateur) |
+### Prerequisites
 
-## Prérequis
+* JDK 17 ou plus récent (le wrapper Gradle est fourni)
+* Une carte graphique compatible OpenGL 3.3 pour le jeu
 
-- JDK 17 ou plus récent (le wrapper Gradle est fourni, aucune autre installation n'est nécessaire).
-- Une carte graphique compatible OpenGL 3.3 pour le jeu.
-
-## Compiler et tester
+### Installation
 
 ```bash
+git clone https://github.com/Taza67/battle-royale.git
+cd battle-royale
 ./gradlew build
 ```
 
-La commande compile les deux modules, exécute les tests JUnit et produit les distributions dans `*/build/distributions/`.
+<p align="right"><a href="#readme-top" title="Retour en haut">↑</a></p>
 
-## Jouer en solo
+## Usage
 
-```bash
-./gradlew :battle-royale-game:run
+Partie solo au clavier, avec robots :
+
+```sh
+./gradlew :battle-royale-game:run --args="--mode solo --bots 9"
 ```
 
-| Touche | Action |
-| --- | --- |
-| `ZQSD`/`WASD` ou flèches | Se déplacer |
-| `Maj` | Courir |
-| `Espace` ou `J` | Tirer |
-| `K` ou `Entrée` | Coup au corps à corps |
-| `P` | Pause |
-| `Entrée` (écran de fin) | Nouvelle partie |
-| `F11` | Plein écran |
-| `Échap` | Quitter |
+Partie multijoueur avec manettes web :
 
-Quelques options (`--help` pour la liste complète) :
+```sh
+# terminal 1 : le serveur web (manettes + admin)
+./gradlew :battle-royale-server:run
 
-```bash
-./gradlew :battle-royale-game:run --args="--bots 7 --pseudo Taza"
-./gradlew :battle-royale-game:run --args="--spectate --seed 42"
+# terminal 2 : le jeu
+./gradlew :battle-royale-game:run --args="--mode multi"
 ```
 
-## Jouer en multijoueur
+Puis ouvrir `http://localhost:8080/battle-royale-server/` sur les téléphones (même réseau) et `http://localhost:8080/battle-royale-server/adminPanel/` pour administrer.
 
-1. Lancer le jeu sur l'ordinateur relié au grand écran :
+Touches : `ZQSD`/`WASD` ou flèches pour bouger, `Maj` courir, `Espace`/`J` tirer, `K`/`Entrée` coup d'épée, `P` pause, `F11` plein écran, `Échap` quitter.
 
-   ```bash
-   ./gradlew :battle-royale-game:run --args="--mode multi --bots 3"
-   ```
+Le contrat complet des deux protocoles (TCP jeu ↔ serveur, WebSocket serveur ↔ navigateur) est documenté dans [docs/PROTOCOLE.md](docs/PROTOCOLE.md).
 
-2. Lancer le serveur web (dans un autre terminal) :
+<p align="right"><a href="#readme-top" title="Retour en haut">↑</a></p>
 
-   ```bash
-   ./gradlew :battle-royale-server:run -Dbattle-royale.admin-password=motdepasse
-   ```
+## Contributing
 
-3. Les joueurs ouvrent `http://<adresse de l'ordinateur>:8080/battle-royale-server/gamepad/` sur leur téléphone (l'adresse est affichée dans la salle d'attente du jeu), choisissent un pseudo, puis l'administrateur lance la manche depuis `http://localhost:8080/battle-royale-server/adminPanel/`.
+Voir [CONTRIBUTING.md](CONTRIBUTING.md). Veuillez lire [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) avant de participer.
 
-### Options du jeu
+<p align="right"><a href="#readme-top" title="Retour en haut">↑</a></p>
 
-| Option | Rôle | Défaut |
-| --- | --- | --- |
-| `--mode solo\|multi` | Mode de jeu | `solo` |
-| `--bots N` | Nombre de robots | 9 en solo, 0 en multijoueur |
-| `--port P` | Port TCP attendu par le serveur web | `8000` |
-| `--bind ADRESSE` | Interface d'écoute (`0.0.0.0` si le serveur web tourne sur une autre machine) | `127.0.0.1` |
-| `--gamepad-url URL` | Adresse de la manette affichée dans la salle d'attente | `http://<adresse locale>:8080/battle-royale-server/gamepad/` |
-| `--warmup S` | Durée de l'échauffement en secondes | `12` |
-| `--seed N` | Graine de la carte, des zones et des robots | aléatoire |
-| `--no-sound`, `--window LxH` | Son désactivé, taille de la fenêtre | |
+## License
 
-### Réglages du serveur web
+Distribué sous la licence MIT. Voir [LICENSE](LICENSE) pour plus d'informations.
 
-Propriétés système, à passer avec `-D` à `./gradlew :battle-royale-server:run` ou dans `JAVA_OPTS` pour la distribution :
+<p align="right"><a href="#readme-top" title="Retour en haut">↑</a></p>
 
-| Propriété | Rôle | Défaut |
-| --- | --- | --- |
-| `battle-royale.port` | Port HTTP | `8080` |
-| `battle-royale.game-host` | Hôte du jeu | `localhost` |
-| `battle-royale.game-port` | Port TCP du jeu | `8000` |
-| `battle-royale.admin-password` | Mot de passe du panneau d'administration | aucun : la première session qui le réclame devient administratrice |
-| `battle-royale.webapp` | Répertoire des pages web | détecté automatiquement |
+## Contact
 
-### Distributions
+Taza67 - [tazaakil67@gmail.com](mailto:tazaakil67@gmail.com)
 
-```bash
-./gradlew installDist
-battle-royale-game/build/install/battle-royale-game/bin/battle-royale-game --mode multi
-JAVA_OPTS="-Dbattle-royale.admin-password=motdepasse" \
-  battle-royale-server/build/install/battle-royale-server/bin/battle-royale-server
-```
+Lien du projet : [https://github.com/Taza67/battle-royale](https://github.com/Taza67/battle-royale)
 
-## Pages web sans serveur
+<p align="right"><a href="#readme-top" title="Retour en haut">↑</a></p>
 
-Les pages fonctionnent sans jeu ni serveur avec un serveur factice intégré : `gamepad/?mock=1` et `adminPanel/?mock=1`.
-
-## Dépannage
-
-- **« Le jeu n'est pas lancé »** dans le panneau d'administration : démarrer le jeu en `--mode multi` avant de lancer la manche, et vérifier `battle-royale.game-host`/`game-port`.
-- **Les téléphones ne se connectent pas** : ils doivent être sur le même réseau que l'ordinateur et le port 8080 doit être ouvert dans le pare-feu.
-- **Serveur web sur une autre machine que le jeu** : lancer le jeu avec `--bind 0.0.0.0` et le serveur avec `-Dbattle-royale.game-host=<adresse du jeu>`. Le port du jeu n'est pas authentifié : ne l'exposer que sur un réseau de confiance.
-- **Pseudo déjà utilisé** après une coupure : la manette réessaie automatiquement pendant 30 s, le temps que le serveur détecte la connexion perdue.
+<!-- MARKDOWN LINKS & IMAGES -->
+[contributors-shield]: https://img.shields.io/github/contributors/Taza67/battle-royale.svg
+[contributors-url]: https://github.com/Taza67/battle-royale/graphs/contributors
+[issues-shield]: https://img.shields.io/github/issues/Taza67/battle-royale.svg
+[issues-url]: https://github.com/Taza67/battle-royale/issues
+[license-shield]: https://img.shields.io/badge/License-MIT-blue.svg
+[license-url]: https://github.com/Taza67/battle-royale/blob/main/LICENSE
+[java-shield]: https://img.shields.io/badge/Java%2017-ED8B00.svg?logo=openjdk&logoColor=white
+[java-url]: https://www.java.com/
