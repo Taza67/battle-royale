@@ -357,6 +357,40 @@ class GameSessionTest {
 	}
 
 	@Test
+	void sendsEveryChangeToTheAdminWithinHalfASecond() throws Exception {
+		session.claimAdmin(admin, "");
+		session.join(taza, "Taza");
+		game.state(SnapshotBytes.battle().counts(1, 1).player(0, 1, 90, 10, 10, 0, 0).build());
+		startRound();
+		awaitAdminLife(90, 1000);
+
+		for (int life : new int[] { 80, 79, 50, 49 }) {
+			long begin = System.nanoTime();
+			game.state(SnapshotBytes.battle().counts(1, 1).player(0, 1, life, 10, 10, 0, 0).build());
+			awaitAdminLife(life, GameSession.PLAYERS_INTERVAL_MILLIS + 300);
+			long elapsed = (System.nanoTime() - begin) / 1_000_000;
+			assertTrue(elapsed <= GameSession.PLAYERS_INTERVAL_MILLIS + 300, "vie " + life + " reçue après " + elapsed + " ms");
+		}
+		game.state(SnapshotBytes.battle().counts(0, 1).player(0, 0, 0, 10, 10, 0, 1).build());
+		long deadline = System.currentTimeMillis() + GameSession.PLAYERS_INTERVAL_MILLIS + 300;
+		JsonObject entry;
+		do {
+			entry = admin.next("players", Math.max(1, deadline - System.currentTimeMillis()))
+				.getAsJsonArray("players").get(0).getAsJsonObject();
+		} while (!"eliminated".equals(entry.get("status").getAsString()));
+	}
+
+	private void awaitAdminLife(int life, long timeoutMillis) throws InterruptedException {
+		long deadline = System.currentTimeMillis() + timeoutMillis;
+		while (true) {
+			JsonObject entry = admin.next("players", Math.max(1, deadline - System.currentTimeMillis()))
+				.getAsJsonArray("players").get(0).getAsJsonObject();
+			if (entry.get("life").getAsInt() == life)
+				return;
+		}
+	}
+
+	@Test
 	void stopsTheRoundAndAllowsANewOne() throws Exception {
 		session.claimAdmin(admin, "");
 		Player p0 = session.join(taza, "Taza");
