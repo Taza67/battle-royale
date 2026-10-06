@@ -2,9 +2,11 @@ package communication;
 
 import java.io.IOException;
 import java.net.SocketTimeoutException;
+import java.nio.ByteBuffer;
 import java.util.ArrayDeque;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -69,6 +71,7 @@ final class WebSocketConnection implements ClientConnection {
 	private final Session session;
 	private final String id;
 	private final ArrayDeque<Outgoing> queue = new ArrayDeque<>();
+	private final AtomicBoolean pinging = new AtomicBoolean();
 	private boolean sending;
 	private CloseReason closeRequest;
 
@@ -112,6 +115,25 @@ final class WebSocketConnection implements ClientConnection {
 	@Override
 	public void close(String reason) {
 		requestClose(new CloseReason(CloseReason.CloseCodes.NORMAL_CLOSURE, reason));
+	}
+
+	/**
+	 * Envoie un ping WebSocket, sauf si le précédent n'est pas encore parti ;
+	 * un ping en échec ferme la session
+	 */
+	void ping() {
+		if (!isOpen() || !pinging.compareAndSet(false, true))
+			return;
+		DISPATCHER.execute(() -> {
+			try {
+				session.getAsyncRemote().sendPing(ByteBuffer.allocate(0));
+			} catch (IOException | RuntimeException e) {
+				LOG.log(Level.FINE, "Ping impossible vers " + id, e);
+				fail(e);
+			} finally {
+				pinging.set(false);
+			}
+		});
 	}
 
 	/**

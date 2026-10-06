@@ -9,6 +9,8 @@ import javax.websocket.EndpointConfig;
 import javax.websocket.Session;
 import javax.websocket.server.ServerEndpointConfig;
 
+import org.apache.tomcat.websocket.Constants;
+
 import communication.message.ClientMessage;
 import communication.message.ClientMessageParser;
 import communication.message.InvalidMessageException;
@@ -33,6 +35,10 @@ public final class WebSocketServer extends Endpoint {
 	 * Taille maximale d'un message reçu, en octets
 	 */
 	public static final int MAX_MESSAGE_SIZE = 4096;
+	/**
+	 * Durée au bout de laquelle une session qui n'a rien envoyé (pas même un pong) est fermée
+	 */
+	public static final long IDLE_TIMEOUT_MILLIS = 30_000;
 	/**
 	 * Préfixe du refus envoyé pour un `join` invalide
 	 */
@@ -89,7 +95,10 @@ public final class WebSocketServer extends Endpoint {
 	public void onOpen(Session session, EndpointConfig config) {
 		connection = new WebSocketConnection(session);
 		session.setMaxTextMessageBufferSize(MAX_MESSAGE_SIZE);
+		session.setMaxIdleTimeout(IDLE_TIMEOUT_MILLIS);
+		session.getUserProperties().put(Constants.READ_IDLE_TIMEOUT_MS, Long.valueOf(IDLE_TIMEOUT_MILLIS));
 		session.addMessageHandler(String.class, this::onMessage);
+		Heartbeat.shared().register(connection);
 		LOG.fine(() -> "Nouvelle connexion " + connection.id());
 	}
 
@@ -195,6 +204,7 @@ public final class WebSocketServer extends Endpoint {
 	@Override
 	public void onClose(Session session, CloseReason closeReason) {
 		LOG.fine(() -> "Fermeture de " + connection.id() + " : " + closeReason.getCloseCode() + " " + closeReason.getReasonPhrase());
+		Heartbeat.shared().unregister(connection);
 		release();
 	}
 

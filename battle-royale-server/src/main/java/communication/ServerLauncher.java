@@ -15,6 +15,7 @@ import org.apache.catalina.Wrapper;
 import org.apache.catalina.servlets.DefaultServlet;
 import org.apache.catalina.startup.Tomcat;
 import org.apache.tomcat.util.scan.StandardJarScanner;
+import org.apache.tomcat.websocket.BackgroundProcess;
 
 import communication.session.GameSession;
 
@@ -103,6 +104,8 @@ public class ServerLauncher {
 			Object container = context.getServletContext().getAttribute(ServerContainer.class.getName());
 			if (!(container instanceof ServerContainer))
 				throw new IllegalStateException("Conteneur WebSocket indisponible");
+			if (container instanceof BackgroundProcess process)
+				process.setProcessPeriod(1);
 			((ServerContainer) container).addEndpoint(WebSocketServer.config(game));
 		} catch (DeploymentException | RuntimeException e) {
 			destroyQuietly(tomcat);

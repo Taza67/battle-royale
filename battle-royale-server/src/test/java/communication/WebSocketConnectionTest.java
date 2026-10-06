@@ -90,4 +90,19 @@ class WebSocketConnectionTest {
 		assertEquals(CloseReason.CloseCodes.NORMAL_CLOSURE, reason.getCloseCode());
 		assertEquals("Session reprise", reason.getReasonPhrase());
 	}
+
+	@Test
+	void pingsAndClosesTheSessionWhenThePingFails() throws Exception {
+		connection.ping();
+		long deadline = System.currentTimeMillis() + 1000;
+		while (fake.pings() == 0 && System.currentTimeMillis() < deadline)
+			Thread.sleep(10);
+		assertEquals(1, fake.pings());
+
+		fake.failPings();
+		Thread.sleep(50);
+		connection.ping();
+		assertEquals(CloseReason.CloseCodes.UNEXPECTED_CONDITION, fake.awaitClose(1000).getCloseCode());
+		assertFalse(connection.isOpen());
+	}
 }

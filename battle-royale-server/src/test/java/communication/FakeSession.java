@@ -67,6 +67,9 @@ final class FakeSession {
 						return async;
 					case "getUserProperties":
 						return userProperties;
+					case "setMaxTextMessageBufferSize":
+					case "addMessageHandler":
+						return null;
 					case "setMaxIdleTimeout":
 						maxIdleTimeout = ((Long) args[0]).intValue();
 						return null;
