@@ -571,6 +571,12 @@ public class Board implements IConfig {
 			return;
 		}
 
+		// Portée épuisée : la balle s'arrête avant de pouvoir toucher qui que ce soit
+		if (b.isOutOfRange()) {
+			b.destroy();
+			return;
+		}
+
 		for (Player target : MAP.playersNear(r.expand(PLAYER_RADIUS_X))) {
 			if (target.getID() == b.getOwnerId() || !target.getIsAlive() || !target.getRepresentation().intersect(r)) continue;
 
@@ -580,8 +586,6 @@ public class Board implements IConfig {
 			b.destroy();
 			return;
 		}
-
-		if (b.isOutOfRange()) b.destroy();
 	}
 
 	/**
