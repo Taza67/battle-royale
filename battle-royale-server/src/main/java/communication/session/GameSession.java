@@ -30,6 +30,8 @@ import communication.message.ClientMessage;
 import communication.message.Json;
 import communication.message.ServerMessage;
 
+import protocol.GameProtocol;
+
 /**
  * État partagé de la partie : joueurs inscrits, administrateur, état de la manche
  * et lien avec le jeu. Toutes les méthodes publiques sont thread-safe ; l'état est
@@ -40,8 +42,9 @@ import communication.message.ServerMessage;
 public final class GameSession implements AutoCloseable {
 	/**
 	 * Nombre maximal de joueurs (une image par identifiant dans le panneau d'administration)
+	 * @see GameProtocol#MAX_PLAYERS
 	 */
-	public static final int MAX_PLAYERS = 50;
+	public static final int MAX_PLAYERS = GameProtocol.MAX_PLAYERS;
 	/**
 	 * Points de vie affichés avant le premier état reçu du jeu
 	 */

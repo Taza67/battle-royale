@@ -102,7 +102,7 @@ public final class Protocol implements IConfig {
 		if (start != START) throw new ProtocolException("Code de démarrage inattendu : " + start);
 
 		int n = in.readInt();
-		if (n < 0 || n > MAX_PLAYERS) throw new ProtocolException("Nombre de joueurs invalide : " + n);
+		if (n < 0 || n > GameProtocol.MAX_PLAYERS) throw new ProtocolException("Nombre de joueurs invalide : " + n);
 
 		List<PlayerSpec> players = new ArrayList<>(n);
 		for (int i = 0; i < n; i++) {
@@ -122,7 +122,7 @@ public final class Protocol implements IConfig {
 		if (players.isEmpty()) return "aucun joueur";
 		Set<Integer> ids = new HashSet<>();
 		for (PlayerSpec p : players) {
-			if (p.id() < 0 || p.id() >= MAX_PLAYERS) return "identifiant invalide : " + p.id();
+			if (p.id() < 0 || p.id() >= GameProtocol.MAX_PLAYERS) return "identifiant invalide : " + p.id();
 			if (!ids.add(p.id())) return "identifiant en double : " + p.id();
 			String refusal = checkPseudo(p.pseudo());
 			if (refusal != null) return refusal + " (joueur " + p.id() + ")";
@@ -260,12 +260,12 @@ public final class Protocol implements IConfig {
 	}
 
 	/**
-	 * Borne une valeur dans l'intervalle d'un octet signé positif
+	 * Borne une valeur dans l'intervalle d'un octet non signé
 	 * @param v Valeur
-	 * @return Valeur entre 0 et 127
+	 * @return Valeur entre 0 et 255
 	 */
 	private static int clampByte(int v) {
-		return Math.max(0, Math.min(Byte.MAX_VALUE, v));
+		return Math.max(0, Math.min(GameProtocol.UNSIGNED_BYTE_MAX, v));
 	}
 
 	/**

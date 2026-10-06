@@ -20,7 +20,11 @@ import inside.DamageCause;
 import inside.GameSettings;
 import inside.IConfig;
 import inside.Map;
+import inside.Phase;
+import inside.SafeZone;
 import inside.geometry.Rectangle;
+
+import protocol.GameProtocol;
 
 class ProtocolTest implements IConfig {
 
@@ -156,6 +160,39 @@ class ProtocolTest implements IConfig {
 		assertEquals(2, state[Protocol.HEADER_SIZE + 1], "statut vainqueur");
 		assertEquals(1, state[Protocol.HEADER_SIZE + 8], "classement du vainqueur");
 		assertEquals(2, state[Protocol.HEADER_SIZE + Protocol.PLAYER_SIZE + 8], "classement du perdant");
+	}
+
+	@Test
+	void constantesDuContratPartage() {
+		assertEquals(GameProtocol.START, Protocol.START);
+		assertEquals(GameProtocol.PAUSE, Protocol.PAUSE);
+		assertEquals(GameProtocol.STOP, Protocol.STOP);
+		assertEquals(GameProtocol.RESUME, Protocol.RESUME);
+		assertEquals(GameProtocol.ACTION_MOVE, Protocol.ACTION_MOVE);
+		assertEquals(GameProtocol.ACTION_ATTACK, Protocol.ACTION_ATTACK);
+		assertEquals(GameProtocol.HEADER_SIZE, Protocol.HEADER_SIZE);
+		assertEquals(GameProtocol.PLAYER_SIZE, Protocol.PLAYER_SIZE);
+		assertEquals(GameProtocol.MAX_ACTIONS_SIZE, Protocol.MAX_ACTIONS_SIZE);
+	}
+
+	@Test
+	void borneLesChampsDeLEtatAUnOctetNonSigne() {
+		// Les champs d'un octet sont lus en non signé (0-255) par le serveur :
+		// l'encodeur borne donc à 255, pas à 127
+		BoardSnapshot s = new BoardSnapshot(0, Phase.BATTLE, false, false, 300, 400, -1,
+			new Rectangle(0, 0, 1280, 720), new Rectangle(0, 0, 100, 100), SafeZone.Stage.WAITING, 30, 0, 0, 0,
+			List.of(new PlayerState(1, "A", false, 10f, 20f, 400, true, false, 300, 0, 0, false, -1f, -1, false, 0, 0, -1, 0),
+				new PlayerState(2, "B", false, 30f, 40f, -5, true, false, -3, 0, 0, false, -1f, -1, false, 0, 0, -1, 0)),
+			List.of(), List.of());
+		byte[] state = Protocol.encodeState(s);
+
+		assertEquals(255, state[1] & 0xFF, "vivants bornés à 255");
+		assertEquals(255, state[2] & 0xFF, "total borné à 255");
+		int first = Protocol.HEADER_SIZE, second = first + Protocol.PLAYER_SIZE;
+		assertEquals(255, state[first + 2] & 0xFF, "points de vie bornés à 255");
+		assertEquals(255, state[first + 7] & 0xFF, "éliminations bornées à 255");
+		assertEquals(0, state[second + 2], "points de vie négatifs bornés à 0");
+		assertEquals(0, state[second + 7], "éliminations négatives bornées à 0");
 	}
 
 	@Test
