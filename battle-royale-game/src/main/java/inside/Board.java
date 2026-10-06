@@ -11,6 +11,7 @@ import java.util.Queue;
 import java.util.Random;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.logging.Logger;
 
 import inside.BoardSnapshot.BulletState;
 import inside.BoardSnapshot.KillFeedEntry;
@@ -38,6 +39,8 @@ public class Board implements IConfig {
 	 */
 	public record PlayerSpec(int id, String pseudo, boolean bot) {}
 
+	private static final Logger LOGGER = Logger.getLogger(Board.class.getName());
+
 	/**
 	 * Nombre d'éliminations conservées dans le fil des éliminations
 	 */
@@ -46,6 +49,10 @@ public class Board implements IConfig {
 	 * Nombre maximal d'événements conservés en attente de lecture
 	 */
 	private static final int MAX_PENDING_EVENTS = 2048;
+	/**
+	 * Nombre maximal de commandes en attente (les plus anciennes sont abandonnées au-delà)
+	 */
+	private static final int MAX_PENDING_COMMANDS = 4096;
 	/**
 	 * Profondeur de chevauchement en dessous de laquelle deux éléments sont considérés en contact (arrondis)
 	 */
@@ -200,7 +207,12 @@ public class Board implements IConfig {
 	 * @param c Commande
 	 */
 	public void enqueue(Command c) {
-		if (c != null) COMMANDS.add(c);
+		if (c == null) return;
+		if (COMMANDS.size() >= MAX_PENDING_COMMANDS) {
+			COMMANDS.poll();
+			LOGGER.fine("File de commandes saturée : la plus ancienne commande est abandonnée");
+		}
+		COMMANDS.add(c);
 	}
 
 	/**
