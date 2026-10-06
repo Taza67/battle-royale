@@ -346,7 +346,7 @@ public class Game implements IConfig {
 	 * Démarre le serveur TCP du mode multijoueur
 	 */
 	private void startServer() {
-		server = new GameServer(OPTIONS.port(), new GameServer.Listener() {
+		server = new GameServer(OPTIONS.bind(), OPTIONS.port(), new GameServer.Listener() {
 			@Override
 			public Board onGameRequested(List<PlayerSpec> players) {
 				Board b = createMultiBoard(players);

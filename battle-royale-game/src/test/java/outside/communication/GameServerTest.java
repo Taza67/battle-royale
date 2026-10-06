@@ -1,6 +1,7 @@
 package outside.communication;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assumptions.assumeFalse;
 
 import java.io.BufferedInputStream;
 import java.io.DataInputStream;
@@ -27,7 +28,7 @@ import inside.IConfig;
 import inside.Phase;
 
 /**
- * Faux serveur web qui se connecte au serveur TCP du jeu (ports 38000 à 38099 uniquement)
+ * Faux serveur web qui se connecte au serveur TCP du jeu (ports 38200 à 38219 uniquement)
  */
 @Timeout(20)
 class GameServerTest implements IConfig {
@@ -37,7 +38,11 @@ class GameServerTest implements IConfig {
 	private final CountDownLatch lost = new CountDownLatch(1);
 
 	private GameServer start(int port) {
-		server = new GameServer(port, new GameServer.Listener() {
+		return start(GameServer.DEFAULT_BIND_ADDRESS, port);
+	}
+
+	private GameServer start(String bind, int port) {
+		server = new GameServer(bind, port, new GameServer.Listener() {
 			@Override
 			public Board onGameRequested(List<PlayerSpec> players) {
 				Board b = new Board(GameSettings.defaults(1).withWarmup(0), players);
@@ -65,9 +70,13 @@ class GameServerTest implements IConfig {
 	}
 
 	private static Socket connect(int port) throws IOException, InterruptedException {
+		return connect("127.0.0.1", port);
+	}
+
+	private static Socket connect(String host, int port) throws IOException, InterruptedException {
 		for (int i = 0; i < 100; i++) {
 			try {
-				return new Socket("127.0.0.1", port);
+				return new Socket(host, port);
 			} catch (ConnectException e) {
 				Thread.sleep(20);
 			}
@@ -109,8 +118,8 @@ class GameServerTest implements IConfig {
 
 	@Test
 	void partieCompleteAvecPauseRepriseEtArret() throws Exception {
-		start(38000);
-		try (Socket s = connect(38000)) {
+		start(38200);
+		try (Socket s = connect(38200)) {
 			DataOutputStream out = new DataOutputStream(s.getOutputStream());
 			DataInputStream in = new DataInputStream(new BufferedInputStream(s.getInputStream()));
 
@@ -167,8 +176,8 @@ class GameServerTest implements IConfig {
 
 	@Test
 	void poigneeDeMainRefuseeAvecIdentifiantsEnDouble() throws Exception {
-		start(38001);
-		try (Socket s = connect(38001)) {
+		start(38201);
+		try (Socket s = connect(38201)) {
 			DataOutputStream out = new DataOutputStream(s.getOutputStream());
 			DataInputStream in = new DataInputStream(s.getInputStream());
 			handshake(out, 1, "A", 1, "B");
@@ -178,7 +187,7 @@ class GameServerTest implements IConfig {
 		assertNull(board.get());
 
 		// Le serveur accepte une nouvelle connexion ensuite
-		try (Socket s = connect(38001)) {
+		try (Socket s = connect(38201)) {
 			DataOutputStream out = new DataOutputStream(s.getOutputStream());
 			DataInputStream in = new DataInputStream(s.getInputStream());
 			handshake(out, 1, "A", 2, "B");
@@ -188,8 +197,8 @@ class GameServerTest implements IConfig {
 
 	@Test
 	void perteDeConnexionSignalee() throws Exception {
-		start(38002);
-		try (Socket s = connect(38002)) {
+		start(38202);
+		try (Socket s = connect(38202)) {
 			DataOutputStream out = new DataOutputStream(s.getOutputStream());
 			DataInputStream in = new DataInputStream(s.getInputStream());
 			handshake(out, 0, "A", 1, "B");
@@ -201,13 +210,30 @@ class GameServerTest implements IConfig {
 
 	@Test
 	void fermetureDuServeurLibereLePort() throws Exception {
-		start(38003);
-		connect(38003).close();
+		start(38203);
+		connect(38203).close();
 		server.close();
 		server = null;
 
-		start(38003);
-		try (Socket s = connect(38003)) {
+		start(38203);
+		try (Socket s = connect(38203)) {
+			assertTrue(s.isConnected());
+		}
+	}
+
+	@Test
+	void ecouteSeulementEnLocalParDefaut() throws Exception {
+		String lan = NetworkUtilities.lanIPv4();
+		assumeFalse(lan.equals("localhost"), "aucune adresse réseau locale");
+
+		start(38204);
+		connect(38204).close();
+		assertThrows(ConnectException.class, () -> new Socket(lan, 38204).close(), "injoignable depuis " + lan);
+		server.close();
+		server = null;
+
+		start("0.0.0.0", 38204);
+		try (Socket s = connect(lan, 38204)) {
 			assertTrue(s.isConnected());
 		}
 	}

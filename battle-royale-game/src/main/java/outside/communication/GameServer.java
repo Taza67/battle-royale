@@ -6,6 +6,7 @@ import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.EOFException;
 import java.io.IOException;
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -31,6 +32,10 @@ public class GameServer implements Runnable, AutoCloseable {
 	 * Journal du serveur
 	 */
 	private static final Logger LOGGER = Logger.getLogger(GameServer.class.getName());
+	/**
+	 * Adresse d'écoute par défaut : seul le serveur web lancé sur la même machine peut se connecter
+	 */
+	public static final String DEFAULT_BIND_ADDRESS = "127.0.0.1";
 
 	/**
 	 * Écouteur des événements du serveur (appelé depuis le fil réseau)
@@ -57,6 +62,10 @@ public class GameServer implements Runnable, AutoCloseable {
 		void onConnectionLost(Board board);
 	}
 
+	/**
+	 * Adresse d'écoute
+	 */
+	private final String BIND_ADDRESS;
 	/**
 	 * Port d'écoute
 	 */
@@ -85,10 +94,12 @@ public class GameServer implements Runnable, AutoCloseable {
 
 	/**
 	 * Construit le serveur (sans le démarrer)
+	 * @param bindAddress Adresse d'écoute (par exemple {@value #DEFAULT_BIND_ADDRESS} ou 0.0.0.0)
 	 * @param port Port d'écoute
 	 * @param listener Écouteur
 	 */
-	public GameServer(int port, Listener listener) {
+	public GameServer(String bindAddress, int port, Listener listener) {
+		BIND_ADDRESS = bindAddress;
 		PORT = port;
 		LISTENER = listener;
 		THREAD = new Thread(this, "serveur-tcp-" + port);
@@ -108,13 +119,19 @@ public class GameServer implements Runnable, AutoCloseable {
 	 */
 	public int getPort() { return PORT; }
 
+	/**
+	 * Retourne l'adresse d'écoute
+	 * @return Adresse
+	 */
+	public String getBindAddress() { return BIND_ADDRESS; }
+
 	@Override
 	public void run() {
 		try (ServerSocket server = new ServerSocket()) {
 			server.setReuseAddress(true);
-			server.bind(new InetSocketAddress(PORT));
+			server.bind(new InetSocketAddress(InetAddress.getByName(BIND_ADDRESS), PORT));
 			serverSocket = server;
-			LISTENER.onStatus("En attente du serveur web (port " + PORT + ")", false);
+			LISTENER.onStatus("En attente du serveur web (" + BIND_ADDRESS + ":" + PORT + ")", false);
 
 			while (!closed) {
 				try (Socket socket = server.accept()) {
@@ -132,8 +149,8 @@ public class GameServer implements Runnable, AutoCloseable {
 			}
 		} catch (IOException e) {
 			if (!closed) {
-				LOGGER.log(Level.SEVERE, "Impossible d'écouter sur le port " + PORT, e);
-				LISTENER.onStatus("Impossible d'écouter sur le port " + PORT + " : " + e.getMessage(), true);
+				LOGGER.log(Level.SEVERE, "Impossible d'écouter sur " + BIND_ADDRESS + ":" + PORT, e);
+				LISTENER.onStatus("Impossible d'écouter sur " + BIND_ADDRESS + ":" + PORT + " : " + e.getMessage(), true);
 			}
 		}
 	}
