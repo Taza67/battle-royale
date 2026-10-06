@@ -112,6 +112,30 @@ public class BotController {
 	 * Champ de perception de base et part modulée par le tempérament
 	 */
 	private static final float PERCEPTION_BASE = 0.35f, PERCEPTION_AGGRESSION = 0.65f;
+	/**
+	 * Tempérament minimal d'un robot et amplitude du tirage (dans [0,2 ; 1])
+	 */
+	private static final float AGGRESSION_MIN = 0.2f, AGGRESSION_SPREAD = 0.8f;
+	/**
+	 * Nombre de crans de détour (45°) essayés de chaque côté avant de faire demi-tour
+	 */
+	private static final int MAX_DETOUR_STEPS = 3;
+	/**
+	 * Niveau de vitesse de poursuite ou de fuite (le plus rapide)
+	 */
+	private static final int SPEED_RUSH = MAX_SPEED_LEVEL;
+	/**
+	 * Niveau de vitesse de déplacement tactique (chasse, repositionnement)
+	 */
+	private static final int SPEED_TACTICAL = 3;
+	/**
+	 * Niveau de vitesse d'errance
+	 */
+	private static final int SPEED_WANDER = 2;
+	/**
+	 * Niveau de vitesse d'approche au contact
+	 */
+	private static final int SPEED_CONTACT = 1;
 
 	/**
 	 * Prénoms des robots
@@ -211,7 +235,7 @@ public class BotController {
 		Memory m = memories.computeIfAbsent(bot.getId(), id -> {
 			Memory mem = new Memory();
 			mem.turn = random.nextBoolean() ? 1 : -1;
-			mem.aggression = 0.2f + 0.8f * random.nextFloat();
+			mem.aggression = AGGRESSION_MIN + AGGRESSION_SPREAD * random.nextFloat();
 			mem.lastX = bot.getX();
 			mem.lastY = bot.getY();
 			return mem;
@@ -219,7 +243,7 @@ public class BotController {
 
 		updateStuck(bot, m, now);
 		if (m.escapeDirection >= 0 && now < m.escapeUntil) {
-			move(bot, m.escapeDirection, 4);
+			move(bot, m.escapeDirection, SPEED_RUSH);
 			return;
 		}
 
@@ -229,7 +253,7 @@ public class BotController {
 
 		// 1. Retour dans la zone sûre
 		if (battle && !safe.expand(-ZONE_MARGIN / 2).contains(bot.getX(), bot.getY())) {
-			goTo(bot, m, safe.getCenterX(), safe.getCenterY(), 4);
+			goTo(bot, m, safe.getCenterX(), safe.getCenterY(), SPEED_RUSH);
 			return;
 		}
 
@@ -245,7 +269,7 @@ public class BotController {
 		// 2. Fuite quand le robot est affaibli
 		if (bot.getLifePoints() < FLEE_LIFE && enemy.getLifePoints() >= bot.getLifePoints() && distance < VISION_RANGE * FLEE_RANGE_FACTOR) {
 			Vertice fallback = fallBackInside(safe, bot.getX() - dx, bot.getY() - dy);
-			goTo(bot, m, fallback.getX(), fallback.getY(), 4);
+			goTo(bot, m, fallback.getX(), fallback.getY(), SPEED_RUSH);
 			tryShoot(bot, dx, dy, distance);
 			return;
 		}
@@ -263,14 +287,14 @@ public class BotController {
 		if (distance < CONTACT_RANGE) {
 			int d = Direction.fromVector(dx, dy);
 			m.stuck = 0;
-			move(bot, d, 1);
+			move(bot, d, SPEED_CONTACT);
 			if (bot.getWeapon().canSwing()) board.enqueue(new Command.Attack(bot.getId(), ATTACK_MELEE));
 			return;
 		}
 
 		// 5. Tir si l'ennemi est aligné, sinon poursuite
 		if (tryShoot(bot, dx, dy, distance)) return;
-		goTo(bot, m, enemy.getX(), enemy.getY(), finish ? 4 : 3);
+		goTo(bot, m, enemy.getX(), enemy.getY(), finish ? SPEED_RUSH : SPEED_TACTICAL);
 	}
 
 	/**
@@ -295,7 +319,7 @@ public class BotController {
 			ty = bot.getY();
 		}
 		Vertice target = fallBackInside(safe, tx, ty);
-		goTo(bot, m, target.getX(), target.getY(), 3);
+		goTo(bot, m, target.getX(), target.getY(), SPEED_TACTICAL);
 	}
 
 	/**
@@ -325,7 +349,7 @@ public class BotController {
 		if (d < 0 || Direction.angleTo(d, dx, dy) > SHOOT_TOLERANCE) return false;
 		if (!board.getMap().hasLineOfSight(bot.getX(), bot.getY(), bot.getX() + dx, bot.getY() + dy)) return false;
 
-		move(bot, d, 1);
+		move(bot, d, SPEED_CONTACT);
 		board.enqueue(new Command.Attack(bot.getId(), ATTACK_SHOOT));
 		return true;
 	}
@@ -346,7 +370,7 @@ public class BotController {
 			m.wanderY = area.getY1() + random.nextFloat() * area.getHeight();
 			m.wanderUntil = now + TICKS_PER_SECOND * (WANDER_MIN_SECONDS + random.nextInt(WANDER_SPREAD_SECONDS));
 		}
-		goTo(bot, m, m.wanderX, m.wanderY, 2);
+		goTo(bot, m, m.wanderX, m.wanderY, SPEED_WANDER);
 	}
 
 	/**
@@ -364,7 +388,7 @@ public class BotController {
 			return;
 		}
 
-		for (int k = 0; k <= 3; k++) {
+		for (int k = 0; k <= MAX_DETOUR_STEPS; k++) {
 			for (int side : new int[] { m.turn, -m.turn }) {
 				int d = Direction.rotate(wanted, k * side);
 				if (isClear(bot, d)) {

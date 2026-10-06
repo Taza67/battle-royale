@@ -247,7 +247,10 @@ public class SafeZone {
 	}
 
 	/**
-	 * Tire une zone de la taille demandée à l'intérieur d'une zone
+	 * Tire une zone de la taille demandée à l'intérieur d'une zone.
+	 * Jusqu'à {@value #TARGET_ATTEMPTS} emplacements sont essayés pour que le centre
+	 * respecte {@link #preferredCenter} ; si aucun ne convient, le DERNIER essai est
+	 * quand même retenu (repli dégradé : mieux vaut un centre mal placé que pas de zone).
 	 * @param inside GridCell englobante
 	 * @param scale Taille visée, proportionnellement à la carte
 	 * @return Nouvelle zone incluse dans la zone englobante

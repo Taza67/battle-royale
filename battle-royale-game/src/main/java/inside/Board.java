@@ -45,14 +45,6 @@ public class Board {
 	private static final Logger LOGGER = Logger.getLogger(Board.class.getName());
 
 	/**
-	 * Nombre d'éliminations conservées dans le fil des éliminations
-	 */
-	private static final int KILL_FEED_SIZE = 6;
-	/**
-	 * Nombre maximal d'événements conservés en attente de lecture
-	 */
-	private static final int MAX_PENDING_EVENTS = 2048;
-	/**
 	 * Nombre maximal de commandes en attente (les plus anciennes sont abandonnées au-delà)
 	 */
 	private static final int MAX_PENDING_COMMANDS = 4096;
@@ -61,18 +53,6 @@ public class Board {
 	 * au dernier joueur ayant infligé des dégâts à la victime
 	 */
 	private static final long LAVA_KILL_CREDIT_TICKS = 10L * TICKS_PER_SECOND;
-	/**
-	 * Profondeur de chevauchement en dessous de laquelle deux éléments sont considérés en contact (arrondis)
-	 */
-	private static final float OVERLAP_TOLERANCE = 0.01f;
-	/**
-	 * Nombre maximal d'itérations de résolution d'un contact par axe (glissement le long des obstacles)
-	 */
-	private static final int MAX_SLIDE_STEPS = 4;
-	/**
-	 * Écart minimal entre le joueur et le départ d'un projectile, en pixels
-	 */
-	private static final float BULLET_SPAWN_GAP = 1;
 	/**
 	 * Marge intérieure de la zone de recherche d'une position d'apparition
 	 */
@@ -97,6 +77,16 @@ public class Board {
 	 */
 	private final SafeZone safeZone;
 	/**
+	 * Résolveur des déplacements et collisions de mouvement
+	 * @see MovementResolver
+	 */
+	private final MovementResolver movement;
+	/**
+	 * Résolveur du combat (mêlée et projectiles)
+	 * @see CombatResolver
+	 */
+	private final CombatResolver combat;
+	/**
 	 * Joueurs indexés par identifiant (triés)
 	 */
 	private final TreeMap<Integer, Player> players;
@@ -113,17 +103,10 @@ public class Board {
 	 */
 	private final Deque<Command> suspended;
 	/**
-	 * Événements produits et pas encore lus
+	 * Journal des événements produits et des dernières éliminations
+	 * @see EventLog
 	 */
-	private final Deque<GameEvent> events;
-	/**
-	 * Événements abandonnés par saturation de la file depuis la dernière lecture
-	 */
-	private int droppedEvents;
-	/**
-	 * Dernières éliminations
-	 */
-	private final Deque<KillFeedEntry> killFeed;
+	private final EventLog eventLog;
 
 	/**
 	 * Dernière image publiée
@@ -153,11 +136,6 @@ public class Board {
 	 * Identifiant du vainqueur, -1 si aucun (volatile : lu par les autres fils)
 	 */
 	private volatile int winnerId = -1;
-	/**
-	 * Identifiant du prochain projectile
-	 */
-	private int nextBulletId;
-
 
 	/**
 	 * Construit un plateau avec une carte générée à partir de la graine des réglages
@@ -183,12 +161,13 @@ public class Board {
 		this.map = map != null ? map : GameMap.generate(random, settings.getObstaclesNumber());
 		safeZone = new SafeZone(this.map.getBounds(), settings.getWaves(), random,
 			c -> this.map.isFree(Rectangle.centered(c.getX(), c.getY(), PLAYER_RADIUS_X * 2, PLAYER_RADIUS_Y * 2)));
+		movement = new MovementResolver(this.map);
 		this.players = new TreeMap<>();
 		bullets = new ArrayList<>();
 		commands = new ConcurrentLinkedQueue<>();
 		suspended = new ArrayDeque<>();
-		events = new ArrayDeque<>();
-		killFeed = new ArrayDeque<>();
+		eventLog = new EventLog();
+		combat = new CombatResolver(this.map, this.players.values(), bullets, eventLog);
 
 		for (PlayerSpec spec : players) {
 			if (this.players.containsKey(spec.id()))
@@ -244,13 +223,10 @@ public class Board {
 	 * @return Événements
 	 */
 	public List<GameEvent> drainEvents() {
-		if (droppedEvents > 0) {
-			LOGGER.warning(droppedEvents + " événement(s) abandonné(s) : file d'événements saturée");
-			droppedEvents = 0;
-		}
-		List<GameEvent> drained = new ArrayList<>(events);
-		events.clear();
-		return drained;
+		int dropped = eventLog.takeDropped();
+		if (dropped > 0)
+			LOGGER.warning(dropped + " événement(s) abandonné(s) : file d'événements saturée");
+		return eventLog.drain();
 	}
 
 	/**
@@ -341,10 +317,10 @@ public class Board {
 				startBattle();
 
 			for (Player p : players.values())
-				if (p.isAlive()) movePlayer(p);
+				if (p.isAlive()) movement.move(p, tick);
 
-			resolveMelee();
-			updateBullets();
+			combat.resolveMelee(phase, tick);
+			combat.updateBullets(phase, tick);
 
 			if (phase == Phase.BATTLE) {
 				updateZone();
@@ -367,20 +343,14 @@ public class Board {
 	 */
 	private void applyCommands() {
 		Command c;
-		while ((c = commands.poll()) != null) {
-			if (c instanceof Command.Control control) applyControl(control.type());
-			else if (phase == Phase.ENDED) continue;
-			else if (paused) suspended.addLast(c);
-			else if (c instanceof Command.Move move) applyMove(move);
-			else if (c instanceof Command.Attack attack) applyAttack(attack);
-		}
+		while ((c = commands.poll()) != null) c.apply(this);
 	}
 
 	/**
 	 * Applique une commande de contrôle
 	 * @param type Type de contrôle
 	 */
-	private void applyControl(Command.ControlType type) {
+	void applyControl(Command.ControlType type) {
 		if (phase == Phase.ENDED) return;
 
 		switch (type) {
@@ -409,10 +379,23 @@ public class Board {
 	}
 
 	/**
+	 * Applique une commande de jeu (suspendue pendant une pause, ignorée après la fin)
+	 * @param c Commande
+	 * @return true si la commande peut être appliquée maintenant
+	 */
+	private boolean gameplayOpen(Command c) {
+		if (phase == Phase.ENDED) return false;
+		if (paused) suspended.addLast(c);
+		return !paused;
+	}
+
+	/**
 	 * Applique une commande de déplacement
 	 * @param move Commande
 	 */
-	private void applyMove(Command.Move move) {
+	void applyMove(Command.Move move) {
+		if (!gameplayOpen(move)) return;
+
 		Player p = players.get(move.playerId());
 		if (p == null || !p.isAlive()) return;
 
@@ -424,7 +407,9 @@ public class Board {
 	 * Applique une commande d'attaque
 	 * @param attack Commande
 	 */
-	private void applyAttack(Command.Attack attack) {
+	void applyAttack(Command.Attack attack) {
+		if (!gameplayOpen(attack)) return;
+
 		Player p = players.get(attack.playerId());
 		if (p == null || !p.isAlive()) return;
 
@@ -433,28 +418,8 @@ public class Board {
 				addEvent(new GameEvent(GameEvent.Type.SWING, tick, p.getId(), -1, 0, p.getX(), p.getY(), DamageCause.MELEE));
 		} else if (attack.form() == ATTACK_SHOOT) {
 			if (p.getWeapon().tryShoot())
-				shoot(p);
+				combat.shoot(p, phase, tick);
 		}
-	}
-
-	/**
-	 * Fait tirer un joueur dans la direction de son regard
-	 * @param p Joueur
-	 */
-	private void shoot(Player p) {
-		int d = p.getViewDirection();
-		float offset = Math.max(p.getRadiusX(), p.getRadiusY()) + BULLET_RADIUS + BULLET_SPAWN_GAP;
-		float bx = p.getX() + Direction.dx(d) * offset, by = p.getY() + Direction.dy(d) * offset;
-		Bullet b = new Bullet(nextBulletId++, p.getId(), bx, by, d);
-
-		addEvent(new GameEvent(GameEvent.Type.SHOT, tick, p.getId(), -1, 0, bx, by, DamageCause.BULLET));
-
-		if (!map.getBounds().contains(bx, by) || map.obstacleIntersecting(b.getRepresentation(), true) != null) {
-			addEvent(new GameEvent(GameEvent.Type.BULLET_BLOCKED, tick, p.getId(), -1, 0, bx, by, DamageCause.BULLET));
-			return;
-		}
-
-		bullets.add(b);
 	}
 
 	/**
@@ -465,167 +430,6 @@ public class Board {
 		bullets.clear();
 		safeZone.start();
 		addEvent(GameEvent.global(GameEvent.Type.BATTLE_STARTED, tick, 0));
-	}
-
-	/**
-	 * Déplace un joueur selon son intention, axe par axe, en glissant le long des obstacles
-	 * @param p Joueur
-	 */
-	private void movePlayer(Player p) {
-		float speed = p.currentSpeed(tick);
-		if (speed <= 0) {
-			p.setMoving(false);
-			return;
-		}
-
-		int d = p.getMoveDirection();
-		float step = speed * TICK_DURATION;
-		float ox = p.getX(), oy = p.getY();
-		float vx = Direction.dx(d), vy = Direction.dy(d);
-
-		float nx = vx == 0 ? ox : resolveAxis(p, ox + vx * step, oy, true, vx);
-		float ny = vy == 0 ? oy : resolveAxis(p, nx, oy + vy * step, false, vy);
-
-		p.setPosition(nx, ny);
-		p.setMoving(nx != ox || ny != oy);
-		map.updatePlayerArea(p);
-	}
-
-	/**
-	 * Calcule la position atteignable sur un axe en s'arrêtant au contact du premier obstacle.
-	 * Les éléments que le joueur chevauche déjà au départ ne le bloquent pas, pour que deux joueurs
-	 * superposés puissent se séparer ; seuls les nouveaux contacts l'arrêtent.
-	 * @param p Joueur
-	 * @param cx Abscisse visée
-	 * @param cy Ordonnée visée
-	 * @param horizontal true pour l'axe horizontal
-	 * @param sign Sens du déplacement sur l'axe
-	 * @return Coordonnée atteinte sur l'axe
-	 */
-	private float resolveAxis(Player p, float cx, float cy, boolean horizontal, float sign) {
-		float rx = p.getRadiusX(), ry = p.getRadiusY();
-		float origin = horizontal ? p.getX() : p.getY();
-		Rectangle start = (horizontal ? p.getRepresentationAt(origin, cy) : p.getRepresentationAt(cx, origin))
-			.expand(-OVERLAP_TOLERANCE);
-
-		if (horizontal) cx = clamp(cx, rx, MAP_WIDTH - rx);
-		else cy = clamp(cy, ry, MAP_HEIGHT - ry);
-
-		for (int attempt = 0; attempt < MAX_SLIDE_STEPS; attempt++) {
-			Rectangle blocker = findBlocker(p, p.getRepresentationAt(cx, cy), start);
-			if (blocker == null) return horizontal ? cx : cy;
-
-			float contact;
-			if (horizontal) contact = sign > 0 ? blocker.getX1() - rx : blocker.getX2() + rx;
-			else contact = sign > 0 ? blocker.getY1() - ry : blocker.getY2() + ry;
-
-			// Contact déjà atteint (arrondis) : le joueur ne bouge pas sur cet axe
-			if ((sign > 0 && contact < origin) || (sign < 0 && contact > origin)) return origin;
-
-			if (horizontal) cx = contact;
-			else cy = contact;
-		}
-
-		return origin;
-	}
-
-	/**
-	 * Cherche un obstacle ou un joueur vivant chevauchant un rectangle, sans chevaucher la position de départ
-	 * @param self Joueur qui se déplace (ignoré)
-	 * @param r Rectangle testé
-	 * @param start Position de départ du joueur (les éléments qui la chevauchent sont ignorés)
-	 * @return Rectangle de l'élément bloquant, ou null
-	 */
-	private Rectangle findBlocker(Player self, Rectangle r, Rectangle start) {
-		for (GridCell cell : map.areasOverlapping(r))
-			for (Obstacle o : cell.getObstacles()) {
-				Rectangle or = o.getRepresentation();
-				if (or.intersect(r) && !or.intersect(start)) return or;
-			}
-
-		for (Player other : map.playersNear(r.expand(Math.max(PLAYER_RADIUS_X, PLAYER_RADIUS_Y)))) {
-			if (other == self || !other.isAlive()) continue;
-			Rectangle or = other.getRepresentation();
-			if (or.intersect(r) && !or.intersect(start)) return or;
-		}
-
-		return null;
-	}
-
-	/**
-	 * Applique les coups d'épée en cours (chaque cible est touchée au plus une fois par coup)
-	 */
-	private void resolveMelee() {
-		for (Player p : players.values()) {
-			if (!p.isAlive() || !p.getWeapon().isSwinging()) continue;
-
-			Rectangle reach = Rectangle.centered(p.getX(), p.getY(), MELEE_RANGE, MELEE_RANGE);
-			for (Player target : map.playersNear(reach.expand(PLAYER_RADIUS_X))) {
-				if (target == p || !target.isAlive() || !Weapon.isInReach(p, target)) continue;
-				if (!p.getWeapon().registerHit(target.getId())) continue;
-
-				int damage = phase == Phase.BATTLE ? target.reduceLifePoints(MELEE_DAMAGE, p.getId(), DamageCause.MELEE, tick) : 0;
-				addEvent(new GameEvent(GameEvent.Type.HIT, tick, p.getId(), target.getId(), damage,
-					target.getX(), target.getY(), DamageCause.MELEE));
-			}
-		}
-	}
-
-	/**
-	 * Fait avancer les projectiles par petits pas et résout leurs collisions
-	 */
-	private void updateBullets() {
-		float distance = BULLET_SPEED * TICK_DURATION;
-		int substeps = Math.max(1, (int)Math.ceil(distance / BULLET_SUBSTEP));
-		float substep = distance / substeps;
-
-		Iterator<Bullet> it = bullets.iterator();
-		while (it.hasNext()) {
-			Bullet b = it.next();
-
-			for (int s = 0; s < substeps && b.isActive(); s++) {
-				b.advance(substep);
-				stepBullet(b);
-			}
-
-			if (!b.isActive()) it.remove();
-		}
-	}
-
-	/**
-	 * Résout les collisions d'un projectile à sa position actuelle
-	 * @param b Projectile
-	 */
-	private void stepBullet(Bullet b) {
-		if (!map.getBounds().contains(b.getX(), b.getY())) {
-			b.destroy();
-			addEvent(new GameEvent(GameEvent.Type.BULLET_BLOCKED, tick, b.getOwnerId(), -1, 0,
-				clamp(b.getX(), 0, MAP_WIDTH), clamp(b.getY(), 0, MAP_HEIGHT), DamageCause.BULLET));
-			return;
-		}
-
-		Rectangle r = b.getRepresentation();
-		if (map.obstacleIntersecting(r, true) != null) {
-			b.destroy();
-			addEvent(new GameEvent(GameEvent.Type.BULLET_BLOCKED, tick, b.getOwnerId(), -1, 0, b.getX(), b.getY(), DamageCause.BULLET));
-			return;
-		}
-
-		// Portée épuisée : la balle s'arrête avant de pouvoir toucher qui que ce soit
-		if (b.isOutOfRange()) {
-			b.destroy();
-			return;
-		}
-
-		for (Player target : map.playersNear(r.expand(PLAYER_RADIUS_X))) {
-			if (target.getId() == b.getOwnerId() || !target.isAlive() || !target.getRepresentation().intersect(r)) continue;
-
-			int damage = phase == Phase.BATTLE ? target.reduceLifePoints(BULLET_DAMAGE, b.getOwnerId(), DamageCause.BULLET, tick) : 0;
-			addEvent(new GameEvent(GameEvent.Type.HIT, tick, b.getOwnerId(), target.getId(), damage,
-				b.getX(), b.getY(), DamageCause.BULLET));
-			b.destroy();
-			return;
-		}
 	}
 
 	/**
@@ -685,8 +489,7 @@ public class Board {
 			p.kill(++eliminations, rank, tick);
 			map.removePlayer(p);
 
-			killFeed.addLast(new KillFeedEntry(tick, killer, p.getId(), p.getLastDamageCause()));
-			while (killFeed.size() > KILL_FEED_SIZE) killFeed.removeFirst();
+			eventLog.addKill(new KillFeedEntry(tick, killer, p.getId(), p.getLastDamageCause()));
 			addEvent(new GameEvent(GameEvent.Type.ELIMINATION, tick, killer, p.getId(), rank, p.getX(), p.getY(), p.getLastDamageCause()));
 		}
 	}
@@ -735,11 +538,7 @@ public class Board {
 	 * @param e Événement
 	 */
 	private void addEvent(GameEvent e) {
-		if (events.size() >= MAX_PENDING_EVENTS) {
-			events.pollFirst();
-			droppedEvents++;
-		}
-		events.addLast(e);
+		eventLog.add(e);
 	}
 
 	/**
@@ -767,7 +566,7 @@ public class Board {
 		snapshot = new BoardSnapshot(tick, phase, paused, stopped, getAliveCount(), players.size(), winnerId,
 			safeZone.getCurrent(), safeZone.getNext(), safeZone.getStage(), secondsLeft,
 			safeZone.getWaveIndex() + 1, safeZone.getWaveCount(), safeZone.getLavaDamagePerSecond(),
-			playerStates, bulletStates, new ArrayList<>(killFeed));
+			playerStates, bulletStates, eventLog.killFeed());
 	}
 
 	/**

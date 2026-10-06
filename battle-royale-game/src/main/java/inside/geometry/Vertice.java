@@ -3,7 +3,7 @@ package inside.geometry;
 import java.util.Random;
 
 /**
- * Classe représentant un point (ou un vecteur) du plan
+ * Classe représentant un point (ou un vecteur) immuable du plan
  * @author mourtaza
  *
  */
@@ -11,7 +11,7 @@ public class Vertice {
 	/**
 	 * Coordonnées du point
 	 */
-	private float x, y;
+	private final float x, y;
 
 
 	/**
@@ -35,17 +35,6 @@ public class Vertice {
 	 * @return Ordonnée
 	 */
 	public float getY() { return y; }
-
-	/**
-	 * Change l'abscisse du point
-	 * @param x Nouvelle abscisse
-	 */
-	public void setX(float x) { this.x = x; }
-	/**
-	 * Change l'ordonnée du point
-	 * @param y Nouvelle ordonnée
-	 */
-	public void setY(float y) { this.y = y; }
 
 
 	@Override
@@ -79,7 +68,7 @@ public class Vertice {
 	 * @param v Point à soustraire
 	 * @return Nouveau point
 	 */
-	public Vertice substract(Vertice v) {
+	public Vertice subtract(Vertice v) {
 		return new Vertice(x - v.x, y - v.y);
 	}
 
@@ -106,7 +95,7 @@ public class Vertice {
 	 * @return Distance
 	 */
 	public float distance(Vertice v) {
-		return substract(v).length();
+		return subtract(v).length();
 	}
 
 	/**
@@ -119,14 +108,13 @@ public class Vertice {
 	}
 
 	/**
-	 * Applique au point une rotation autour de l'origine
+	 * Retourne le point après une rotation autour de l'origine
 	 * @param angle Angle de rotation, en radians
+	 * @return Point tourné
 	 */
-	public void rotate(float angle) {
+	public Vertice rotate(float angle) {
 		float cos = (float)Math.cos(angle), sin = (float)Math.sin(angle);
-		float newX = x * cos - y * sin;
-		y = x * sin + y * cos;
-		x = newX;
+		return new Vertice(x * cos - y * sin, x * sin + y * cos);
 	}
 
 	/**
