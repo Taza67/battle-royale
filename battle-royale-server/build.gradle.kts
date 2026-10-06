@@ -16,6 +16,12 @@ application {
 
 tasks.named<JavaExec>("run") {
     workingDir = projectDir
+    // ./gradlew :battle-royale-server:run -Dbattle-royale.admin-password=… transmet les réglages au serveur
+    systemProperties(
+        System.getProperties().stringPropertyNames()
+            .filter { it.startsWith("battle-royale.") }
+            .associateWith { System.getProperty(it) }
+    )
 }
 
 distributions {
