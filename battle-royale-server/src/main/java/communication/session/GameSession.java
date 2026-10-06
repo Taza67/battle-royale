@@ -351,7 +351,7 @@ public final class GameSession implements AutoCloseable {
 	 */
 	public void move(ClientConnection c, Player player, int direction, int speed) {
 		synchronized (lock) {
-			if (player.connection() != c || actions == null || !state.isInProgress())
+			if (player.connection() != c || actions == null || state != GameState.RUNNING)
 				return;
 			actions.move(player.getId(), direction, speed);
 		}
