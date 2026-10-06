@@ -73,6 +73,10 @@ public class Player extends Element {
 	 */
 	private long lastHitTick = -1;
 	/**
+	 * Pas de simulation des derniers dégâts infligés par un joueur (-1 si aucun)
+	 */
+	private long lastAttackTick = -1;
+	/**
 	 * Dégâts de lave accumulés mais pas encore appliqués (fraction de point de vie)
 	 */
 	private float lavaDebt;
@@ -193,6 +197,12 @@ public class Player extends Element {
 	 * @return Origine, ou null
 	 */
 	public DamageCause getLastDamageCause() { return lastDamageCause; }
+
+	/**
+	 * Retourne le pas de simulation des derniers dégâts infligés par un joueur
+	 * @return Pas de simulation, -1 si aucun joueur n'a jamais blessé ce joueur
+	 */
+	public long getLastAttackTick() { return lastAttackTick; }
 	/**
 	 * Retourne le pas de simulation des derniers dégâts subis
 	 * @return Pas de simulation, ou -1
@@ -304,7 +314,10 @@ public class Player extends Element {
 		lifePoints -= applied;
 		lastDamageCause = cause;
 		lastHitTick = now;
-		if (attackerId >= 0 && attackerId != ID) lastAttacker = attackerId;
+		if (attackerId >= 0 && attackerId != ID) {
+			lastAttacker = attackerId;
+			lastAttackTick = now;
+		}
 		return applied;
 	}
 

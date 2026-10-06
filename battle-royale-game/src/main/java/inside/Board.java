@@ -54,6 +54,11 @@ public class Board implements IConfig {
 	 */
 	private static final int MAX_PENDING_COMMANDS = 4096;
 	/**
+	 * Fenêtre de temps (en pas, ~10 s) pendant laquelle une mort par lave est créditée
+	 * au dernier joueur ayant infligé des dégâts à la victime
+	 */
+	private static final long LAVA_KILL_CREDIT_TICKS = 10L * TICKS_PER_SECOND;
+	/**
 	 * Profondeur de chevauchement en dessous de laquelle deux éléments sont considérés en contact (arrondis)
 	 */
 	private static final float OVERLAP_TOLERANCE = 0.01f;
@@ -654,7 +659,10 @@ public class Board implements IConfig {
 
 		int rank = getAliveCount() - dying.size() + 1;
 		for (Player p : dying) {
-			int killer = (p.getLastDamageCause() != DamageCause.LAVA) ? p.getLastAttacker() : -1;
+			// Mort par lave : créditée au dernier attaquant s'il a frappé récemment
+			int killer = p.getLastDamageCause() == DamageCause.LAVA
+				&& (p.getLastAttackTick() < 0 || tick - p.getLastAttackTick() > LAVA_KILL_CREDIT_TICKS)
+					? -1 : p.getLastAttacker();
 			Player k = killer >= 0 ? PLAYERS.get(killer) : null;
 			if (k != null) k.addKill();
 			else killer = -1;
