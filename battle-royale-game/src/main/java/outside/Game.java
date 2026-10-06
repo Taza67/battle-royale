@@ -73,6 +73,11 @@ public class Game implements IConfig {
 	private int localId = -1;
 	private double endTime = -1;
 
+	/**
+	 * Position et taille de la fenêtre avant le passage en plein écran
+	 */
+	private int windowedX = 80, windowedY = 80, windowedW = 0, windowedH = 0;
+
 	private volatile String status;
 	private volatile boolean statusError;
 	private volatile double statusTime = -100;
@@ -300,8 +305,19 @@ public class Game implements IConfig {
 	private void toggleFullscreen() {
 		long monitor = glfwGetWindowMonitor(window);
 		if (monitor != 0) {
-			glfwSetWindowMonitor(window, 0, 80, 80, OPTIONS.windowWidth(), OPTIONS.windowHeight(), GLFW_DONT_CARE);
+			glfwSetWindowMonitor(window, 0, windowedX, windowedY,
+				windowedW > 0 ? windowedW : OPTIONS.windowWidth(),
+				windowedH > 0 ? windowedH : OPTIONS.windowHeight(), GLFW_DONT_CARE);
 		} else {
+			// Mémorise la position et la taille fenêtrée pour les restaurer à la sortie
+			try (MemoryStack stack = MemoryStack.stackPush()) {
+				var x = stack.mallocInt(1), y = stack.mallocInt(1);
+				var w = stack.mallocInt(1), h = stack.mallocInt(1);
+				glfwGetWindowPos(window, x, y);
+				glfwGetWindowSize(window, w, h);
+				windowedX = x.get(0); windowedY = y.get(0);
+				windowedW = w.get(0); windowedH = h.get(0);
+			}
 			long primary = glfwGetPrimaryMonitor();
 			GLFWVidMode mode = glfwGetVideoMode(primary);
 			if (mode != null) glfwSetWindowMonitor(window, primary, 0, 0, mode.width(), mode.height(), mode.refreshRate());
