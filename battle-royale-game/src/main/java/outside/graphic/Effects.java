@@ -358,7 +358,6 @@ public class Effects {
 			p.additive = true;
 			p.ambient = true;
 			PARTICLES.add(p);
-			ambient++;
 			return;
 		}
 	}
@@ -383,7 +382,6 @@ public class Effects {
 		p.additive = true;
 		p.ambient = true;
 		PARTICLES.add(p);
-		ambient++;
 	}
 
 	/**
