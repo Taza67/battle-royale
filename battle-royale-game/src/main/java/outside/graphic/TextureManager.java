@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Random;
 
 import org.lwjgl.BufferUtils;
+import org.lwjgl.system.MemoryUtil;
 
 import inside.IConfig;
 
@@ -45,10 +46,15 @@ public class TextureManager implements IConfig {
 	public TextureManager() {
 		Texture.Image tiles = Texture.readResource(TEXTURE_ATLAS_PATH);
 		Texture.Image emojis = Texture.readResource(TEXTURE_PLAYERS_ATLAS_PATH);
+		checkEmojiGrid(emojis);
 
 		TEXTURE_ATLAS = new Texture(tiles.pixels(), tiles.width(), tiles.height(), false, false);
 		TEXTURE_PLAYERS_ATLAS = new Texture(emojis.pixels(), emojis.width(), emojis.height(), false, true);
-		TEXTURE_PLAYERS_GREY = new Texture(greyscale(emojis.pixels()), emojis.width(), emojis.height(), false, true);
+		ByteBuffer grey = greyscale(emojis.pixels());
+		TEXTURE_PLAYERS_GREY = new Texture(grey, emojis.width(), emojis.height(), false, true);
+		MemoryUtil.memFree(tiles.pixels());
+		MemoryUtil.memFree(emojis.pixels());
+		MemoryUtil.memFree(grey);
 		GRASS = generateGrass();
 		LAVA = generateLava();
 		GLOW = generateGlow();
@@ -115,6 +121,20 @@ public class TextureManager implements IConfig {
 
 
 	/**
+	 * Vérifie que la grille d'emojis tient dans l'atlas chargé (détecte une image régénérée
+	 * avec une géométrie différente)
+	 * @param emojis Atlas des emojis
+	 */
+	private static void checkEmojiGrid(Texture.Image emojis) {
+		for (int x : EMOJI_COLUMNS)
+			if (x < 0 || x + EMOJI_SIZE > emojis.width())
+				throw new IllegalStateException("Colonne d'emojis hors de l'atlas " + emojis.width() + "x" + emojis.height() + " : x=" + x);
+		for (int y : EMOJI_ROWS)
+			if (y < 0 || y + EMOJI_SIZE > emojis.height())
+				throw new IllegalStateException("Ligne d'emojis hors de l'atlas " + emojis.width() + "x" + emojis.height() + " : y=" + y);
+	}
+
+	/**
 	 * Convertit des pixels RVBA en niveaux de gris assombris
 	 * @param src Pixels source
 	 * @return Nouveaux pixels
@@ -143,7 +163,10 @@ public class TextureManager implements IConfig {
 			float blade = random.nextFloat() < 0.04f ? 0.12f : 0;
 			px.put(toByte(0.30f + 0.10f * n + blade)).put(toByte(0.52f + 0.14f * n + blade)).put(toByte(0.24f + 0.06f * n)).put((byte)255);
 		}
-		return new Texture(px.flip(), size, size, true, true);
+		px.flip();
+		Texture t = new Texture(px, size, size, true, true);
+		MemoryUtil.memFree(px);
+		return t;
 	}
 
 	/**
@@ -160,7 +183,10 @@ public class TextureManager implements IConfig {
 			float hot = (float)Math.pow(n, 2.2);
 			px.put(toByte(0.55f + 0.45f * n)).put(toByte(0.08f + 0.62f * hot)).put(toByte(0.02f + 0.20f * hot * hot)).put((byte)255);
 		}
-		return new Texture(px.flip(), size, size, true, true);
+		px.flip();
+		Texture t = new Texture(px, size, size, true, true);
+		MemoryUtil.memFree(px);
+		return t;
 	}
 
 	/**
@@ -177,7 +203,10 @@ public class TextureManager implements IConfig {
 				float a = (1 - d) * (1 - d);
 				px.put((byte)255).put((byte)255).put((byte)255).put(toByte(a));
 			}
-		return new Texture(px.flip(), size, size, false, true);
+		px.flip();
+		Texture t = new Texture(px, size, size, false, true);
+		MemoryUtil.memFree(px);
+		return t;
 	}
 
 	/**

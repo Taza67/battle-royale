@@ -11,6 +11,7 @@ import java.nio.IntBuffer;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.stb.STBImage;
 import org.lwjgl.system.MemoryStack;
+import org.lwjgl.system.MemoryUtil;
 
 /**
  * Texture OpenGL RVBA
@@ -76,6 +77,8 @@ public class Texture {
 			// stbi_image_free utilise l'adresse à la position courante : le tampon d'origine ne doit pas avoir avancé
 			STBImage.stbi_image_free(decoded);
 			return new Image(copy, w.get(0), h.get(0));
+		} finally {
+			MemoryUtil.memFree(encoded);
 		}
 	}
 
