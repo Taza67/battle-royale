@@ -96,7 +96,7 @@ public class Game implements IConfig {
 		LaunchOptions options;
 		if (args.length == 0) {
 			options = LaunchOptions.ask(new BufferedReader(new InputStreamReader(System.in, Charset.defaultCharset())), System.out);
-		} else if (args.length == 1 && (args[0].equals("--help") || args[0].equals("-h"))) {
+		} else if (java.util.Arrays.stream(args).anyMatch(a -> a.equals("--help") || a.equals("-h"))) {
 			System.out.println(LaunchOptions.USAGE);
 			return;
 		} else {
