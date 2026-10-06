@@ -230,6 +230,14 @@ public class HudRenderer implements IConfig {
 		float a = (float)Math.min(1, Math.max(0, (time - Math.max(0, endTime)) / 0.8));
 		fillRect(0, 0, MAP_WIDTH, MAP_HEIGHT, new Color(0.02f, 0.03f, 0.06f, 0.78f * a));
 
+		// Emblème du jeu en filigrane derrière l'écran de fin
+		Texture emblem = TEXTURES.getEmblem();
+		if (emblem != null) {
+			float es = 430 + 6 * (float)Math.sin(time * 1.2);
+			texture(SubTexture.whole(emblem), MAP_WIDTH / 2 - es / 2, MAP_HEIGHT / 2 - es / 2,
+				MAP_WIDTH / 2 + es / 2, MAP_HEIGHT / 2 + es / 2, Color.WHITE.withAlpha(0.10f * a));
+		}
+
 		PlayerState winner = s.winnerId() >= 0 ? s.player(s.winnerId()) : null;
 		String title, subtitle;
 		Color color = Color.GOLD;
@@ -323,7 +331,7 @@ public class HudRenderer implements IConfig {
 	 * @param time Instant courant
 	 */
 	public void renderLobby(HudInfo info, double time) {
-		tiled(TEXTURES.getGrass(), 0, 0, MAP_WIDTH, MAP_HEIGHT, 160, (float)(time * 0.01), 0, new Color(0.45f, 0.5f, 0.45f, 1));
+		tiled(TEXTURES.getGround(), 0, 0, MAP_WIDTH, MAP_HEIGHT, 150, (float)(time * 0.01), 0, new Color(0.45f, 0.5f, 0.45f, 1));
 		gradientRect(0, 0, MAP_WIDTH, MAP_HEIGHT, new Color(0.02f, 0.03f, 0.08f, 0.55f), new Color(0.02f, 0.03f, 0.08f, 0.9f));
 
 		// Emojis qui défilent
@@ -334,9 +342,17 @@ public class HudRenderer implements IConfig {
 			texture(TEXTURES.getPlayerTexture(i * 7 % n, false), x - 18, y - 18, x + 18, y + 18, Color.WHITE.withAlpha(0.5f));
 		}
 
-		FONTS.TITLE.drawShadowed("BATTLE ROYALE", MAP_WIDTH / 2, 200, Color.GOLD, Align.CENTER);
+		// Emblème du jeu au-dessus du titre
+		Texture emblem = TEXTURES.getEmblem();
+		if (emblem != null) {
+			float bob = (float)Math.sin(time * 1.8) * 5;
+			glow(TEXTURES.getGlow(), MAP_WIDTH / 2, 118 + bob, 120, 120, Color.CYAN.withAlpha(0.22f));
+			texture(SubTexture.whole(emblem), MAP_WIDTH / 2 - 72, 46 + bob, MAP_WIDTH / 2 + 72, 190 + bob, Color.WHITE);
+		}
+
+		FONTS.TITLE.drawShadowed("BATTLE ROYALE", MAP_WIDTH / 2, 218, Color.GOLD, Align.CENTER);
 		float pulse = 0.65f + 0.35f * (float)Math.sin(time * 3);
-		FONTS.LARGE.drawShadowed("En attente du serveur web", MAP_WIDTH / 2, 290, Color.WHITE.withAlpha(pulse), Align.CENTER);
+		FONTS.LARGE.drawShadowed("En attente du serveur web", MAP_WIDTH / 2, 300, Color.WHITE.withAlpha(pulse), Align.CENTER);
 
 		panel(MAP_WIDTH / 2 - 380, 370, MAP_WIDTH / 2 + 380, 520, 12, new Color(0.08f, 0.1f, 0.15f, 0.85f));
 		FONTS.MEDIUM.draw("Rejoignez la partie depuis votre téléphone :", MAP_WIDTH / 2, 390, Color.LIGHT_GREY, Align.CENTER);

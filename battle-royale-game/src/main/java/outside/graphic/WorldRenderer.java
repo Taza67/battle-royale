@@ -67,7 +67,7 @@ public class WorldRenderer implements IConfig {
 		}
 
 		renderGround();
-		if (map != null) renderObstacles(map.getOBSTACLES());
+		if (map != null) renderObstacles(map.getOBSTACLES(), time);
 
 		Rectangle zone = lerp(previous != null ? previous.zone() : current.zone(), current.zone(), alpha);
 		renderLava(zone, time, current);
@@ -82,7 +82,7 @@ public class WorldRenderer implements IConfig {
 			if (p.alive()) renderSwing(p, interpolated(p, alpha));
 
 		for (PlayerState p : current.players())
-			if (p.alive()) renderPlayer(p, interpolated(p, alpha), current.tick(), time, p.id() == localId);
+			if (p.alive()) renderPlayer(p, interpolated(p, alpha), current.tick(), time, p.id() == localId, effects);
 
 		effects.render(TEXTURES.getGlow(), numberFont);
 	}
@@ -91,30 +91,46 @@ public class WorldRenderer implements IConfig {
 	 * Dessine le sol
 	 */
 	private void renderGround() {
-		tiled(TEXTURES.getGrass(), 0, 0, MAP_WIDTH, MAP_HEIGHT, 160, 0, 0, Color.WHITE);
+		tiled(TEXTURES.getGround(), 0, 0, MAP_WIDTH, MAP_HEIGHT, 150, 0, 0, Color.WHITE);
 		// Vignettage léger vers les bords
-		gradientRect(0, 0, MAP_WIDTH, 60, new Color(0, 0, 0, 0.18f), new Color(0, 0, 0, 0));
-		gradientRect(0, MAP_HEIGHT - 60, MAP_WIDTH, MAP_HEIGHT, new Color(0, 0, 0, 0), new Color(0, 0, 0, 0.18f));
+		Color edge = new Color(0, 0, 0, 0.18f), none = new Color(0, 0, 0, 0);
+		gradientRect(0, 0, MAP_WIDTH, 60, edge, none);
+		gradientRect(0, MAP_HEIGHT - 60, MAP_WIDTH, MAP_HEIGHT, none, edge);
+		gradientLine(0, MAP_HEIGHT / 2, 60, MAP_HEIGHT / 2, MAP_HEIGHT, edge, none);
+		gradientLine(MAP_WIDTH, MAP_HEIGHT / 2, MAP_WIDTH - 60, MAP_HEIGHT / 2, MAP_HEIGHT, edge, none);
 	}
 
 	/**
 	 * Dessine les obstacles en répétant leur tuile
 	 * @param obstacles Obstacles
 	 */
-	private void renderObstacles(List<Obstacle> obstacles) {
+	private void renderObstacles(List<Obstacle> obstacles, double time) {
+		float waterOX = (float)(time * 0.030), waterOY = (float)(time * 0.017);
 		for (int pass = 0; pass < 3; pass++) {
 			for (Obstacle o : obstacles) {
 				int order = switch (o.getTYPE()) { case EAU -> 0; case ROCHER -> 1; case FORET -> 2; };
 				if (order != pass) continue;
 
 				Rectangle r = o.getRepresentation();
-				SubTexture tile = TEXTURES.getSubTexture(o.getTextureNumber());
-				if (o.getTYPE() != Obstacle.TypeObstacle.EAU)
-					glow(TEXTURES.getGlow(), r.getCenterX() + 4, r.getCenterY() + 6, r.getWidth() * 0.62f, r.getHeight() * 0.62f,
-						new Color(0, 0, 0, 0.35f));
-				else
-					fillRect(r.expand(2), Color.rgb(0x2D6B4F).withAlpha(0.6f));
+				if (o.getTYPE() == Obstacle.TypeObstacle.EAU) {
+					// Eau : fond profond, texture en tuiles qui défile lentement, liseré de mousse doux
+					fillRect(r.expand(3), Color.rgb(0x0E2E40).withAlpha(0.9f));
+					tiled(TEXTURES.getWater(), r.getX1(), r.getY1(), r.getX2(), r.getY2(), 60, waterOX, waterOY,
+						new Color(0.82f, 0.9f, 0.92f, 1));
+					Color foam = new Color(0.82f, 0.95f, 1f, 0.4f), none = foam.withAlpha(0);
+					float f = 5;
+					gradientRect(r.getX1(), r.getY1() - f, r.getX2(), r.getY1(), none, foam);
+					gradientRect(r.getX1(), r.getY2(), r.getX2(), r.getY2() + f, foam, none);
+					gradientLine(r.getX1(), r.getCenterY(), r.getX1() - f, r.getCenterY(), r.getHeight(), foam, none);
+					gradientLine(r.getX2(), r.getCenterY(), r.getX2() + f, r.getCenterY(), r.getHeight(), foam, none);
+					strokeRect(r, 2, foam.withAlpha(0.7f));
+					continue;
+				}
 
+				glow(TEXTURES.getGlow(), r.getCenterX() + 4, r.getCenterY() + 6, r.getWidth() * 0.62f, r.getHeight() * 0.62f,
+					new Color(0, 0, 0, 0.35f));
+
+				SubTexture tile = TEXTURES.getSubTexture(o.getTextureNumber());
 				int cols = Math.max(1, Math.round(r.getWidth() / tile.width())), rows = Math.max(1, Math.round(r.getHeight() / tile.height()));
 				float tw = r.getWidth() / cols, th = r.getHeight() / rows;
 				for (int i = 0; i < rows; i++)
@@ -153,6 +169,14 @@ public class WorldRenderer implements IConfig {
 		gradientLine(zone.getX1(), zone.getCenterY(), zone.getX1() - g, zone.getCenterY(), zone.getHeight(), hot, none);
 		gradientLine(zone.getX2(), zone.getCenterY(), zone.getX2() + g, zone.getCenterY(), zone.getHeight(), hot, none);
 		additive(false);
+
+		// Assombrit la lave vers les bords extérieurs de la carte
+		Color edge = new Color(0.12f, 0.01f, 0, 0.4f), clear = new Color(0.12f, 0.01f, 0, 0);
+		float e = 50;
+		gradientRect(0, 0, MAP_WIDTH, e, edge, clear);
+		gradientRect(0, MAP_HEIGHT - e, MAP_WIDTH, MAP_HEIGHT, clear, edge);
+		gradientLine(0, MAP_HEIGHT / 2, e, MAP_HEIGHT / 2, MAP_HEIGHT, edge, clear);
+		gradientLine(MAP_WIDTH, MAP_HEIGHT / 2, MAP_WIDTH - e, MAP_HEIGHT / 2, MAP_HEIGHT, edge, clear);
 	}
 
 	/**
@@ -189,6 +213,19 @@ public class WorldRenderer implements IConfig {
 
 		strokeRect(zone.expand(2), 6, Color.CYAN.withAlpha(0.18f));
 		strokeRect(zone, 2.5f, Color.CYAN.mix(Color.WHITE, 0.4f).withAlpha(0.95f));
+
+		// Pointillés fluides qui avancent le long du bord de la zone courante
+		dashedRect(zone, 3.5f, 16, (float)(time * 42), Color.CYAN.mix(Color.WHITE, 0.55f).withAlpha(0.8f));
+
+		// Coins lumineux pulsants
+		float pulse = 0.55f + 0.45f * (float)Math.sin(time * 5);
+		Color corner = Color.CYAN.mix(Color.WHITE, 0.5f).withAlpha(0.55f * pulse);
+		additive(true);
+		glow(TEXTURES.getGlow(), zone.getX1(), zone.getY1(), 16, 16, corner);
+		glow(TEXTURES.getGlow(), zone.getX2(), zone.getY1(), 16, 16, corner);
+		glow(TEXTURES.getGlow(), zone.getX1(), zone.getY2(), 16, 16, corner);
+		glow(TEXTURES.getGlow(), zone.getX2(), zone.getY2(), 16, 16, corner);
+		additive(false);
 	}
 
 	/**
@@ -240,7 +277,7 @@ public class WorldRenderer implements IConfig {
 	 * @param time Instant courant
 	 * @param local true pour le joueur local
 	 */
-	private void renderPlayer(PlayerState p, float[] pos, long tick, double time, boolean local) {
+	private void renderPlayer(PlayerState p, float[] pos, long tick, double time, boolean local, Effects effects) {
 		float x = pos[0], y = pos[1], h = AVATAR_SIZE / 2;
 		glow(TEXTURES.getGlow(), x + 2, y + h - 2, h * 1.1f, h * 0.55f, new Color(0, 0, 0, 0.55f));
 
@@ -265,6 +302,15 @@ public class WorldRenderer implements IConfig {
 			additive(false);
 		}
 
+		// Indicateur directionnel des derniers dégâts subis (joueur local)
+		if (local && effects.damageAlpha() > 0) {
+			float da = effects.damageAlpha(), dAngle = effects.damageAngle();
+			additive(true);
+			arc(x, y, h + 9, h + 20, dAngle - 0.55f, dAngle + 0.55f,
+				new Color(1, 0.15f, 0.1f, 0), new Color(1, 0.15f, 0.1f, 0.85f * da));
+			additive(false);
+		}
+
 		// Indicateur de regard
 		float a = Direction.screenAngle(p.viewDirection()), r = h + 7;
 		float px = x + (float)Math.cos(a) * r, py = y + (float)Math.sin(a) * r;
@@ -279,7 +325,7 @@ public class WorldRenderer implements IConfig {
 
 		// Barre de vie
 		float ratio = p.life() / (float)MAX_LIFE_POINTS, bw = 30, by = y - h - 9;
-		fillRect(x - bw / 2 - 1, by - 1, x + bw / 2 + 1, by + 5, new Color(0, 0, 0, 0.7f));
+		fillRect(x - bw / 2 - 1.5f, by - 1.5f, x + bw / 2 + 1.5f, by + 5.5f, new Color(0, 0, 0, 0.85f));
 		fillRect(x - bw / 2, by, x - bw / 2 + bw * ratio, by + 4, Color.life(ratio));
 
 		LABEL_FONT.drawShadowed(p.pseudo(), x, by - LABEL_FONT.getSize() - 3, local ? Color.GOLD : Color.WHITE, Font.Align.CENTER);

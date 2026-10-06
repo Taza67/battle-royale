@@ -20,6 +20,9 @@ import inside.IConfig;
 public class TextureManager implements IConfig {
 	private final static String TEXTURE_ATLAS_PATH = "textures/tileset.png";
 	private final static String TEXTURE_PLAYERS_ATLAS_PATH = "textures/emojisset.png";
+	private final static String TEXTURE_GROUND_PATH = "textures/ground.png";
+	private final static String TEXTURE_WATER_PATH = "textures/water.png";
+	private final static String TEXTURE_EMBLEM_PATH = "textures/emblem.png";
 	/**
 	 * Abscisses des colonnes d'emojis dans l'atlas des joueurs
 	 */
@@ -34,7 +37,7 @@ public class TextureManager implements IConfig {
 	private final static int EMOJI_SIZE = 61;
 
 	private final Texture TEXTURE_ATLAS, TEXTURE_PLAYERS_ATLAS, TEXTURE_PLAYERS_GREY;
-	private final Texture GRASS, LAVA, GLOW;
+	private final Texture GROUND, WATER, EMBLEM, LAVA, GLOW;
 	private final List<SubTexture> SUBTEXTURES;
 	private final List<SubTexture> GREY_PLAYERS;
 
@@ -50,7 +53,9 @@ public class TextureManager implements IConfig {
 		TEXTURE_ATLAS = new Texture(tiles.pixels(), tiles.width(), tiles.height(), false, false);
 		TEXTURE_PLAYERS_ATLAS = new Texture(emojis.pixels(), emojis.width(), emojis.height(), false, true);
 		TEXTURE_PLAYERS_GREY = new Texture(greyscale(emojis.pixels()), emojis.width(), emojis.height(), false, true);
-		GRASS = generateGrass();
+		GROUND = loadTiled(TEXTURE_GROUND_PATH, generateGrass());
+		WATER = loadTiled(TEXTURE_WATER_PATH, generateWater());
+		EMBLEM = loadClamped(TEXTURE_EMBLEM_PATH);
 		LAVA = generateLava();
 		GLOW = generateGlow();
 
@@ -58,7 +63,7 @@ public class TextureManager implements IConfig {
 		SUBTEXTURES.add(SubTexture.of(TEXTURE_ATLAS, 82, 120, TREE_WIDTH, TREE_HEIGHT));		// Forêt
 		SUBTEXTURES.add(SubTexture.of(TEXTURE_ATLAS, 92, 67, STONE_WIDTH, STONE_HEIGHT));		// Rocher
 		SUBTEXTURES.add(SubTexture.of(TEXTURE_ATLAS, 394, 445, WATER_WIDTH, WATER_HEIGHT));		// Eau
-		SUBTEXTURES.add(SubTexture.whole(GRASS));												// Champ de bataille
+		SUBTEXTURES.add(SubTexture.whole(GROUND));												// Champ de bataille
 
 		GREY_PLAYERS = new ArrayList<>();
 		for (int y : EMOJI_ROWS)
@@ -91,10 +96,20 @@ public class TextureManager implements IConfig {
 		return grey ? GREY_PLAYERS.get(index) : SUBTEXTURES.get(TEXTURE_FIRST_PLAYER + index);
 	}
 	/**
-	 * Retourne la texture d'herbe (répétable)
+	 * Retourne la texture du sol (répétable)
 	 * @return Texture
 	 */
-	public Texture getGrass() { return GRASS; }
+	public Texture getGround() { return GROUND; }
+	/**
+	 * Retourne la texture d'eau (répétable)
+	 * @return Texture
+	 */
+	public Texture getWater() { return WATER; }
+	/**
+	 * Retourne la texture de l'emblème (peut être null si l'image est absente)
+	 * @return Texture ou null
+	 */
+	public Texture getEmblem() { return EMBLEM; }
 	/**
 	 * Retourne la texture de lave (répétable)
 	 * @return Texture
@@ -110,8 +125,9 @@ public class TextureManager implements IConfig {
 	 * Libère les textures
 	 */
 	public void delete() {
-		for (Texture t : List.of(TEXTURE_ATLAS, TEXTURE_PLAYERS_ATLAS, TEXTURE_PLAYERS_GREY, GRASS, LAVA, GLOW))
+		for (Texture t : List.of(TEXTURE_ATLAS, TEXTURE_PLAYERS_ATLAS, TEXTURE_PLAYERS_GREY, GROUND, WATER, LAVA, GLOW))
 			t.delete();
+		if (EMBLEM != null) EMBLEM.delete();
 	}
 
 
@@ -157,6 +173,53 @@ public class TextureManager implements IConfig {
 			float n = noise[i] * 0.6f + random.nextFloat() * 0.4f;
 			float blade = random.nextFloat() < 0.04f ? 0.12f : 0;
 			px.put(toByte(0.30f + 0.10f * n + blade)).put(toByte(0.52f + 0.14f * n + blade)).put(toByte(0.24f + 0.06f * n)).put((byte)255);
+		}
+		return new Texture(px.flip(), size, size, true, true);
+	}
+
+	/**
+	 * Charge une texture répétable depuis le classpath, avec repli si elle est absente
+	 * @param path Chemin de la ressource
+	 * @param fallback Texture de repli
+	 * @return Texture chargée ou le repli
+	 */
+	private static Texture loadTiled(String path, Texture fallback) {
+		try {
+			Texture.Image img = Texture.readResource(path);
+			return new Texture(img.pixels(), img.width(), img.height(), true, true);
+		} catch (RuntimeException e) {
+			return fallback;
+		}
+	}
+
+	/**
+	 * Charge une texture non répétable depuis le classpath, sans repli
+	 * @param path Chemin de la ressource
+	 * @return Texture chargée ou null
+	 */
+	private static Texture loadClamped(String path) {
+		try {
+			Texture.Image img = Texture.readResource(path);
+			return new Texture(img.pixels(), img.width(), img.height(), false, true);
+		} catch (RuntimeException e) {
+			return null;
+		}
+	}
+
+	/**
+	 * Génère une texture d'eau répétable (repli si water.png est absente)
+	 * @return Texture
+	 */
+	private static Texture generateWater() {
+		int size = 128;
+		Random random = new Random(23);
+		float[] large = smoothNoise(size, 32, random), small = smoothNoise(size, 8, random);
+		ByteBuffer px = BufferUtils.createByteBuffer(size * size * 4);
+		for (int i = 0; i < size * size; i++) {
+			float n = large[i] * 0.6f + small[i] * 0.4f;
+			float crest = (float)Math.pow(n, 3);
+			px.put(toByte(0.10f + 0.15f * n + 0.35f * crest)).put(toByte(0.30f + 0.30f * n + 0.30f * crest))
+				.put(toByte(0.45f + 0.35f * n + 0.25f * crest)).put((byte)255);
 		}
 		return new Texture(px.flip(), size, size, true, true);
 	}
