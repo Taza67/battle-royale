@@ -71,15 +71,16 @@ class MatchTest implements IConfig {
 	}
 
 	@Test
-	void partieSoloSeTermineDansLaLave() {
+	void partieSoloEstGagneeDesLeDebutDuCombat() {
 		List<ZoneWave> waves = List.of(new ZoneWave(0.5f, 0.5f, 0f, 200));
 		Board b = new Board(new GameSettings(0, 9, 0, waves), new Map(List.of()), specs(1));
 		run(b, 20 * TICKS_PER_SECOND);
 
 		assertTrue(b.isOver());
-		assertEquals(-1, b.getWinnerId());
-		assertEquals(0, b.getAliveCount());
+		assertEquals(0, b.getWinnerId());
+		assertEquals(1, b.getAliveCount());
 		assertEquals(1, b.getPlayer(0).getRank());
+		assertEquals(2, b.getSnapshot().player(0).status());
 	}
 
 	@Test

@@ -636,13 +636,12 @@ public class Board implements IConfig {
 
 	/**
 	 * Termine la partie quand il reste au plus un joueur en vie
-	 * (une partie à un seul joueur se termine à son élimination)
+	 * (une partie à un seul joueur est gagnée dès le début du combat)
 	 */
 	private void checkEnd() {
 		if (phase != Phase.BATTLE) return;
 
-		int alive = getAliveCount(), total = PLAYERS.size();
-		if ((total >= 2 && alive <= 1) || alive == 0)
+		if (getAliveCount() <= 1)
 			endGame();
 	}
 
