@@ -51,15 +51,15 @@ public class Game {
 	 */
 	private static final double MAX_FRAME_TIME = 0.25;
 
-	private final LaunchOptions OPTIONS;
-	private final String GAMEPAD_URL;
-	private final KeyboardInput INPUT = new KeyboardInput();
-	private final Effects EFFECTS = new Effects();
-	private final SimulationLoop SIMULATION = new SimulationLoop();
+	private final LaunchOptions options;
+	private final String gamepadUrl;
+	private final KeyboardInput input = new KeyboardInput();
+	private final Effects effects = new Effects();
+	private final SimulationLoop simulation = new SimulationLoop();
 	/**
 	 * Nombre de parties créées (fait varier la graine d'une partie à l'autre)
 	 */
-	private final AtomicInteger GAMES_CREATED = new AtomicInteger();
+	private final AtomicInteger gamesCreated = new AtomicInteger();
 
 	private long window;
 	private TextureManager textures;
@@ -92,8 +92,8 @@ public class Game {
 	 * @param options Options de lancement
 	 */
 	public Game(LaunchOptions options) {
-		OPTIONS = options;
-		GAMEPAD_URL = options.effectiveGamepadUrl();
+		this.options = options;
+		gamepadUrl = options.effectiveGamepadUrl();
 	}
 
 	/**
@@ -126,8 +126,8 @@ public class Game {
 	public void run() {
 		try {
 			if (!init()) return;
-			SIMULATION.start();
-			if (OPTIONS.multi()) startServer();
+			simulation.start();
+			if (options.multi()) startServer();
 			else newSoloGame();
 			loop();
 		} catch (RuntimeException e) {
@@ -154,10 +154,10 @@ public class Game {
 		glfwWindowHint(GLFW_SCALE_TO_MONITOR, GLFW_TRUE);
 		glfwWindowHint(GLFW_SAMPLES, 4);
 
-		window = glfwCreateWindow(OPTIONS.windowWidth(), OPTIONS.windowHeight(), "Battle Royale", 0, 0);
+		window = glfwCreateWindow(options.windowWidth(), options.windowHeight(), "Battle Royale", 0, 0);
 		if (window == 0) {
 			glfwWindowHint(GLFW_SAMPLES, 0);
-			window = glfwCreateWindow(OPTIONS.windowWidth(), OPTIONS.windowHeight(), "Battle Royale", 0, 0);
+			window = glfwCreateWindow(options.windowWidth(), options.windowHeight(), "Battle Royale", 0, 0);
 		}
 		if (window == 0) {
 			System.err.println("- Échec de la création de la fenêtre");
@@ -188,7 +188,7 @@ public class Game {
 		fonts = new Fonts();
 		world = new WorldRenderer(textures, fonts.LABEL);
 		hud = new HudRenderer(fonts, textures);
-		audio = new AudioUtilities(OPTIONS.sound());
+		audio = new AudioUtilities(options.sound());
 
 		glfwShowWindow(window);
 		return true;
@@ -201,7 +201,7 @@ public class Game {
 		double last = glfwGetTime();
 
 		while (!glfwWindowShouldClose(window)) {
-			RuntimeException failure = SIMULATION.getFailure();
+			RuntimeException failure = simulation.getFailure();
 			if (failure != null) throw new IllegalStateException("Simulation arrêtée", failure);
 
 			glfwPollEvents();
@@ -210,16 +210,16 @@ public class Game {
 			float elapsed = (float)Math.min(now - last, MAX_FRAME_TIME);
 			last = now;
 
-			SimulationLoop.Frame frame = SIMULATION.getFrame();
+			SimulationLoop.Frame frame = simulation.getFrame();
 			if (frame != null && frame.session() != shown) show(frame.session());
 			if (shown != null) {
-				if (localId >= 0) INPUT.apply(shown.board(), localId, readKeys());
+				if (localId >= 0) input.apply(shown.board(), localId, readKeys());
 				consumeEvents(now);
 				if (frame != null && frame.session() == shown)
-					EFFECTS.ambient(elapsed, frame.current().zone());
+					effects.ambient(elapsed, frame.current().zone());
 			}
 
-			EFFECTS.update(now, elapsed);
+			effects.update(now, elapsed);
 			render(now, frame);
 			glfwSwapBuffers(window);
 		}
@@ -230,9 +230,9 @@ public class Game {
 	 * @param now Instant courant
 	 */
 	private void consumeEvents(double now) {
-		for (SimulationLoop.Events batch : SIMULATION.drainEvents()) {
+		for (SimulationLoop.Events batch : simulation.drainEvents()) {
 			if (batch.session() != shown) continue;
-			EFFECTS.consume(batch.events(), batch.snapshot(), localId);
+			effects.consume(batch.events(), batch.snapshot(), localId);
 			audio.play(batch.events(), localId);
 		}
 		if (endTime < 0 && shown.board().getSnapshot().isOver()) endTime = now;
@@ -254,10 +254,10 @@ public class Game {
 		}
 
 		GraphicUtilities.beginFrame(fbWidth, fbHeight);
-		HudInfo info = new HudInfo(localId, OPTIONS.multi(), GAMEPAD_URL, OPTIONS.port(), status, statusError, statusTime, connectionLost);
+		HudInfo info = new HudInfo(localId, options.multi(), gamepadUrl, options.port(), status, statusError, statusTime, connectionLost);
 
 		if (frame == null || frame.session() != shown) {
-			if (OPTIONS.multi()) hud.renderLobby(info, now);
+			if (options.multi()) hud.renderLobby(info, now);
 			return;
 		}
 
@@ -266,11 +266,11 @@ public class Game {
 		// Tremblement de caméra : le monde est translaté, l'interface reste fixe
 		GL11.glMatrixMode(GL11.GL_MODELVIEW);
 		GL11.glPushMatrix();
-		GL11.glTranslatef(EFFECTS.shakeX(), EFFECTS.shakeY(), 0);
+		GL11.glTranslatef(effects.shakeX(), effects.shakeY(), 0);
 		world.render(shown.board().getMap(), frame.previous(), current, frame.alpha(System.nanoTime()), now, localId,
-			EFFECTS, fonts.MEDIUM);
+			effects, fonts.MEDIUM);
 		GL11.glPopMatrix();
-		hud.render(current, info, EFFECTS, now, endTime);
+		hud.render(current, info, effects, now, endTime);
 	}
 
 	/**
@@ -301,11 +301,11 @@ public class Game {
 		case GLFW_KEY_ESCAPE -> glfwSetWindowShouldClose(window, true);
 		case GLFW_KEY_P -> {
 			BoardSnapshot s = shown != null ? shown.board().getSnapshot() : null;
-			if (!OPTIONS.multi() && s != null && !s.isOver())
+			if (!options.multi() && s != null && !s.isOver())
 				shown.board().enqueue(new Command.Control(s.paused() ? Command.ControlType.RESUME : Command.ControlType.PAUSE));
 		}
 		case GLFW_KEY_ENTER, GLFW_KEY_KP_ENTER -> {
-			if (!OPTIONS.multi() && shown != null && endTime >= 0 && glfwGetTime() - endTime > 1) newSoloGame();
+			if (!options.multi() && shown != null && endTime >= 0 && glfwGetTime() - endTime > 1) newSoloGame();
 		}
 		case GLFW_KEY_F11 -> toggleFullscreen();
 		default -> {}
@@ -319,8 +319,8 @@ public class Game {
 		long monitor = glfwGetWindowMonitor(window);
 		if (monitor != 0) {
 			glfwSetWindowMonitor(window, 0, windowedX, windowedY,
-				windowedW > 0 ? windowedW : OPTIONS.windowWidth(),
-				windowedH > 0 ? windowedH : OPTIONS.windowHeight(), GLFW_DONT_CARE);
+				windowedW > 0 ? windowedW : options.windowWidth(),
+				windowedH > 0 ? windowedH : options.windowHeight(), GLFW_DONT_CARE);
 		} else {
 			// Mémorise la position et la taille fenêtrée pour les restaurer à la sortie
 			try (MemoryStack stack = MemoryStack.stackPush()) {
@@ -361,13 +361,13 @@ public class Game {
 	private void newSoloGame() {
 		List<PlayerSpec> specs = new ArrayList<>();
 		int id = 0;
-		if (!OPTIONS.spectate()) specs.add(new PlayerSpec(id++, OPTIONS.pseudo(), false));
-		for (int i = 0; i < OPTIONS.bots(); i++)
+		if (!options.spectate()) specs.add(new PlayerSpec(id++, options.pseudo(), false));
+		for (int i = 0; i < options.bots(); i++)
 			specs.add(new PlayerSpec(id++, BotController.botPseudo(i), true));
 
-		long seed = OPTIONS.seed() + GAMES_CREATED.getAndIncrement();
-		Board b = new Board(OPTIONS.settings().withSeed(seed), specs);
-		SIMULATION.play(SimulationLoop.Session.of(b, OPTIONS.spectate() ? -1 : 0));
+		long seed = options.seed() + gamesCreated.getAndIncrement();
+		Board b = new Board(options.settings().withSeed(seed), specs);
+		simulation.play(SimulationLoop.Session.of(b, options.spectate() ? -1 : 0));
 	}
 
 	/**
@@ -378,20 +378,20 @@ public class Game {
 		shown = s;
 		localId = s.localId();
 		endTime = -1;
-		EFFECTS.clear();
-		INPUT.reset();
+		effects.clear();
+		input.reset();
 	}
 
 	/**
 	 * Démarre le serveur TCP du mode multijoueur
 	 */
 	private void startServer() {
-		server = new GameServer(OPTIONS.bind(), OPTIONS.port(), new GameServer.Listener() {
+		server = new GameServer(options.bind(), options.port(), new GameServer.Listener() {
 			@Override
 			public Board onGameRequested(List<PlayerSpec> players) {
 				Board b = createMultiBoard(players);
 				connectionLost = false;
-				SIMULATION.play(SimulationLoop.Session.of(b, -1));
+				simulation.play(SimulationLoop.Session.of(b, -1));
 				return b;
 			}
 
@@ -421,9 +421,9 @@ public class Game {
 	Board createMultiBoard(List<PlayerSpec> players) {
 		List<PlayerSpec> specs = new ArrayList<>(players);
 		int next = players.stream().mapToInt(PlayerSpec::id).max().orElse(-1) + 1;
-		for (int i = 0; i < OPTIONS.bots() && next < MAX_PLAYERS; i++)
+		for (int i = 0; i < options.bots() && next < MAX_PLAYERS; i++)
 			specs.add(new PlayerSpec(next++, BotController.botPseudo(i), true));
-		return new Board(OPTIONS.settings().withSeed(OPTIONS.seed() + GAMES_CREATED.getAndIncrement()), specs);
+		return new Board(options.settings().withSeed(options.seed() + gamesCreated.getAndIncrement()), specs);
 	}
 
 	/**
@@ -431,7 +431,7 @@ public class Game {
 	 */
 	private void cleanup() {
 		if (server != null) server.close();
-		SIMULATION.close();
+		simulation.close();
 		if (audio != null) audio.close();
 		if (fonts != null) fonts.close();
 		if (textures != null) textures.delete();

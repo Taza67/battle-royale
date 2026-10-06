@@ -87,15 +87,15 @@ public class SimulationLoop implements Runnable, AutoCloseable, IConfig {
 	/**
 	 * Partie à prendre en charge au prochain passage
 	 */
-	private final AtomicReference<Session> PENDING = new AtomicReference<>();
+	private final AtomicReference<Session> pending = new AtomicReference<>();
 	/**
 	 * Lots d'événements en attente de lecture
 	 */
-	private final BlockingQueue<Events> EVENTS = new ArrayBlockingQueue<>(MAX_EVENT_BATCHES);
+	private final BlockingQueue<Events> events = new ArrayBlockingQueue<>(MAX_EVENT_BATCHES);
 	/**
 	 * Fil de la simulation
 	 */
-	private final Thread THREAD;
+	private final Thread thread;
 
 	/**
 	 * Dernière image publiée
@@ -123,15 +123,15 @@ public class SimulationLoop implements Runnable, AutoCloseable, IConfig {
 	 * Construit la simulation (sans démarrer son fil)
 	 */
 	public SimulationLoop() {
-		THREAD = new Thread(this, "simulation");
-		THREAD.setDaemon(true);
+		thread = new Thread(this, "simulation");
+		thread.setDaemon(true);
 	}
 
 	/**
 	 * Démarre le fil de la simulation
 	 */
 	public void start() {
-		THREAD.start();
+		thread.start();
 	}
 
 	/**
@@ -139,8 +139,8 @@ public class SimulationLoop implements Runnable, AutoCloseable, IConfig {
 	 * @param s Partie
 	 */
 	public void play(Session s) {
-		PENDING.set(s);
-		LockSupport.unpark(THREAD);
+		pending.set(s);
+		LockSupport.unpark(thread);
 	}
 
 	/**
@@ -161,7 +161,7 @@ public class SimulationLoop implements Runnable, AutoCloseable, IConfig {
 	 */
 	public List<Events> drainEvents() {
 		List<Events> batches = new ArrayList<>();
-		EVENTS.drainTo(batches);
+		events.drainTo(batches);
 		return batches;
 	}
 
@@ -185,7 +185,7 @@ public class SimulationLoop implements Runnable, AutoCloseable, IConfig {
 	 * @return Nombre de pas effectués
 	 */
 	int advance(long now) {
-		Session p = PENDING.getAndSet(null);
+		Session p = pending.getAndSet(null);
 		if (p != null) {
 			session = p;
 			nextTick = now;
@@ -221,12 +221,12 @@ public class SimulationLoop implements Runnable, AutoCloseable, IConfig {
 		if (session.bots() != null) session.bots().update();
 		board.tick();
 
-		List<GameEvent> events = board.drainEvents();
-		if (events.isEmpty()) return;
-		Events batch = new Events(session, events, board.getSnapshot());
+		List<GameEvent> drained = board.drainEvents();
+		if (drained.isEmpty()) return;
+		Events batch = new Events(session, drained, board.getSnapshot());
 		int dropped = 0;
-		while (!EVENTS.offer(batch))
-			if (EVENTS.poll() != null) dropped++;
+		while (!events.offer(batch))
+			if (events.poll() != null) dropped++;
 		if (dropped > 0)
 			LOGGER.warning(dropped + " lot(s) d'événements abandonné(s) : l'affichage est en retard de plus de "
 				+ MAX_EVENT_BATCHES / TICKS_PER_SECOND + " s");
@@ -238,9 +238,9 @@ public class SimulationLoop implements Runnable, AutoCloseable, IConfig {
 	@Override
 	public void close() {
 		closed = true;
-		LockSupport.unpark(THREAD);
+		LockSupport.unpark(thread);
 		try {
-			THREAD.join(1000);
+			thread.join(1000);
 		} catch (InterruptedException e) {
 			Thread.currentThread().interrupt();
 		}
