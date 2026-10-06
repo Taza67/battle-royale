@@ -18,7 +18,8 @@ directions numérotées dans le sens trigonométrique avec l'axe Y vers le bas :
 
 ## Jeu ⇄ serveur web (TCP)
 
-Le jeu écoute sur le port `8000` (option `--port`). Le serveur web s'y connecte
+Le jeu écoute sur `127.0.0.1:8000` (options `--port` et `--bind`, par exemple
+`--bind 0.0.0.0` si le serveur web tourne sur une autre machine). Le serveur web s'y connecte
 quand l'administrateur lance la partie (propriétés `battle-royale.game-host` et
 `battle-royale.game-port`). Tous les entiers sont en big-endian
 (`DataInputStream` / `DataOutputStream`).
@@ -43,6 +44,14 @@ Toutes les `50 ms`, le serveur envoie un code `int` :
 | `-2` | arrêt demandé par l'administrateur | aucune, le jeu termine la manche |
 
 Quand `enCours` vaut `false`, la partie est terminée et l'état reçu est l'état final.
+
+Après `-2`, le serveur continue d'envoyer `int 0` à chaque cycle et lit les états
+jusqu'à recevoir `enCours = false` (au plus `2 s`), puis ferme la connexion : la
+manche arrêtée a donc elle aussi un état final et un classement. Côté jeu, une
+fermeture reçue après `-2` est une fin normale, pas une perte de connexion.
+
+Le jeu ferme toute connexion qui n'a pas terminé la poignée de main en `5 s` et
+refuse les pseudos vides ou de plus de 16 caractères.
 
 Actions :
 
@@ -89,7 +98,7 @@ Point d'accès : `ws(s)://<hôte>/battle-royale-server/websocketserver`, constru
 
 | Message | Rôle |
 | --- | --- |
-| `{"type":"join","pseudo":"Taza"}` | inscription ou reconnexion d'un joueur (pseudo de 1 à 16 caractères) |
+| `{"type":"join","pseudo":"Taza","token":"…"}` | inscription ou reconnexion d'un joueur (pseudo de 1 à 16 caractères, `token` facultatif) |
 | `{"type":"move","direction":0,"speed":4}` | déplacement (`speed` `0` = arrêt) |
 | `{"type":"attack","form":1}` | attaque (`1` corps-à-corps, `2` tir) |
 | `{"type":"admin-join","password":"…"}` | connexion de l'administrateur |
@@ -99,7 +108,7 @@ Point d'accès : `ws(s)://<hôte>/battle-royale-server/websocketserver`, constru
 
 | Message | Rôle |
 | --- | --- |
-| `{"type":"welcome","id":3,"pseudo":"Taza","state":"lobby"}` | inscription acceptée, `state` vaut `lobby`, `running`, `paused`, `over` ou `stopped` |
+| `{"type":"welcome","id":3,"pseudo":"Taza","state":"lobby","token":"…"}` | inscription acceptée, `state` vaut `lobby`, `running`, `paused`, `over` ou `stopped` ; `token` est le jeton de reprise du joueur |
 | `{"type":"rejected","reason":"…"}` | inscription refusée |
 | `{"type":"game","state":"running"}` | changement d'état de la partie |
 | `{"type":"state", …}` | état du joueur, voir ci-dessous |
@@ -123,6 +132,9 @@ Message `state` :
 ```
 
 Éléments de `ranking` : `{"id":3,"pseudo":"Taza","kills":2,"rank":1}`.
+`ranking` ne contient que les joueurs humains ; `end` porte aussi `"total"`, le
+nombre de participants robots compris, et `"stopped":true` si l'administrateur a
+arrêté la manche. `winner` vaut `null` en cas d'égalité ou si un robot gagne.
 
 ### Serveur → administrateur
 
@@ -143,7 +155,20 @@ Message `state` :
 - Les inscriptions ne sont acceptées qu'avant le lancement de la partie.
 - Un joueur déconnecté peut se reconnecter avec le même pseudo à tout moment ;
   il reçoit `welcome` avec l'état courant de la partie.
-- Un pseudo déjà associé à une session ouverte est refusé.
+- Un pseudo déjà associé à une session ouverte est refusé, sauf si `join` fournit
+  le `token` reçu dans le `welcome` de ce pseudo : la nouvelle connexion remplace
+  alors l'ancienne, qui reçoit `rejected` (« Session reprise par une autre
+  connexion ») puis est fermée. Le jeton est aléatoire (128 bits) et propre à
+  chaque pseudo pour la durée de vie du serveur.
+- Le serveur envoie un ping WebSocket toutes les `10 s` et ferme une session
+  muette depuis `30 s` ; un envoi bloqué plus de `10 s` ferme aussi la session.
+  En partie, un client qui ne reçoit rien pendant `5 s` ferme son socket et se
+  reconnecte.
+- Une session déjà inscrite (joueur ou administrateur) qui envoie `join` ou
+  `admin-join` reçoit `rejected` et reste dans son rôle.
+- Le serveur n'accepte que les connexions WebSocket dont l'en-tête `Origin` est
+  absent ou correspond à l'hôte de la requête. Après 5 mots de passe
+  administrateur erronés, la session est fermée.
 - Seule la session administrateur peut envoyer `admin-command`.
 - Si la propriété `battle-royale.admin-password` est définie, `admin-join` doit
   fournir ce mot de passe ; sinon la place d'administrateur revient à la première
